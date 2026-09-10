@@ -1,8 +1,11 @@
-numpy
-scipy
-matplotlib
-torch
-torchvision
-scikit-learn
-jupyter
-tqdm
+# PyTorch builds CUDA 13.0 (RTX 5090) - garder cet index pour torch/torchvision
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+numpy==2.5.3
+scipy==1.18.1
+matplotlib==3.11.1
+torch==2.14.0+cu130
+torchvision==0.29.0+cu130
+scikit-learn==1.9.0
+jupyter==1.1.1
+tqdm==4.70.0

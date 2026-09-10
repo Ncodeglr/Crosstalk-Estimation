@@ -6,7 +6,6 @@ __pycache__/
 
 # Données et modèles (trop lourds pour Git)
 data/
-checkpoints/
 experiments/
 *.h5
 *.pt
@@ -20,3 +19,7 @@ experiments/
 .vscode/
 .idea/
 .DS_Store
+
+*cvnn_framework
+
+
