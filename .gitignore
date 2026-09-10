@@ -1,0 +1,22 @@
+# Environnements
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Données et modèles (trop lourds pour Git)
+data/
+checkpoints/
+experiments/
+*.h5
+*.pt
+*.pth
+*.npy
+
+# Notebooks (sorties)
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
