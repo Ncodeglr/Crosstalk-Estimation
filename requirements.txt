@@ -1,11 +1,40 @@
+# Python 3.12.3 (venv du projet : .venv/bin/python --version)
+#
 # PyTorch builds CUDA 13.0 (RTX 5090) - garder cet index pour torch/torchvision
 --extra-index-url https://download.pytorch.org/whl/cu130
 
+# --- Data engineering UAVSAR (src/uavsar_io.py, notebooks/01_*) --------------
 numpy==2.5.3
-scipy==1.18.1
+pandas==3.0.5
 matplotlib==3.11.1
+jupyter==1.1.1
+
+# --- Socle deep learning -----------------------------------------------------
+scipy==1.18.1
 torch==2.14.0+cu130
 torchvision==0.29.0+cu130
 scikit-learn==1.9.0
-jupyter==1.1.1
 tqdm==4.70.0
+
+# --- Dépendances de cvnn_framework/ (partagent ce venv) ----------------------
+# torchcvnn : le pin amont est "^0.9.5", mais 0.9.5 exactement ne fournit pas
+# torchcvnn.datasets.ATRNetSTAR, importé sans garde par cvnn/data.py -> l'import
+# de toute la couche d'ingestion échoue. 0.9.9 est la plus basse version qui
+# fonctionne tout en restant dans le pin amont.
+torchcvnn==0.9.9
+h5py==3.16.0
+fvcore==0.1.5.post20221221
+torchinfo==1.8.0
+hydra-core==1.3.6
+click==8.5.0
+pydantic==2.13.5
+torchmetrics==1.9.0
+scikit-image==0.26.0
+seaborn==0.13.2
+wandb==0.30.0
+umap-learn==0.5.12
+numba==0.67.0
+iterative-stratification==0.1.9
+
+# --- Développement -----------------------------------------------------------
+pytest==9.1.1
