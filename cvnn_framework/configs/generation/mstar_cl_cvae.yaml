@@ -1,0 +1,79 @@
+task: generation
+
+# Data configuration
+data:
+  recompute_statistics: True
+  shuffle: True
+  batch_size: 32
+  dataset:
+    name: MSTARClean
+    trainpath: ../datasets/MSTARClean
+  num_workers: 4
+  test_ratio: 0.1
+  valid_ratio: 0.1
+  transforms:
+    - name: fftresize
+      params:
+        size: [128, 128]
+    - name: centercrop
+      params:
+        height: 66
+        width: 66
+    - name: randomcrop
+      params:
+        height: 64
+        width: 64
+    - name: centercrop
+      params:
+        height: 64
+        width: 64
+    - name: global_scalar_normalize
+
+# Model configuration
+model:
+  activation: CReLU
+  channels_width: 64
+  class: VariationalAutoEncoder
+  layer_mode: complex
+  cov_mode: diag
+  sample_gmm: True
+  force_circular: False
+  latent_tensor: False
+  standard_reparam: True
+  classified_latent: False
+  decoder_variance:
+    learned_variance: True
+    min_log_sigma: -5.0
+  num_layers: 3
+  num_blocks: 1
+  latent_dim: 256
+  normalization_layer: batch
+  downsampling_layer: Null
+  upsampling_layer: bilinear
+  residual: True
+  dropout: 0.0
+
+evaluation:
+  check_invariance: False
+  domain: spatial
+  max_samples: 5000
+
+visualization:
+  latent_space_max_samples: 5000
+  num_samples: 10
+  show_spectrum: True
+
+# Logging configuration
+logging:
+  logdir: ./logs
+  wandb:
+    entity: complex-gen-ai-sar
+    project: vae_mstar
+    name: variational_autoencoder
+
+# Loss configuration
+loss:
+  name: ELBOLoss
+  schedule: beta
+  beta_max: 0.1
+  warmup_epochs: 5

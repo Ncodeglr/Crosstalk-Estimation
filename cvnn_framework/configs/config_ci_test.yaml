@@ -1,0 +1,41 @@
+# Minimal config for CI testing
+task: reconstruction
+mode: train
+
+# Minimal data config - won't actually load data in CI
+data:
+  batch_size: 2
+  dataset:
+    name: ALOSDataset
+    trainpath: /nonexistent/path  # This will fail fast instead of hanging
+  num_channels: 3
+  num_workers: 0
+  patch_size: 32
+  patch_stride: 32
+  test_ratio: 0.1
+  valid_ratio: 0.1
+
+# Minimal model config
+model:
+  activation: modReLU
+  channels_ratio: 4
+  class: AutoEncoder
+  layer_mode: complex  # Updated from conv_mode to layer_mode
+  num_layers: 2
+
+# Disable wandb for CI
+logging:
+  logdir: ./logs
+
+# Quick training config
+nepochs: 1
+
+# Optimizer configuration
+optim:
+  algo: AdamW
+  params:
+    lr: 0.001
+
+# Loss configuration - using new generic naming
+loss:
+  name: MSE  # Auto-selects ComplexMSELoss or MSELoss based on layer_mode

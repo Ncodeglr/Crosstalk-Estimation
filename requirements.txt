@@ -3,8 +3,9 @@
 # PyTorch builds CUDA 13.0 (RTX 5090) - garder cet index pour torch/torchvision
 --extra-index-url https://download.pytorch.org/whl/cu130
 
-# --- Data engineering UAVSAR (src/uavsar_io.py, notebooks/01_*) --------------
+# --- Pipeline de données UAVSAR (configs/data_uavsar.yaml) ------------------
 numpy==2.5.3
+pyyaml==6.0.3
 pandas==3.0.5
 matplotlib==3.11.1
 jupyter==1.1.1

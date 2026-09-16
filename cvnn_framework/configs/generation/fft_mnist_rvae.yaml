@@ -1,0 +1,65 @@
+task: generation
+
+# Data configuration
+data:
+  recompute_statistics: True
+  shuffle: True
+  batch_size: 32
+  dataset:
+    name: MNIST
+    trainpath: ../datasets/MNIST
+  num_workers: 4
+  test_ratio: 0.1
+  valid_ratio: 0.1
+  transforms:
+    - name: fft2
+    - name: global_scalar_normalize
+  real_pipeline_type: complex_dual_real
+
+# Model configuration
+model:
+  activation: ReLU
+  channels_width: 16
+  class: VariationalAutoEncoder
+  layer_mode: real
+  cov_mode: diag
+  sample_gmm: True
+  force_circular: False
+  use_conv_1x1: False
+  classified_latent: False
+  decoder_variance:
+    learned_variance: True
+    min_log_sigma: -5.0
+  num_layers: 2
+  num_blocks: 1
+  latent_dim: 16
+  normalization_layer: batch
+  downsampling_layer: Null
+  upsampling_layer: bilinear
+  residual: True
+  dropout: 0.0
+
+evaluation:
+  check_invariance: False
+  domain: spectral
+  max_samples: 5000
+
+visualization:
+  latent_space_max_samples: 5000
+  num_samples: 10
+  show_spectrum: True
+
+# Logging configuration
+logging:
+  logdir: ./logs
+  wandb:
+    entity: complex-gen-ai-sar
+    project: vae_fft_mnist
+    name: variational_autoencoder
+
+# Loss configuration
+loss:
+  name: ELBOLoss
+  schedule: beta
+  beta_max: 0.25
+  warmup_epochs: 5

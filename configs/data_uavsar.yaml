@@ -1,0 +1,109 @@
+# Pile UAVSAR quad-pol (Rosamd_35012_04) servie par cvnn_framework.
+#
+# Chaîne complète : torchcvnn.datasets.SLCDataset découvre les .slc, lit les
+# .ann et découpe la grille de patchs ; il rend un dict {HH, HV, VH, VV} que la
+# transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn_framework
+# découpe train/valid/test et construit les DataLoader.
+#
+#     import sys, yaml
+#     sys.path.insert(0, "cvnn_framework/src")
+#     from cvnn.data import get_dataloaders, validate_and_correct_config
+#
+#     cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
+#     train_loader, valid_loader, test_loader = get_dataloaders(cfg, use_cuda=True)
+
+task: reconstruction
+seed: 1670
+
+data:
+  dataset:
+    name: UavsarSLC
+    trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
+    # 256 px : ~427 m en range (1,67 m/px) x ~154 m en azimut (0,6 m/px).
+    # Grille de 239 x 38 patchs par acquisition, 45 410 patchs pour les 5 dates.
+    patch_size: 256
+    patch_stride: 256
+
+  batch_size: 16
+  num_workers: 8
+  shuffle: True
+  valid_ratio: 0.1
+  test_ratio: 0.1
+  max_num_samples: null  # Limite le nombre de patchs (mise au point) ; retirer pour tout utiliser.
+  recompute_statistics: False
+
+  # --- Normalisation ---------------------------------------------------------
+  # Contrainte physique : O = D S + N. Les .slc UAVSAR ne sont PAS corrigés du
+  # crosstalk : le tenseur (4, H, W) servi ici est donc O lui-même (signal
+  # intermédiaire S' de Babu, étalonné en gain et en déséquilibre de canaux mais
+  # pas en crosstalk), et non S. C'est bien l'entrée attendue par les
+  # estimateurs et par l'encodeur. Toute transformation appliquée en amont du
+  # réseau doit laisser D invariante, sinon le réseau apprend le crosstalk
+  # d'une autre matrice que celle qu'on cherche.
+  #
+  #   * Un scalaire réel global g, identique sur les 4 canaux, donne
+  #     g O = D (g S) : D est inchangée, C est multipliée par g^2, et les
+  #     estimateurs de Quegan (rapports homogènes de degré 4 sur degré 4) sont
+  #     strictement invariants. C'est la seule famille sûre. Elle commute en
+  #     outre avec toute distorsion linéaire : si un D synthétique est appliqué
+  #     pour fabriquer des paires d'entraînement, la place de la normalisation
+  #     dans la chaîne (avant ou après) est sans effet.
+  #   * Une normalisation PAR CANAL diag(g1..g4) donne (G D) S. G D n'appartient
+  #     à la famille D(u,v,w,z,alpha) que si g1 = g4 et g2 g3 = g1 g4, et dans
+  #     ce cas elle reparamétrise les cibles : (u,v,w,z,alpha) devient
+  #     (gu, gv, w/g, z/g, g^2 alpha). Égaliser les puissances de canaux revient
+  #     donc exactement à effacer alpha (les 1,0 dB d'écart HV/VH mesurés ici en
+  #     font partie) et à violer l'hypothèse "données déjà étalonnées" (A = 1,
+  #     k = 1/sqrt(alpha)). Hors de ces contraintes, le modèle direct devient
+  #     mal spécifié.
+  #   * Interdits pour la même raison : logamplitude / regular_logamplitude
+  #     (non linéaires en |z|, elles détruisent les rapports inter-canaux dont
+  #     vit l'estimation), la transform `normalize` de torchcvnn (blanchiment
+  #     2x2 [Re, Im] par canal : opération linéaire au sens large, qui mélange
+  #     z et z* et détruit les relations de phase porteuses de arg(u,v,w,z)),
+  #     et le retrait d'une moyenne non nulle (O - mu != D (S - mu')).
+  #
+  # `global_scalar_normalize` avec des statistiques IDENTIQUES sur les 4 canaux
+  # et des moyennes nulles se réduit exactement à la division par un scalaire :
+  # la classe calcule std = sqrt(trace(cov)) = sqrt(2 * 0.013521) = 0.16444.
+  #
+  # Valeur mesurée sur les 5 acquisitions (30 blocs de 512 lignes pleine
+  # fauchée, cf. scripts/) : RMS par canal de O -- donc crosstalk inclus --
+  # HH 0,2488 / HV 0,0778 / VH 0,0874 / VV 0,1804, soit
+  # sigma = sqrt(mean(RMS^2)) = 0,16444 (span-RMS). L'écart HV/VH de 1,0 dB
+  # mélange asymétrie de scène, alpha et crosstalk : raison de plus pour ne pas
+  # l'absorber dans la normalisation. Après
+  # transformation, RMS = 1, |z| médian ~ 0,15, p99 ~ 2,4, moyennes < 1e-4
+  # (le SLC est circulaire centré : rien à soustraire).
+  #
+  # recompute_statistics DOIT rester False : la routine du framework produit des
+  # statistiques par canal, qui réintroduiraient exactement la normalisation
+  # par canal proscrite ci-dessus.
+  mean_complex_value:
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+  cov_complex_value:
+    - [[0.013521, 0.0], [0.0, 0.013521]]
+    - [[0.013521, 0.0], [0.0, 0.013521]]
+    - [[0.013521, 0.0], [0.0, 0.013521]]
+    - [[0.013521, 0.0], [0.0, 0.013521]]
+
+  transforms:
+    - name: global_scalar_normalize
+
+    # Queue de dynamique : |z| max ~ 500 sigma (réflecteurs ponctuels). Un clamp sur l'amplitude conserve la phase mais reste non linéaire ; à n'activer
+    # qu'en ablation, en gardant à l'esprit qu'il biaise les baselines
+    # statistiques (les cibles brillantes dominent C et violent déjà
+    # l'hypothèse de symétrie de réflexion).
+    # - name: clamp
+    #   params:
+    #     max_val: 30.0
+
+    # Pas de flip azimut : le crosstalk ne dépend pas de l'azimut, cette augmentation n'apporte aucune information (cf. modèle, §baselines).
+    # Pas de flip range : il inverserait la dépendance en distance du crosstalk.
+
+model:
+  # Réseau à valeurs complexes : les 4 canaux restent complexes de bout en bout.
+  layer_mode: complex
