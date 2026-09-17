@@ -1,12 +1,12 @@
-# Pile UAVSAR quad-pol (Rosamd_35012_04) servie par cvnn_framework.
+# Pile UAVSAR quad-pol (Rosamd_35012_04) servie par cvnn.
 #
 # Chaîne complète : torchcvnn.datasets.SLCDataset découvre les .slc, lit les
 # .ann et découpe la grille de patchs ; il rend un dict {HH, HV, VH, VV} que la
-# transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn_framework
+# transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn
 # découpe train/valid/test et construit les DataLoader.
 #
 #     import sys, yaml
-#     sys.path.insert(0, "cvnn_framework/src")
+#     sys.path.insert(0, "cvnn/src")
 #     from cvnn.data import get_dataloaders, validate_and_correct_config
 #
 #     cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
@@ -21,8 +21,8 @@ data:
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
     # 256 px : ~427 m en range (1,67 m/px) x ~154 m en azimut (0,6 m/px).
     # Grille de 239 x 38 patchs par acquisition, 45 410 patchs pour les 5 dates.
-    patch_size: 256
-    patch_stride: 256
+    patch_size: 64
+    patch_stride: 64
 
   batch_size: 16
   num_workers: 8

@@ -1,0 +1,303 @@
+"""Méthode de Quegan : estimation du crosstalk en forme fermée.
+
+Les quatre termes de crosstalk se lisent directement dans la covariance du
+signal observé (Fore et al., 2015, équation 24), avec
+`Delta = C11 C44 - |C14|^2` ::
+
+    u = (C44 C21 - C41 C24) / Delta        v = (C11 C24 - C21 C14) / Delta
+    z = (C44 C31 - C41 C34) / Delta        w = (C11 C34 - C31 C14) / Delta
+
+puis le déséquilibre croisé (équations 25 et 26) ::
+
+    X      = C32 - z C12 - w C42
+    alpha1 = (C22 - u C12 - v C42) / X
+    alpha2 = X* / (C33 - z* C31 - w* C34)
+
+            |alpha1 alpha2| - 1 + sqrt( (|alpha1 alpha2| - 1)^2 + 4 |alpha2|^2 )
+    |alpha| = -----------------------------------------------------------------
+                                    2 |alpha2|
+
+Indexation dans l'ordre `POL_ORDER_ONERA = [HH, VH, HV, VV]`, indices 1 à 4 des
+articles ; `C_ij = <O_i O_j*>`.
+
+Phase de alpha. Les deux références divergent, et le paramètre `alpha_phase`
+rend ce choix explicite plutôt que subi :
+
+`"fore"` (défaut)
+    Fore et al. (2015), équation 25, multiplie le module ci-dessus par
+    `alpha1 / |alpha1|`. `alpha` est alors complexe.
+`"babu"`
+    Babu et al. (2022), équation 15, s'arrête au module ; `alpha` est réel
+    positif. À choisir pour reproduire fidèlement ses chiffres.
+
+Sur la pile Rosamond de ce projet, l'écart entre les deux vaut environ un degré
+(`arg(alpha)` médian mesuré à 1,3°), le produit JPL 2016 étant déjà bien
+étalonné en phase ; le défaut `"fore"` est donc retenu par principe de
+correction, pas par nécessité numérique.
+
+Domaine de validité. Ces expressions sont dérivées en négligeant les termes
+d'ordre deux et plus en `(u, v, w, z)` (Fore et al., 2015, après l'équation 24).
+L'estimateur est exact au premier ordre seulement : même sans bruit et avec un
+nombre infini d'échantillons, il subsiste un biais en `O(|theta|^2)`, soit de
+l'ordre du pour-cent à -20 dB.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Literal, Sequence
+
+import numpy as np
+
+from ..conventions import POL_ORDER_DATALOADER
+from ..covariance import WindowSpec, polarimetric_covariance
+from ..exceptions import IllConditionedCovarianceError
+from ..parameters import CrosstalkParameters
+from ..physics import DEFAULT_TOL
+from .base import CrosstalkEstimator
+from .registry import register_estimator
+
+logger = logging.getLogger(__name__)
+
+AlphaPhase = Literal["fore", "babu"]
+
+#: Seuils **relatifs** par défaut des garde-fous.
+#:
+#: Les dénominateurs des formes fermées sont homogènes à des puissances : une
+#: homothétie globale `g` sur les données multiplie `Delta` par `g^4`. Un seuil
+#: absolu dépendrait donc de la normalisation appliquée en amont et ne voudrait
+#: rien dire. Les rapports ci-dessous sont sans dimension.
+#:
+#: Ordres de grandeur mesurés sur 600 patchs 64x64 de la pile Rosamond :
+#: `|Delta|/(C11 C44)` descend à 0,080 et `|X|/sqrt(C22 C33)` à 0,027. Les
+#: valeurs par défaut sont très en deçà : elles ne se déclenchent que sur une
+#: dégénérescence vraie (patch constant, canal éteint), pas sur une scène
+#: difficile.
+DEFAULT_DELTA_TOL: float = 1e-6
+DEFAULT_X_TOL: float = 1e-6
+
+
+@register_estimator
+class QueganEstimator(CrosstalkEstimator):
+    """Estimation du crosstalk par les formes fermées de Quegan (1994).
+
+    Args:
+        window: `"full"` — le patch entier est une unique fenêtre d'estimation,
+            un jeu par patch ; c'est le mode de la comparaison réseau contre
+            baselines. Ou un couple `(kh, kw)` — fenêtre glissante, un jeu par
+            fenêtre puis moyenne ; `(5, 5)` reproduit Babu et al. (2022).
+        alpha_phase: `"fore"` ou `"babu"`, voir la documentation du module.
+        source_order: ordre des canaux des patchs reçus.
+        tol: seuil de singularité de D, transmis à la correction.
+        delta_tol: seuil relatif sur `|Delta| / (C11 C44)`.
+        x_tol: seuil relatif sur `|X| / sqrt(C22 C33)`.
+
+    Raises:
+        ValueError: si `alpha_phase` ou `window` est invalide.
+    """
+
+    name = "quegan"
+
+    def __init__(
+        self,
+        window: WindowSpec = "full",
+        alpha_phase: AlphaPhase = "fore",
+        source_order: Sequence[str] = POL_ORDER_DATALOADER,
+        tol: float = DEFAULT_TOL,
+        delta_tol: float = DEFAULT_DELTA_TOL,
+        x_tol: float = DEFAULT_X_TOL,
+    ) -> None:
+        super().__init__(source_order=source_order, tol=tol)
+        if alpha_phase not in ("fore", "babu"):
+            raise ValueError(
+                f"alpha_phase = {alpha_phase!r} : 'fore' ou 'babu' attendu"
+            )
+        if window != "full":
+            window = tuple(window)
+            if len(window) != 2:
+                raise ValueError(f"window = {window!r} : 'full' ou (kh, kw) attendu")
+        self.window = window
+        self.alpha_phase = alpha_phase
+        self.delta_tol = float(delta_tol)
+        self.x_tol = float(x_tol)
+
+    # ------------------------------------------------------------ formes fermées
+
+    def _solve(self, cov: np.ndarray) -> tuple[np.ndarray, np.ndarray, dict]:
+        """Résout les formes fermées, vectorisé sur les dimensions de tête.
+
+        Args:
+            cov: `(..., 4, 4)` complex128.
+
+        Returns:
+            `(thetas, valides, rapports)` où `thetas` est `(..., 5)` dans
+            l'ordre `(u, v, w, z, alpha)` avec `NaN` là où un garde-fou a joué,
+            `valides` est le masque booléen `(...)`, et `rapports` le
+            dictionnaire des critères de conditionnement, pour le diagnostic.
+        """
+        c11, c12, c14 = cov[..., 0, 0], cov[..., 0, 1], cov[..., 0, 3]
+        c21, c22, c24 = cov[..., 1, 0], cov[..., 1, 1], cov[..., 1, 3]
+        c31, c32, c33, c34 = (
+            cov[..., 2, 0],
+            cov[..., 2, 1],
+            cov[..., 2, 2],
+            cov[..., 2, 3],
+        )
+        c41, c42, c44 = cov[..., 3, 0], cov[..., 3, 1], cov[..., 3, 3]
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            # --- crosstalk, équation 24 -------------------------------------
+            delta = c11 * c44 - np.abs(c14) ** 2
+            rapport_delta = np.abs(delta) / np.abs(c11 * c44)
+            u = (c44 * c21 - c41 * c24) / delta
+            v = (c11 * c24 - c21 * c14) / delta
+            z = (c44 * c31 - c41 * c34) / delta
+            w = (c11 * c34 - c31 * c14) / delta
+
+            # --- déséquilibre croisé, équations 25 et 26 --------------------
+            x = c32 - z * c12 - w * c42
+            rapport_x = np.abs(x) / np.sqrt(np.abs(c22 * c33))
+            alpha1 = (c22 - u * c12 - v * c42) / x
+
+            denominateur_2 = c33 - np.conj(z) * c31 - np.conj(w) * c34
+            rapport_denom2 = np.abs(denominateur_2) / np.abs(c33)
+            alpha2 = np.conj(x) / denominateur_2
+
+            produit = np.abs(alpha1 * alpha2)
+            module = (
+                produit - 1.0 + np.sqrt((produit - 1.0) ** 2 + 4.0 * np.abs(alpha2) ** 2)
+            ) / (2.0 * np.abs(alpha2))
+            if self.alpha_phase == "fore":
+                alpha = module * alpha1 / np.abs(alpha1)
+            else:
+                alpha = module.astype(np.complex128)
+
+        rapports = {
+            "Delta / (C11 C44)": rapport_delta,
+            "X / sqrt(C22 C33)": rapport_x,
+            "(C33 - z* C31 - w* C34) / C33": rapport_denom2,
+        }
+        valides = (
+            (rapport_delta > self.delta_tol)
+            & (rapport_x > self.x_tol)
+            & (rapport_denom2 > self.x_tol)
+            # |alpha2| > 0 découle des deux critères précédents ; seul |alpha1|
+            # doit être testé, car il divise le facteur de phase de la variante
+            # "fore" sans apparaître au dénominateur d'aucun critère.
+            & (np.abs(alpha1) > 0.0)
+        )
+
+        thetas = np.stack([u, v, w, z, alpha], axis=-1)
+        thetas = np.where(valides[..., None], thetas, np.nan)
+        return thetas, np.asarray(valides), rapports
+
+    def _raise_ill_conditioned(self, rapports: dict) -> None:
+        """Lève en nommant le critère le plus dégradé."""
+        nom, valeur = min(
+            ((nom, float(np.min(val))) for nom, val in rapports.items()),
+            key=lambda couple: couple[1],
+        )
+        seuil = self.delta_tol if nom.startswith("Delta") else self.x_tol
+        raise IllConditionedCovarianceError(nom, valeur, seuil)
+
+    # ---------------------------------------------------------------- interface
+
+    def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
+        """Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
+
+        En mode `"full"`, les formes fermées sont appliquées à l'unique
+        covariance du patch. En mode glissant, elles le sont à chaque fenêtre et
+        les `theta` obtenus sont moyennés sur **toutes** les fenêtres — les
+        fenêtres mal conditionnées étant écartées.
+
+        La moyenne est prise sur les nombres complexes, pour les cinq
+        paramètres. C'est nettement le bon choix pour `(u, v, w, z)` : mesuré
+        sur 150 patchs de la pile Rosamond contre l'estimation plein patch,
+        moyenner les complexes donne -1,1 dB de biais, moyenner les modules
+        +6,6 dB. Pour `alpha` en revanche la phase par fenêtre est bruitée à
+        25 échantillons, et la moyenne vectorielle rétrécit le module de
+        **4 % environ** (2,4 % de biais dans l'autre sens si l'on moyennait les
+        modules). Le mode glissant sous-estime donc légèrement `|alpha|` ; c'est
+        cohérent avec l'instabilité de `alpha` que signale Fore et al. (2015,
+        §V-B), et le mode `"full"` n'en souffre pas.
+
+        Note:
+            Reproduire Babu et al. (2022) demande une moyenne par ligne de
+            distance et non sur tout le patch : voir `estimate_range_lines`.
+
+        Raises:
+            IllConditionedCovarianceError: en mode `"full"` si la covariance est
+                dégénérée ; en mode glissant si aucune fenêtre n'est exploitable.
+        """
+        cov = polarimetric_covariance(self.to_model_order(patch), self.window)
+        thetas, valides, rapports = self._solve(cov)
+
+        if self.window == "full":
+            if not valides:
+                self._raise_ill_conditioned(rapports)
+            return CrosstalkParameters.from_vector(thetas)
+
+        retenues = int(np.count_nonzero(valides))
+        if retenues == 0:
+            self._raise_ill_conditioned(rapports)
+        if retenues < valides.size:
+            logger.warning(
+                "%d fenêtres sur %d écartées pour mauvais conditionnement",
+                valides.size - retenues,
+                valides.size,
+            )
+        return CrosstalkParameters.from_vector(
+            thetas[valides].mean(axis=0)
+        )
+
+    def estimate_range_lines(self, patch: np.ndarray) -> list[CrosstalkParameters]:
+        """Un jeu par ligne de distance, à la manière de Babu et al. (2022).
+
+        Le crosstalk varie lentement en distance et pas du tout en azimut. Babu
+        et al. (2022, §3.3.1) estiment donc un `theta` par fenêtre 5x5 glissante,
+        moyennent ces `theta` **le long d'une ligne de distance**, puis corrigent
+        toute la ligne avec ce jeu unique.
+
+        Une ligne de distance est une colonne du patch : les `.slc` UAVSAR
+        rangent l'azimut en lignes et la distance en colonnes.
+
+        Args:
+            patch: `(4, H, W)` complexe, dans `self.source_order`.
+
+        Returns:
+            Liste de `W - kw + 1` jeux, un par position de fenêtre en distance.
+
+        Raises:
+            ValueError: si l'estimateur est en mode `"full"`.
+            IllConditionedCovarianceError: si une ligne n'a aucune fenêtre
+                exploitable.
+        """
+        if self.window == "full":
+            raise ValueError(
+                "estimate_range_lines demande une fenêtre glissante ; "
+                "instanciez QueganEstimator(window=(5, 5))"
+            )
+        cov = polarimetric_covariance(self.to_model_order(patch), self.window)
+        thetas, valides, rapports = self._solve(cov)
+
+        lignes: list[CrosstalkParameters] = []
+        for colonne in range(thetas.shape[1]):
+            masque = valides[:, colonne]
+            if not masque.any():
+                self._raise_ill_conditioned(
+                    {f"{nom} (ligne de distance {colonne})": val[:, colonne]
+                     for nom, val in rapports.items()}
+                )
+            lignes.append(
+                CrosstalkParameters.from_vector(
+                    thetas[:, colonne][masque].mean(axis=0)
+                )
+            )
+        return lignes
+
+    def __repr__(self) -> str:
+        return (
+            f"QueganEstimator(window={self.window!r}, "
+            f"alpha_phase={self.alpha_phase!r}, "
+            f"source_order={self.source_order}, tol={self.tol:g})"
+        )

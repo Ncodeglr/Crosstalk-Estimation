@@ -1,0 +1,51 @@
+# Comparaison des baselines statistiques d'estimation du crosstalk.
+#
+#   python src/run_baselines.py --config configs/baselines.yaml
+#
+# La configuration de données n'est pas dupliquée ici : elle est reprise telle
+# quelle de configs/data_uavsar.yaml, dont le bloc de normalisation est
+# longuement justifié (seule une homothétie réelle globale laisse D invariante).
+# Les quelques clés ci-dessous ne font que la surcharger pour l'évaluation.
+
+data:
+  config: configs/data_uavsar.yaml
+  overrides:
+    # 64x64 : taille de patch du protocole de comparaison réseau / baselines.
+    patch_size: 64
+    patch_stride: 64
+    # Nombre de patchs évalués. Mettre à null pour toute la pile (45 410 patchs
+    # à 256 px, bien davantage à 64 px).
+    max_num_samples: 512
+    batch_size: 16
+    num_workers: 4
+    # Sans mélange, les patchs sont parcourus dans l'ordre de la grille : les
+    # résultats sont alors reproductibles et lisibles en fonction de la distance.
+    shuffle: false
+  # Quelle partition parcourir : train, valid ou test.
+  split: test
+
+# Chaque entrée est instanciée par le registre (crosstalk.estimators.registry).
+# `label` sert uniquement à distinguer deux configurations d'une même méthode
+# dans le CSV ; `name` doit être un nom enregistré.
+estimators:
+  - label: quegan_patch
+    name: quegan
+    params:
+      window: full
+      alpha_phase: fore
+
+  - label: quegan_5x5
+    name: quegan
+    params:
+      window: [5, 5]
+      alpha_phase: fore
+
+  # Reproduction de Babu et al. (2022) : module de alpha seul, sans le facteur
+  # de phase alpha1/|alpha1| de Fore et al. (2015, équation 25).
+  - label: quegan_babu
+    name: quegan
+    params:
+      window: [5, 5]
+      alpha_phase: babu
+
+output: experiments/baselines.csv
