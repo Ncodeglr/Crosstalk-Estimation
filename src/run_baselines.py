@@ -6,7 +6,7 @@ Orchestration seulement : les données viennent du pipeline existant
 du registre `crosstalk.estimators`, et les métriques de `crosstalk.metrics`. Ce
 fichier ne contient ni physique ni estimation.
 
-    python src/run_baselines.py --config configs/baselines.yaml
+    python src/run_baselines.py
 
 Chaque patch et chaque méthode donnent une ligne de CSV : crosstalk estimé,
 crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,
@@ -199,32 +199,32 @@ def _seed_global_rngs(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def build_dataloader(config: dict[str, Any]):
+def build_dataloader(config: dict[str, Any], split: str = "test"):
     """Construit le dataloader via `cvnn`, sans réécrire de pipeline.
 
+    La configuration est passée telle quelle au framework : c'est le même objet
+    qui décrit les données pour les baselines et pour le réseau, ce qui garantit
+    une partition de test identique des deux côtés.
+
     Args:
-        config: bloc `data` de la configuration d'évaluation, contenant le
-            chemin de la configuration de données et ses surcharges.
+        config: la configuration complète du projet.
+        split: partition à rendre — `train`, `valid` ou `test`.
 
     Returns:
         Le `DataLoader` de la partition demandée.
+
+    Raises:
+        ValueError: si la partition demandée n'existe pas.
     """
     from cvnn.data import get_dataloaders, validate_and_correct_config
 
-    donnees = yaml.safe_load(open(config["config"], "r", encoding="utf-8"))
-    _seed_global_rngs(int(donnees.get("seed", 0)))
-    surcharges = dict(config.get("overrides") or {})
-    for cle in ("patch_size", "patch_stride"):
-        if cle in surcharges:
-            donnees["data"]["dataset"][cle] = surcharges.pop(cle)
-    donnees["data"].update(surcharges)
-
+    _seed_global_rngs(int(config.get("seed", 0)))
     loaders = dict(
-        zip(("train", "valid", "test"), get_dataloaders(
-            validate_and_correct_config(donnees), use_cuda=False
-        ))
+        zip(
+            ("train", "valid", "test"),
+            get_dataloaders(validate_and_correct_config(config), use_cuda=False),
+        )
     )
-    split = config.get("split", "test")
     if split not in loaders:
         raise ValueError(f"split {split!r} inconnu : {sorted(loaders)}")
     return loaders[split]
@@ -248,7 +248,7 @@ def iter_patches(loader, limit: int | None = None) -> Iterator[np.ndarray]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     analyseur = argparse.ArgumentParser(description=__doc__)
-    analyseur.add_argument("--config", default="configs/baselines.yaml")
+    analyseur.add_argument("--config", default="configs/data_uavsar.yaml")
     analyseur.add_argument("--output", default=None, help="chemin du CSV")
     analyseur.add_argument("--limit", type=int, default=None,
                            help="nombre maximal de patchs évalués")
@@ -261,13 +261,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     config = load_config(arguments.config)
-    estimateurs = build_estimators(config["estimators"])
+    baselines = config.get("baselines") or {}
+    estimateurs = build_estimators(baselines["estimators"])
     logger.info("méthodes évaluées : %s", [label for label, _ in estimateurs])
 
-    loader = build_dataloader(config["data"])
+    loader = build_dataloader(config, baselines.get("split", "test"))
     lignes = evaluate_patches(iter_patches(loader, arguments.limit), estimateurs)
 
-    destination = arguments.output or config.get("output", "experiments/baselines.csv")
+    destination = arguments.output or baselines.get(
+        "output", "experiments/baselines.csv"
+    )
     write_csv(lignes, destination)
     logger.info("%d lignes écrites dans %s", len(lignes), destination)
     print(summarize(lignes))

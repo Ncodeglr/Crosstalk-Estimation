@@ -6,6 +6,7 @@ __pycache__/
 
 # Données et modèles (trop lourds pour Git)
 data/
+!data/corner_reflectors/
 experiments/
 *.h5
 *.pt

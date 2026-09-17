@@ -54,9 +54,9 @@ def estimateurs():
 
 
 def test_la_configuration_livree_est_valide():
-    """La config du dépôt doit se charger et s'instancier telle quelle."""
-    config = rb.load_config(RACINE / "configs" / "baselines.yaml")
-    construits = rb.build_estimators(config["estimators"])
+    """La config unique du dépôt doit se charger et s'instancier telle quelle."""
+    config = rb.load_config(RACINE / "configs" / "data_uavsar.yaml")
+    construits = rb.build_estimators(config["baselines"]["estimators"])
     assert [label for label, _ in construits] == [
         "quegan_patch",
         "quegan_5x5",

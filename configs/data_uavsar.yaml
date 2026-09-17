@@ -1,3 +1,13 @@
+# Configuration unique du projet : pipeline de données, réseau, et baselines
+# statistiques d'estimation du crosstalk.
+#
+#     python src/run_baselines.py
+#
+# Un seul fichier, délibérément : les baselines et l'encodeur doivent voir
+# exactement le même pipeline et la même partition de test, sans quoi la
+# comparaison ne veut rien dire. Deux fichiers avec un mécanisme de surcharge
+# laissaient les deux dériver en silence.
+#
 # Pile UAVSAR quad-pol (Rosamd_35012_04) servie par cvnn.
 #
 # Chaîne complète : torchcvnn.datasets.SLCDataset découvre les .slc, lit les
@@ -19,17 +29,21 @@ data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
-    # 256 px : ~427 m en range (1,67 m/px) x ~154 m en azimut (0,6 m/px).
-    # Grille de 239 x 38 patchs par acquisition, 45 410 patchs pour les 5 dates.
-    patch_size: 64
-    patch_stride: 64
+    # 64 px : ~107 m en distance (1,67 m/px) x ~38 m en azimut (0,6 m/px).
+    # Grille de 958 x 154 patchs par acquisition, 737 660 patchs pour les 5
+    # dates ; la partition de test en représente donc ~73 800.
+    patch_size: 256
+    patch_stride: 256
 
   batch_size: 16
   num_workers: 8
   shuffle: True
   valid_ratio: 0.1
   test_ratio: 0.1
-  max_num_samples: null  # Limite le nombre de patchs (mise au point) ; retirer pour tout utiliser.
+  # null = toute la pile. Mettre un entier pour une mise au point rapide ;
+  # la réduction a lieu AVANT le découpage train/valid/test, donc elle rétrécit
+  # aussi la partition de test.
+  max_num_samples: null
   recompute_statistics: False
 
   # --- Normalisation ---------------------------------------------------------
@@ -107,3 +121,33 @@ data:
 model:
   # Réseau à valeurs complexes : les 4 canaux restent complexes de bout en bout.
   layer_mode: complex
+
+# --- Baselines statistiques -------------------------------------------------
+# Bloc lu par src/run_baselines.py et ignoré par cvnn. Chaque entrée est
+# instanciée par le registre (crosstalk.estimators.registry) : `name` doit être
+# un nom enregistré, `label` sert uniquement à distinguer deux configurations
+# d'une même méthode dans le CSV.
+baselines:
+  split: test            # partition parcourue : train, valid ou test
+  output: experiments/baselines.csv
+
+  estimators:
+    - label: quegan_patch
+      name: quegan
+      params:
+        window: full     # le patch entier comme unique fenêtre d'estimation
+        alpha_phase: fore
+
+    - label: quegan_5x5
+      name: quegan
+      params:
+        window: [5, 5]   # fenêtre glissante de Babu et al. (2022, §3.3.1)
+        alpha_phase: fore
+
+    # Reproduction de Babu et al. (2022) : module de alpha seul, sans le facteur
+    # de phase alpha1/|alpha1| de Fore et al. (2015, équation 25).
+    - label: quegan_babu
+      name: quegan
+      params:
+        window: [5, 5]
+        alpha_phase: babu
