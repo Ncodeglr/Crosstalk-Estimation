@@ -19,7 +19,7 @@ projet :
 - [`torchcvnn`](https://github.com/torchcvnn/torchcvnn) — `SLCDataset` découvre
   les `.slc`, lit les `.ann`, découpe la grille de patchs et rend un dictionnaire
   `{HH, HV, VH, VV}` ; la transform `PolSAR` l'empile en `(4, H, W)` complexe.
-- [`cvnn_framework`](https://github.com/QuentinGABOT/cvnn) — `get_dataloaders`
+- [`cvnn`](https://github.com/QuentinGABOT/cvnn) — `get_dataloaders`
   découpe train / validation / test et construit les `DataLoader`.
 
 Données attendues : `data/Rosamd_35012_04/`, pile UAVSAR *Stack SLC* de
@@ -28,7 +28,7 @@ Données attendues : `data/Rosamd_35012_04/`, pile UAVSAR *Stack SLC* de
 
 ```python
 import sys, yaml
-sys.path.insert(0, "cvnn_framework/src")
+sys.path.insert(0, "cvnn/src")
 from cvnn.data import get_dataloaders, validate_and_correct_config
 
 cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
@@ -41,20 +41,21 @@ Tout se règle dans [configs/data_uavsar.yaml](configs/data_uavsar.yaml) :
 taille et pas des patchs, ratios de découpe, `batch_size`, `num_workers`,
 transforms.
 
-### Branchement dans cvnn_framework
+### Branchement dans cvnn
 
 `UavsarSLC` a été ajouté au framework comme n'importe quel autre dataset, en
 deux endroits :
 
-- `cvnn_framework/src/cvnn/dataset_registry.py` — entrée `UavsarSLC`
+- `cvnn/src/cvnn/dataset_registry.py` — entrée `UavsarSLC`
   (`type: polsar`, 4 canaux, sans étiquettes) ;
-- `cvnn_framework/src/cvnn/data.py` — import de `SLCDataset`, branche
+- `cvnn/src/cvnn/data.py` — import de `SLCDataset`, branche
   `elif dataset_name == "UavsarSLC"` dans `_create_dataset`, et `UavsarSLC`
   ajouté à la liste des datasets à `patch_size`.
 
-⚠️ `cvnn_framework/` est dans le `.gitignore` de ce dépôt : cette modification
-n'y est pas suivie. La reporter dans le dépôt `cvnn` en amont, ou retirer
-`*cvnn_framework` du `.gitignore`, pour ne pas la perdre.
+ℹ️ Contrairement à ce qu'indiquait une version antérieure de ce fichier, `cvnn/`
+**est suivi par Git dans ce dépôt** (136 fichiers) : le `.gitignore` ne contient
+aucune règle le concernant. Ces deux modifications sont donc versionnées ici, et
+il reste souhaitable de les reporter en amont dans le dépôt `cvnn`.
 
 ### Point d'attention : la normalisation
 
