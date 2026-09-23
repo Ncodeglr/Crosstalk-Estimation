@@ -8,6 +8,11 @@ fichier ne contient ni physique ni estimation.
 
     python src/run_baselines.py
 
+Aucune option de ligne de commande : tous les réglages vivent dans
+`configs/data_uavsar.yaml`. `data.max_num_samples` limite le nombre de patchs
+pour une mise au point rapide, `baselines.split` choisit la partition et
+`baselines.output` la destination du CSV.
+
 Chaque patch et chaque méthode donnent une ligne de CSV : crosstalk estimé,
 crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,
 pas propagé en exception.
@@ -15,7 +20,6 @@ pas propagé en exception.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import logging
 import random
@@ -55,48 +59,33 @@ COLONNES = [
 ]
 
 
-# --------------------------------------------------------------- configuration
+# méthodes
 
+def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
+    """Instancie les méthodes déclarées dans `baselines.estimators`.
 
-def load_config(path: str | Path) -> dict[str, Any]:
-    """Charge la configuration d'évaluation."""
-    with open(path, "r", encoding="utf-8") as fichier:
-        return yaml.safe_load(fichier)
-
-
-def build_estimators(
-    entrees: Sequence[dict[str, Any]],
-) -> list[tuple[str, CrosstalkEstimator]]:
-    """Instancie les méthodes déclarées, chacune avec son étiquette.
-
-    Args:
-        entrees: liste de blocs `{label?, name, params?}`.
-
-    Returns:
-        Couples `(étiquette, estimateur)`. L'étiquette vaut `name` si elle est
-        absente.
+    L'étiquette d'une entrée vaut son `label`, ou le nom de la méthode s'il est
+    absent.
 
     Raises:
         ValueError: si deux entrées portent la même étiquette.
-        KeyError: si un nom n'est pas enregistré.
+        KeyError: si `name` manque ou n'est pas un nom enregistré.
     """
-    construits: list[tuple[str, CrosstalkEstimator]] = []
-    vues: set[str] = set()
+    methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
-        label = entree.get("label", entree.get("name", ""))
-        if label in vues:
+        estimateur = create_from_config(entree) # QueganEstimator(window='full', alpha_phase='fore', …
+        label = entree.get("label", estimateur.name)
+        if label in methodes:
             raise ValueError(f"étiquette dupliquée dans la configuration : {label!r}")
-        vues.add(label)
-        construits.append((label, create_from_config(entree)))
-    return construits
+        methodes[label] = estimateur #{'quegan_patch': QueganEstimator(window='full', alpha_phase='fore', …)}
+    return methodes
 
 
-# ------------------------------------------------------------------ évaluation
-
+# évaluation
 
 def evaluate_patches(
     patches: Iterable[np.ndarray],
-    estimators: Sequence[tuple[str, CrosstalkEstimator]],
+    estimators: dict[str, CrosstalkEstimator],
 ) -> list[dict[str, Any]]:
     """Applique chaque méthode à chaque patch et rend les lignes de résultat.
 
@@ -106,7 +95,7 @@ def evaluate_patches(
     Args:
         patches: itérable de patchs `(4, H, W)` complexes, dans l'ordre du
             pipeline.
-        estimators: couples `(étiquette, estimateur)`.
+        estimators: méthodes à appliquer, indexées par leur étiquette.
 
     Returns:
         Une ligne par couple patch/méthode. Un patch sur lequel une méthode
@@ -115,7 +104,7 @@ def evaluate_patches(
     """
     lignes: list[dict[str, Any]] = []
     for index, patch in enumerate(patches):
-        for label, estimateur in estimators:
+        for label, estimateur in estimators.items():
             ligne: dict[str, Any] = {
                 "patch": index,
                 "label": label,
@@ -230,47 +219,41 @@ def build_dataloader(config: dict[str, Any], split: str = "test"):
     return loaders[split]
 
 
-def iter_patches(loader, limit: int | None = None) -> Iterator[np.ndarray]:
-    """Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline."""
-    rendus = 0
+def iter_patches(loader) -> Iterator[np.ndarray]:
+    """Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline.
+
+    Générateur, et non liste : les patchs sont lus sur disque puis abandonnés au
+    fil de l'eau. Une partition de test entière tiendrait sinon plusieurs
+    dizaines de gigaoctets en mémoire.
+    """
     for lot in loader:
+        # Un dataset étiqueté rend (x, y) ; UavsarSLC rend le tenseur seul.
         tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot
-        tableau = tenseur.detach().cpu().numpy()
-        for patch in tableau:
-            if limit is not None and rendus >= limit:
-                return
-            rendus += 1
+        for patch in tenseur.detach().cpu().numpy():
             yield patch
 
 
 # ------------------------------------------------------------------------ CLI
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    analyseur = argparse.ArgumentParser(description=__doc__)
-    analyseur.add_argument("--config", default="configs/data_uavsar.yaml")
-    analyseur.add_argument("--output", default=None, help="chemin du CSV")
-    analyseur.add_argument("--limit", type=int, default=None,
-                           help="nombre maximal de patchs évalués")
-    analyseur.add_argument("--log-level", default="INFO")
-    arguments = analyseur.parse_args(argv)
-
+def main() -> int:
+    """Déroule la campagne : configuration, données, estimation, sorties."""
     logging.basicConfig(
-        level=arguments.log_level.upper(),
+        level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    #2026-09-23 10:01:26,381 - src.crosstalk.estimators.quegan - WARNING - 2520 fenêtres sur 63504 écartées
+    #└──── %(asctime)s ────┘   └────────── %(name)s ─────────┘   └ %(levelname)s ┘   └──── %(message)s ────┘
 
-    config = load_config(arguments.config)
+    config = yaml.safe_load(Path("configs/data_uavsar.yaml").read_text(encoding="utf-8"))
     baselines = config.get("baselines") or {}
     estimateurs = build_estimators(baselines["estimators"])
-    logger.info("méthodes évaluées : %s", [label for label, _ in estimateurs])
+    logger.info("méthodes évaluées : %s", list(estimateurs))
 
     loader = build_dataloader(config, baselines.get("split", "test"))
-    lignes = evaluate_patches(iter_patches(loader, arguments.limit), estimateurs)
+    lignes = evaluate_patches(iter_patches(loader), estimateurs)
 
-    destination = arguments.output or baselines.get(
-        "output", "experiments/baselines.csv"
-    )
+    destination = baselines.get("output", "experiments/baselines.csv")
     write_csv(lignes, destination)
     logger.info("%d lignes écrites dans %s", len(lignes), destination)
     print(summarize(lignes))

@@ -21,6 +21,11 @@
 #
 #     cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
 #     train_loader, valid_loader, test_loader = get_dataloaders(cfg, use_cuda=True)
+#
+#     # Utilisation des DataLoader
+#     for batch in train_loader:
+#         # Traiter chaque batch
+#         pass
 
 task: reconstruction
 seed: 1670
@@ -138,16 +143,4 @@ baselines:
         window: full     # le patch entier comme unique fenêtre d'estimation
         alpha_phase: fore
 
-    - label: quegan_5x5
-      name: quegan
-      params:
-        window: [5, 5]   # fenêtre glissante de Babu et al. (2022, §3.3.1)
-        alpha_phase: fore
 
-    # Reproduction de Babu et al. (2022) : module de alpha seul, sans le facteur
-    # de phase alpha1/|alpha1| de Fore et al. (2015, équation 25).
-    - label: quegan_babu
-      name: quegan
-      params:
-        window: [5, 5]
-        alpha_phase: babu

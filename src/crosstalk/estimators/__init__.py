@@ -35,7 +35,6 @@ from .registry import (
     available_estimators,
     create_estimator,
     create_from_config,
-    get_estimator_class,
     register_estimator,
 )
 
@@ -45,6 +44,5 @@ __all__ = [
     "available_estimators",
     "create_estimator",
     "create_from_config",
-    "get_estimator_class",
     "register_estimator",
 ]

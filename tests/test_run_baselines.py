@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from src.crosstalk.conventions import POL_ORDER_ONERA
 from src.crosstalk.parameters import CrosstalkParameters
@@ -54,20 +55,27 @@ def estimateurs():
 
 
 def test_la_configuration_livree_est_valide():
-    """La config unique du dépôt doit se charger et s'instancier telle quelle."""
-    config = rb.load_config(RACINE / "configs" / "data_uavsar.yaml")
-    construits = rb.build_estimators(config["baselines"]["estimators"])
-    assert [label for label, _ in construits] == [
-        "quegan_patch",
-        "quegan_5x5",
-        "quegan_babu",
-    ]
-    assert construits[2][1].alpha_phase == "babu"
+    """La config unique du dépôt doit se charger et s'instancier telle quelle.
+
+    Les étiquettes attendues sont déduites du fichier, pas recopiées : le test
+    reste valable quand on ajoute ou retire un estimateur du YAML, et ne
+    vérifie que le contrat — chaque entrée déclarée donne un estimateur, rangé
+    sous son étiquette.
+    """
+    chemin = RACINE / "configs" / "data_uavsar.yaml"
+    config = yaml.safe_load(chemin.read_text(encoding="utf-8"))
+    declarees = config["baselines"]["estimators"]
+    construits = rb.build_estimators(declarees)
+
+    assert construits, "aucun estimateur déclaré dans baselines.estimators"
+    assert list(construits) == [e.get("label", e["name"]) for e in declarees]
+    for entree, estimateur in zip(declarees, construits.values()):
+        assert estimateur.name == entree["name"]
 
 
 def test_etiquette_par_defaut_vaut_le_nom():
     construits = rb.build_estimators([{"name": "quegan"}])
-    assert construits[0][0] == "quegan"
+    assert list(construits) == ["quegan"]
 
 
 def test_etiquette_dupliquee_refusee():

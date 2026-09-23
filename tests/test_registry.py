@@ -13,7 +13,6 @@ from src.crosstalk.estimators.registry import (
     available_estimators,
     create_estimator,
     create_from_config,
-    get_estimator_class,
     register_estimator,
 )
 from src.crosstalk.parameters import CrosstalkParameters
@@ -55,8 +54,8 @@ def fabrique_methode(nom: str = "factice", **attributs):
 
 def test_enregistrer_puis_retrouver():
     classe = fabrique_methode("factice")
-    assert get_estimator_class("factice") is classe
     assert "factice" in available_estimators()
+    assert isinstance(create_estimator("factice"), classe)
 
 
 def test_le_decorateur_rend_la_classe_inchangee():
@@ -75,7 +74,8 @@ def test_noms_tries():
 def test_reenregistrer_la_meme_classe_est_sans_effet():
     classe = fabrique_methode("factice")
     register_estimator(classe)  # idempotent
-    assert get_estimator_class("factice") is classe
+    assert available_estimators().count("factice") == 1
+    assert isinstance(create_estimator("factice"), classe)
 
 
 def test_nom_deja_pris_par_une_autre_classe():
