@@ -5,7 +5,6 @@ UAVSAR. C'est précisément pourquoi `evaluate_patches` ne connaît ni fichiers 
 dataloader et se teste sur des patchs synthétiques.
 """
 
-import csv
 import importlib.util
 from pathlib import Path
 
@@ -127,27 +126,6 @@ def test_synthese_liste_les_methodes():
 def test_synthese_signale_une_methode_entierement_en_echec():
     lignes = rb.evaluate_patches([np.ones((4, 16, 16), dtype=np.complex64)], estimateurs())
     assert "1       1" in rb.summarize(lignes)
-
-
-def test_csv_relisible(tmp_path):
-    lignes = rb.evaluate_patches(patchs_synthetiques(2), estimateurs())
-    destination = tmp_path / "sous_dossier" / "resultats.csv"
-    rb.write_csv(lignes, destination)
-    with open(destination, encoding="utf-8") as fichier:
-        relues = list(csv.DictReader(fichier))
-    assert len(relues) == 2
-    assert list(relues[0]) == rb.COLONNES
-    assert relues[0]["status"] == "ok"
-
-
-def test_csv_tolere_les_lignes_incompletes(tmp_path):
-    lignes = rb.evaluate_patches([np.ones((4, 16, 16), dtype=np.complex64)], estimateurs())
-    destination = tmp_path / "resultats.csv"
-    rb.write_csv(lignes, destination)  # les colonnes absentes restent vides
-    with open(destination, encoding="utf-8") as fichier:
-        relue = next(csv.DictReader(fichier))
-    assert relue["status"] == "ill_conditioned"
-    assert relue["initial_db"] == ""
 
 
 def test_le_decoupage_est_rendu_reproductible():

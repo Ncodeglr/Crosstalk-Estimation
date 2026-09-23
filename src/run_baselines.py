@@ -10,16 +10,15 @@ fichier ne contient ni physique ni estimation.
 
 Aucune option de ligne de commande : tous les réglages vivent dans
 `configs/data_uavsar.yaml`. `data.max_num_samples` limite le nombre de patchs
-pour une mise au point rapide et `baselines.output` fixe la destination du CSV.
+pour une mise au point rapide et le résultat est un tableau affiché sur la sortie standard.
 L'évaluation porte toujours sur la partition de test.
 
-Chaque patch et chaque méthode donnent une ligne de CSV : crosstalk estimé,
+Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estimé,
 crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,
 pas propagé en exception.
 """
 
 from __future__ import annotations
-import csv
 import logging
 import sys
 from pathlib import Path
@@ -39,25 +38,8 @@ from src.crosstalk.metrics import residual_crosstalk  # noqa: E402
 
 logger = logging.getLogger("run_baselines")
 
-#: Colonnes du CSV, dans l'ordre.
-COLONNES = [
-    "patch",
-    "label",
-    "method",
-    "status",
-    "initial_db",
-    "residual_db",
-    "reduction_db",
-    "alpha_abs",
-    "alpha_deg",
-    "u_db",
-    "v_db",
-    "w_db",
-    "z_db",
-]
 
-
-# méthodes
+#Méthodes
 
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
     """Instancie les méthodes déclarées dans `baselines.estimators`.
@@ -79,26 +61,21 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
     return methodes
 
 
-# évaluation
+#Évaluation
 
-def evaluate_patches(
-    patches: Iterable[np.ndarray],
-    estimators: dict[str, CrosstalkEstimator],
-) -> list[dict[str, Any]]:
+def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
     """Applique chaque méthode à chaque patch et rend les lignes de résultat.
 
     Cœur pur de l'évaluation : il ne connaît ni fichiers ni dataloader, ce qui
     le rend testable sur des patchs synthétiques.
 
     Args:
-        patches: itérable de patchs `(4, H, W)` complexes, dans l'ordre du
-            pipeline.
+        patches: itérable de patchs `(4, H, W)` complexes, dans l'ordre du pipeline.
         estimators: méthodes à appliquer, indexées par leur étiquette.
 
     Returns:
         Une ligne par couple patch/méthode. Un patch sur lequel une méthode
-        échoue donne une ligne de statut `ill_conditioned`, sans interrompre le
-        parcours.
+        échoue donne une ligne de statut `ill_conditioned`, sans interrompre le parcours.
     """
     lignes: list[dict[str, Any]] = []
     for index, patch in enumerate(patches):
@@ -153,17 +130,7 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     return "\n".join(sorties)
 
 
-def write_csv(lignes: Sequence[dict[str, Any]], path: str | Path) -> None:
-    """Écrit les lignes, en créant le répertoire au besoin."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with open(destination, "w", newline="", encoding="utf-8") as fichier:
-        redacteur = csv.DictWriter(fichier, fieldnames=COLONNES, extrasaction="ignore")
-        redacteur.writeheader()
-        redacteur.writerows(lignes)
-
-
-# -------------------------------------------------------------------- données
+#Données
 
 def build_dataloader(config: dict[str, Any]):
     """Construit le chargeur de la partition de test, via `cvnn`."""
@@ -191,7 +158,7 @@ def iter_patches(loader) -> Iterator[np.ndarray]:
             yield patch
 
 
-# ------------------------------------------------------------------------ CLI
+#CLI
 
 
 def main() -> int:
@@ -211,9 +178,6 @@ def main() -> int:
     loader = build_dataloader(config)
     lignes = evaluate_patches(iter_patches(loader), estimateurs)
 
-    destination = baselines.get("output", "experiments/baselines.csv")
-    write_csv(lignes, destination)
-    logger.info("%d lignes écrites dans %s", len(lignes), destination)
     print(summarize(lignes))
     return 0
 

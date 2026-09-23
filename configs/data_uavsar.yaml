@@ -119,7 +119,6 @@ model:
 # un nom enregistré, `label` sert uniquement à distinguer deux configurations
 # d'une même méthode dans le CSV.
 baselines:
-  output: experiments/baselines.csv
 
   estimators:
     - label: quegan_patch
