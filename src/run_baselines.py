@@ -10,8 +10,8 @@ fichier ne contient ni physique ni estimation.
 
 Aucune option de ligne de commande : tous les réglages vivent dans
 `configs/data_uavsar.yaml`. `data.max_num_samples` limite le nombre de patchs
-pour une mise au point rapide, `baselines.split` choisit la partition et
-`baselines.output` la destination du CSV.
+pour une mise au point rapide et `baselines.output` fixe la destination du CSV.
+L'évaluation porte toujours sur la partition de test.
 
 Chaque patch et chaque méthode donnent une ligne de CSV : crosstalk estimé,
 crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,
@@ -19,10 +19,8 @@ pas propagé en exception.
 """
 
 from __future__ import annotations
-
 import csv
 import logging
-import random
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
@@ -167,56 +165,16 @@ def write_csv(lignes: Sequence[dict[str, Any]], path: str | Path) -> None:
 
 # -------------------------------------------------------------------- données
 
-
-def _seed_global_rngs(seed: int) -> None:
-    """Rend le découpage train/valid/test reproductible.
-
-    `cvnn.data` découpe les indices avec `torch.randperm` et `random.shuffle`,
-    qui tirent sur les générateurs **globaux** ; la clé `seed` de la
-    configuration ne leur est jamais transmise. Sans cette fonction, deux
-    exécutions de ce script évaluent deux partitions de test différentes —
-    vérifié : trois appels successifs rendent trois premiers lots distincts.
-
-    C'est rédhibitoire pour le protocole de comparaison : la partition de test
-    des baselines doit être exactement celle sur laquelle le réseau est évalué,
-    et surtout ne pas recouper celle sur laquelle il a été entraîné.
-    """
-    import torch
-
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-
-def build_dataloader(config: dict[str, Any], split: str = "test"):
-    """Construit le dataloader via `cvnn`, sans réécrire de pipeline.
-
-    La configuration est passée telle quelle au framework : c'est le même objet
-    qui décrit les données pour les baselines et pour le réseau, ce qui garantit
-    une partition de test identique des deux côtés.
-
-    Args:
-        config: la configuration complète du projet.
-        split: partition à rendre — `train`, `valid` ou `test`.
-
-    Returns:
-        Le `DataLoader` de la partition demandée.
-
-    Raises:
-        ValueError: si la partition demandée n'existe pas.
-    """
+def build_dataloader(config: dict[str, Any]):
+    """Construit le chargeur de la partition de test, via `cvnn`."""
     from cvnn.data import get_dataloaders, validate_and_correct_config
+    from cvnn.utils import set_seed
 
-    _seed_global_rngs(int(config.get("seed", 0)))
-    loaders = dict(
-        zip(
-            ("train", "valid", "test"),
-            get_dataloaders(validate_and_correct_config(config), use_cuda=False),
-        )
+    set_seed(int(config.get("seed", 0)))
+    _, _, test_loader = get_dataloaders(
+        validate_and_correct_config(config), use_cuda=False
     )
-    if split not in loaders:
-        raise ValueError(f"split {split!r} inconnu : {sorted(loaders)}")
-    return loaders[split]
+    return test_loader
 
 
 def iter_patches(loader) -> Iterator[np.ndarray]:
@@ -250,7 +208,7 @@ def main() -> int:
     estimateurs = build_estimators(baselines["estimators"])
     logger.info("méthodes évaluées : %s", list(estimateurs))
 
-    loader = build_dataloader(config, baselines.get("split", "test"))
+    loader = build_dataloader(config)
     lignes = evaluate_patches(iter_patches(loader), estimateurs)
 
     destination = baselines.get("output", "experiments/baselines.csv")

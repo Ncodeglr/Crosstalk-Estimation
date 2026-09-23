@@ -1,24 +1,10 @@
-# Configuration unique du projet : pipeline de données, réseau, et baselines
-# statistiques d'estimation du crosstalk.
-#
-#     python src/run_baselines.py
-#
-# Un seul fichier, délibérément : les baselines et l'encodeur doivent voir
-# exactement le même pipeline et la même partition de test, sans quoi la
-# comparaison ne veut rien dire. Deux fichiers avec un mécanisme de surcharge
-# laissaient les deux dériver en silence.
-#
 # Pile UAVSAR quad-pol (Rosamd_35012_04) servie par cvnn.
 #
 # Chaîne complète : torchcvnn.datasets.SLCDataset découvre les .slc, lit les
 # .ann et découpe la grille de patchs ; il rend un dict {HH, HV, VH, VV} que la
-# transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn
-# découpe train/valid/test et construit les DataLoader.
+# transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn découpe train/valid/test et construit les DataLoader.
 #
-#     import sys, yaml
-#     sys.path.insert(0, "cvnn/src")
-#     from cvnn.data import get_dataloaders, validate_and_correct_config
-#
+
 #     cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
 #     train_loader, valid_loader, test_loader = get_dataloaders(cfg, use_cuda=True)
 #
@@ -28,7 +14,7 @@
 #         pass
 
 task: reconstruction
-seed: 1670
+seed: 42
 
 data:
   dataset:
@@ -133,7 +119,6 @@ model:
 # un nom enregistré, `label` sert uniquement à distinguer deux configurations
 # d'une même méthode dans le CSV.
 baselines:
-  split: test            # partition parcourue : train, valid ou test
   output: experiments/baselines.csv
 
   estimators:

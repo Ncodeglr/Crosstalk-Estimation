@@ -153,13 +153,15 @@ def test_csv_tolere_les_lignes_incompletes(tmp_path):
 def test_le_decoupage_est_rendu_reproductible():
     """`cvnn.data` découpe avec les générateurs globaux, jamais graines.
 
-    Sans ce réamorçage, deux exécutions évaluent deux partitions de test
-    différentes — et rien ne garantit alors que la partition des baselines soit
-    disjointe de celle sur laquelle le réseau a été entraîné.
+    Le script appelle `cvnn.utils.set_seed`, la même fonction que
+    `BaseExperiment` utilise pour le réseau : les deux voient donc la même
+    partition. Sans ce réamorçage, deux exécutions évaluent deux partitions de
+    test différentes.
     """
     import torch
+    from cvnn.utils import set_seed
 
-    rb._seed_global_rngs(1670)
+    set_seed(1670)
     premier = torch.randperm(50).tolist()
-    rb._seed_global_rngs(1670)
+    set_seed(1670)
     assert torch.randperm(50).tolist() == premier
