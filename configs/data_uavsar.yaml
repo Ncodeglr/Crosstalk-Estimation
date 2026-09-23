@@ -3,15 +3,6 @@
 # Chaîne complète : torchcvnn.datasets.SLCDataset découvre les .slc, lit les
 # .ann et découpe la grille de patchs ; il rend un dict {HH, HV, VH, VV} que la
 # transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn découpe train/valid/test et construit les DataLoader.
-#
-
-#     cfg = validate_and_correct_config(yaml.safe_load(open("configs/data_uavsar.yaml")))
-#     train_loader, valid_loader, test_loader = get_dataloaders(cfg, use_cuda=True)
-#
-#     # Utilisation des DataLoader
-#     for batch in train_loader:
-#         # Traiter chaque batch
-#         pass
 
 task: reconstruction
 seed: 42

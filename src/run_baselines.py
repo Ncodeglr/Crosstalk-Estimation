@@ -80,12 +80,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
     lignes: list[dict[str, Any]] = []
     for index, patch in enumerate(patches):
         for label, estimateur in estimators.items():
-            ligne: dict[str, Any] = {
-                "patch": index,
-                "label": label,
-                "method": estimateur.name,
-                "status": "ok",
-            }
+            ligne: dict[str, Any] = {"label": label, "status": "ok"}
             try:
                 rapport = residual_crosstalk(patch, estimateur)
             except CrosstalkError as erreur:
@@ -93,22 +88,25 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
                 logger.debug("patch %d, %s : %s", index, label, erreur)
             else:
                 ligne.update(rapport.as_row())
-                ligne.update(
-                    {
-                        f"{nom}_db": valeur
-                        for nom, valeur in rapport.initial.crosstalk_db().items()
-                    }
-                )
             lignes.append(ligne)
     return lignes
 
 
 def summarize(lignes: Sequence[dict[str, Any]]) -> str:
-    """Tableau de synthèse, une ligne par méthode."""
+    """Tableau de synthèse, une ligne par méthode.
+
+    `|alpha|` figure au tableau parce que c'est le paramètre le plus instable
+    de la méthode : Fore et al. (2015, §V-B) signalent des scènes où son
+    estimation dégrade la calibration, et la campagne le confirme — 10 à 23 %
+    de valeurs hors de [0,8 ; 1,5] selon le fenêtrage, pour une grandeur
+    physique proche de 1,2. Sa valeur aberrante est le premier symptôme à
+    surveiller.
+    """
     labels = sorted({ligne["label"] for ligne in lignes})
     entete = (
         f"{'méthode':>16} {'patchs':>7} {'échecs':>7} "
-        f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13}"
+        f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13} "
+        f"{'|alpha|':>8} {'arg(alpha)':>11}"
     )
     sorties = [entete, "-" * len(entete)]
     for label in labels:
@@ -116,16 +114,18 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
         valides = [ligne for ligne in groupe if ligne["status"] == "ok"]
         if not valides:
             sorties.append(f"{label:>16} {len(groupe):>7} {len(groupe):>7}"
-                           f" {'-':>11} {'-':>12} {'-':>13}")
+                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8} {'-':>11}")
             continue
         mediane = {
             cle: float(np.median([ligne[cle] for ligne in valides]))
-            for cle in ("initial_db", "residual_db", "reduction_db")
+            for cle in ("initial_db", "residual_db", "reduction_db",
+                        "alpha_abs", "alpha_deg")
         }
         sorties.append(
             f"{label:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
             f"{mediane['initial_db']:>11.1f} {mediane['residual_db']:>12.1f} "
-            f"{mediane['reduction_db']:>13.1f}"
+            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f} "
+            f"{mediane['alpha_deg']:>10.1f}°"
         )
     return "\n".join(sorties)
 
@@ -138,29 +138,23 @@ def build_dataloader(config: dict[str, Any]):
     from cvnn.utils import set_seed
 
     set_seed(int(config.get("seed", 0)))
-    _, _, test_loader = get_dataloaders(
-        validate_and_correct_config(config), use_cuda=False
-    )
+    _, _, test_loader = get_dataloaders(validate_and_correct_config(config), use_cuda=False)
     return test_loader
 
 
 def iter_patches(loader) -> Iterator[np.ndarray]:
-    """Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline.
-
-    Générateur, et non liste : les patchs sont lus sur disque puis abandonnés au
-    fil de l'eau. Une partition de test entière tiendrait sinon plusieurs
-    dizaines de gigaoctets en mémoire.
     """
+    Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline.
+    Générateur, et non liste : les patchs sont lus sur disque puis abandonnés aufil de l'eau. 
+    """
+    #UavsarSLC rend le tenseur seul
     for lot in loader:
-        # Un dataset étiqueté rend (x, y) ; UavsarSLC rend le tenseur seul.
-        tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot
+        tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot #tenseur étant pas un tuple ou list, tenseur = lot de type (16, 4, 256, 256)
         for patch in tenseur.detach().cpu().numpy():
             yield patch
 
 
 #CLI
-
-
 def main() -> int:
     """Déroule la campagne : configuration, données, estimation, sorties."""
     logging.basicConfig(

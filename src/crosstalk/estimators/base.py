@@ -16,16 +16,10 @@ eux, exprimés dans la convention du modèle (celle de Fore et al., 2015).
 
 from __future__ import annotations
 
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import ClassVar, Sequence
-
-import numpy as np
-
-from ..conventions import (
-    POL_ORDER_DATALOADER,
-    POL_ORDER_ONERA,
-    reorder,
-)
+from ..conventions import (POL_ORDER_DATALOADER, POL_ORDER_ONERA, reorder,)
 from ..parameters import CrosstalkParameters
 from ..physics import DEFAULT_TOL, apply_correction
 

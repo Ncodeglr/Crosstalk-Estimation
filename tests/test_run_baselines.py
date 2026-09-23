@@ -93,7 +93,7 @@ def test_methode_inconnue_refusee():
 def test_une_ligne_par_patch_et_par_methode():
     lignes = rb.evaluate_patches(patchs_synthetiques(3), estimateurs())
     assert len(lignes) == 3
-    assert [ligne["patch"] for ligne in lignes] == [0, 1, 2]
+    assert all(ligne["label"] == "patch" for ligne in lignes)
     assert all(ligne["status"] == "ok" for ligne in lignes)
     assert all(ligne["reduction_db"] > 0 for ligne in lignes)
 
@@ -108,10 +108,18 @@ def test_un_patch_degenere_est_consigne_sans_interrompre():
     assert "initial_db" not in lignes[0]
 
 
-def test_les_colonnes_de_crosstalk_sont_remplies():
+def test_une_ligne_ne_porte_que_ce_qui_est_affiche():
+    """Aucun champ calculé puis jeté : la ligne et le tableau coïncident."""
     ligne = rb.evaluate_patches(patchs_synthetiques(1), estimateurs())[0]
-    for nom in ("u_db", "v_db", "w_db", "z_db"):
-        assert ligne[nom] < 0.0
+    assert set(ligne) == {
+        "label",
+        "status",
+        "initial_db",
+        "residual_db",
+        "reduction_db",
+        "alpha_abs",
+        "alpha_deg",
+    }
 
 
 # ------------------------------------------------------------------ sorties
