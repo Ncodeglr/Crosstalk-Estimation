@@ -17,10 +17,8 @@ phase.
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass, fields
 from typing import Iterable
-
 import numpy as np
 
 #: Ordre canonique des paramètres dans les vecteurs `(5,)`.
@@ -50,9 +48,7 @@ class CrosstalkParameters:
             value = complex(getattr(self, field.name))
             object.__setattr__(self, field.name, value)
         if self.alpha == 0:
-            raise ValueError(
-                "alpha nul : D fait intervenir 1/sqrt(alpha) et n'est pas définie"
-            )
+            raise ValueError("alpha nul : D fait intervenir 1/sqrt(alpha) et n'est pas définie")
 
     # ------------------------------------------------------------------ vecteurs
 

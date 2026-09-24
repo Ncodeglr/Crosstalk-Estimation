@@ -5,27 +5,6 @@ d'Ainsworth ou d'un réseau. Toutes les méthodes d'estimation partagent le mêm
 modèle direct et la même correction ; seule l'estimation de `theta` les
 distingue.
 
-Ordre des polarisations
------------------------
-
-`POL_ORDER`, défini ici, est l'ordre du vecteur observé chez **Babu et al.
-(2022, équations 8-9)** ::
-
-    o = [O_HH, O_HV, O_VH, O_VV]^T          (indices 1 à 4 dans les articles)
-
-C'est exactement l'ordre que sert le pipeline : `torchcvnn.datasets.SLCDataset`
-trie les polarisations alphabétiquement (`sorted(slcs.keys())`) avant de les
-empiler, ce qui donne `[HH, HV, VH, VV]`. **Aucune permutation n'est donc
-nécessaire**, et c'est la raison d'avoir retenu cette convention plutôt que
-celle de Fore et al. (2015, équation 11), qui ordonne `[HH, VH, HV, VV]`.
-
-Les deux conventions sont équivalentes, et non contradictoires : appliquées
-chacune avec sa propre matrice de distorsion et ses propres formes fermées,
-elles rendent les mêmes `(u, v, w, z, alpha)`, aux mêmes noms. Vérifié
-numériquement. Ce qui produit un renommage silencieux — `(u,v,w,z,alpha)`
-devenant `(z,w,v,u,1/alpha)` — c'est de les **mélanger**, par exemple en
-appliquant les formes fermées de l'un à des données rangées selon l'autre.
-
 Attention en lisant Babu et al. : son équation 10 reproduit la matrice D de Fore
 telle quelle, sur un vecteur pourtant ordonné autrement, et ses équations 16 à
 18 font de même pour `alpha`. Prises littéralement avec son équation 13, elles

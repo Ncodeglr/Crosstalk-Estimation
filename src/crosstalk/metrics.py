@@ -52,9 +52,14 @@ def parameter_errors(
         - `rel_error_u` .. `rel_error_z` : le même, rapporté à `|theta_vrai|`
           (`inf` si le terme vrai est nul) ;
         - `max_rel_error` : le pire des quatre ;
-        - `alpha_error_db` : écart des modules de alpha, en dB ;
-        - `alpha_error_deg` : écart des phases de alpha, replié dans
-          `]-180, 180]`.
+        - `alpha_error_db` : écart des modules de alpha, en dB.
+
+    Note:
+        L'écart des **phases** de alpha n'est pas rendu. Les formes fermées du
+        projet suivent l'équation 15 de Babu et al. (2022), qui s'arrête au
+        module : un `alpha` estimé est réel positif, donc un tel écart vaudrait
+        toujours l'opposé de la phase de référence. Il aurait l'apparence d'une
+        mesure sans en être une.
     """
     resultats: dict[str, float] = {}
     relatives: list[float] = []
@@ -69,8 +74,6 @@ def parameter_errors(
         relatives.append(relative)
     resultats["max_rel_error"] = max(relatives)
     resultats["alpha_error_db"] = estimate.alpha_db() - reference.alpha_db()
-    ecart_phase = estimate.alpha_phase_deg() - reference.alpha_phase_deg()
-    resultats["alpha_error_deg"] = float((ecart_phase + 180.0) % 360.0 - 180.0)
     return resultats
 
 

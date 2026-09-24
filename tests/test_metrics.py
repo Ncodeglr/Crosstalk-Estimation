@@ -29,7 +29,6 @@ def test_erreurs_nulles_pour_un_jeu_identique():
     erreurs = parameter_errors(THETA, THETA)
     assert erreurs["max_rel_error"] == 0.0
     assert erreurs["alpha_error_db"] == pytest.approx(0.0)
-    assert erreurs["alpha_error_deg"] == pytest.approx(0.0)
 
 
 def test_erreur_relative_connue():
@@ -49,11 +48,13 @@ def test_reference_nulle_donne_une_erreur_relative_infinie():
     assert erreurs["abs_error_u"] == pytest.approx(abs(THETA.u))
 
 
-def test_erreur_de_phase_repliee():
-    # 170° estimé contre -170° vrai : l'écart est de -20°, pas de 340°.
-    estime = CrosstalkParameters(0.1, 0.1, 0.1, 0.1, np.exp(1j * np.deg2rad(170.0)))
-    vrai = CrosstalkParameters(0.1, 0.1, 0.1, 0.1, np.exp(1j * np.deg2rad(-170.0)))
-    assert parameter_errors(estime, vrai)["alpha_error_deg"] == pytest.approx(-20.0)
+def test_la_phase_de_alpha_n_est_pas_rapportee():
+    """`alpha` estimé est réel par convention : son écart de phase ne mesure rien.
+
+    Le jeu de référence porte pourtant une phase de 27°. Si la clé revenait un
+    jour, elle vaudrait -27° quelle que soit la qualité de l'estimation.
+    """
+    assert "alpha_error_deg" not in parameter_errors(THETA, THETA)
 
 
 def test_ecart_de_module_de_alpha_en_db():
