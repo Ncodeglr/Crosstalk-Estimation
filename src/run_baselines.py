@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
-"""Évalue les baselines statistiques de crosstalk sur la pile UAVSAR.
-
-Orchestration seulement : les données viennent du pipeline existant
-(`torchcvnn.datasets.SLCDataset` puis `cvnn.data.get_dataloaders`), les méthodes
-du registre `crosstalk.estimators`, et les métriques de `crosstalk.metrics`. Ce
-fichier ne contient ni physique ni estimation.
-
-    python src/run_baselines.py
-
-Aucune option de ligne de commande : tous les réglages vivent dans
-`configs/data_uavsar.yaml`. `data.max_num_samples` limite le nombre de patchs
-pour une mise au point rapide et le résultat est un tableau affiché sur la sortie standard.
-L'évaluation porte toujours sur la partition de test.
-
-Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estimé,
-crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,
-pas propagé en exception.
+"""
+Évalue les baselines statistiques de crosstalk sur la pile UAVSAR.
+Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estimé, crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,pas propagé en exception.
 """
 
 from __future__ import annotations
@@ -40,16 +26,10 @@ logger = logging.getLogger("run_baselines")
 
 
 #Méthodes
-
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
-    """Instancie les méthodes déclarées dans `baselines.estimators`.
-
-    L'étiquette d'une entrée vaut son `label`, ou le nom de la méthode s'il est
-    absent.
-
-    Raises:
-        ValueError: si deux entrées portent la même étiquette.
-        KeyError: si `name` manque ou n'est pas un nom enregistré.
+    """
+    Instancie les méthodes déclarées dans `baselines.estimators`.
+    L'étiquette d'une entrée vaut son `label`, ou le nom de la méthode s'il est absent.
     """
     methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
@@ -62,7 +42,6 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
 
 
 #Évaluation
-
 def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
     """Applique chaque méthode à chaque patch et rend les lignes de résultat.
 
@@ -89,18 +68,14 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
             else:
                 ligne.update(rapport.as_row())
             lignes.append(ligne)
+    #lignes[i] = {'label': 'quegan_patch', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0, 'alpha_deg': 0.0}
+    #lignes[i+1] = {'label': 'quegan_patch', 'status': 'ill_conditioned'}
     return lignes
 
 
 def summarize(lignes: Sequence[dict[str, Any]]) -> str:
-    """Tableau de synthèse, une ligne par méthode.
-
-    `|alpha|` figure au tableau parce que c'est le paramètre le plus instable
-    de la méthode : Fore et al. (2015, §V-B) signalent des scènes où son
-    estimation dégrade la calibration, et la campagne le confirme — 10 à 23 %
-    de valeurs hors de [0,8 ; 1,5] selon le fenêtrage, pour une grandeur
-    physique proche de 1,2. Sa valeur aberrante est le premier symptôme à
-    surveiller.
+    """
+    Tableau de synthèse, une ligne par méthode.
     """
     labels = sorted({ligne["label"] for ligne in lignes})
     entete = (
@@ -131,27 +106,32 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
 
 
 #Données
-
 def build_dataloader(config: dict[str, Any]):
-    """Construit le chargeur de la partition de test, via `cvnn`."""
+    """
+    Construit le chargeur de la partition de test, via `cvnn`.
+    L'objet rendu est un `torch.utils.data.DataLoader`, qui ne contient aucune donnée. 
+    Itéré — ce que fait `iter_patches` — il produit des lots`torch.Tensor` de forme `(batch_size, 4, H, W)` en `complex64`.
+    """
     from cvnn.data import get_dataloaders, validate_and_correct_config
     from cvnn.utils import set_seed
 
     set_seed(int(config.get("seed", 0)))
     _, _, test_loader = get_dataloaders(validate_and_correct_config(config), use_cuda=False)
-    return test_loader
+    return test_loader #Retourne un DataLoader 
 
 
 def iter_patches(loader) -> Iterator[np.ndarray]:
     """
     Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline.
-    Générateur, et non liste : les patchs sont lus sur disque puis abandonnés aufil de l'eau. 
+    Générateur, et non liste : les patchs sont lus sur disque puis abandonnés au fil de l'eau.
     """
-    #UavsarSLC rend le tenseur seul
     for lot in loader:
-        tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot #tenseur étant pas un tuple ou list, tenseur = lot de type (16, 4, 256, 256)
+        # UavsarSLC n'a pas d'étiquettes : `lot` est un Tensor, pas un (x, y).
+        # La branche `else` s'applique donc, et `tenseur` vaut le lot entier, de forme (batch_size, 4, patch_size, patch_size).
+        tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot
         for patch in tenseur.detach().cpu().numpy():
-            yield patch
+            yield patch  # produit un patch de forme (4, patch_size, patch_size)
+
 
 
 #CLI
