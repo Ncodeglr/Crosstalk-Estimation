@@ -14,10 +14,8 @@ from __future__ import annotations
 class CrosstalkError(Exception):
     """Classe de base de toutes les erreurs du paquet."""
 
-
-class SingularDmatrix(CrosstalkError):
+class SingularDmatrixError(CrosstalkError):
     """
-    La matrice de distorsion D n'est pas inversible numériquement.
     D est inversible si et seulement si `(uw - 1)(vz - 1) != 0` : 
     c'est le dénominateur de Sigma (Babu et al., 2022, équation 12).
     Le crosstalk réel étant de l'ordre de -20 dB, le produit `uw` vaut ~1e-2 et le déterminant reste proche de 1 : atteindre cette exception signale une estimation aberrante, pas une limite du modèle.

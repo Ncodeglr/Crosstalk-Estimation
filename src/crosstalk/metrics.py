@@ -134,7 +134,7 @@ def residual_crosstalk(
 
     Raises:
         IllConditionedCovarianceError: si l'une des deux estimations échoue.
-        SingularDmatrix: si la correction est impossible.
+        SingularDmatrixError: si la correction est impossible.
     """
     corrige, initial = estimator.estimate_and_correct(patch)
     return ResidualReport(initial=initial, residual=estimator.estimate(corrige))

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from src.crosstalk.estimators.base import CrosstalkEstimator
-from src.crosstalk.exceptions import SingularDmatrix
+from src.crosstalk.exceptions import SingularDmatrixError
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import apply_distortion
 
@@ -138,7 +138,7 @@ def test_un_jeu_neutre_laisse_le_patch_inchange():
 
 def test_un_jeu_degenere_propage_l_exception():
     degenere = CrosstalkParameters(u=2.0, v=0.1, w=0.5, z=0.1, alpha=1.0)
-    with pytest.raises(SingularDmatrix):
+    with pytest.raises(SingularDmatrixError):
         EstimateurConstant(params=degenere).correct(patch_aleatoire())
 
 
@@ -146,5 +146,5 @@ def test_le_seuil_de_singularite_est_transmis():
     presque = CrosstalkParameters(u=1.0, v=0.1, w=1.0 - 1e-6, z=0.1, alpha=1.0)
     patch = patch_aleatoire((4, 8, 8))
     EstimateurConstant(params=presque, tol=1e-12).correct(patch)  # passe
-    with pytest.raises(SingularDmatrix):
+    with pytest.raises(SingularDmatrixError):
         EstimateurConstant(params=presque, tol=1e-3).correct(patch)
