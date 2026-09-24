@@ -51,7 +51,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 
-from .exceptions import DegenerateDistortionError
+from .exceptions import SingularDmatrix
 from .parameters import CrosstalkParameters
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ POL_ORDER: tuple[str, ...] = ("HH", "HV", "VH", "VV")
 #: Axe portant les polarisations dans un patch `(..., 4, H, W)`.
 CHANNEL_AXIS: int = -3
 
-#: Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `DegenerateDistortionError`.
+#: Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `SingularDmatrix`.
 DEFAULT_TOL: float = 1e-8
 
 #: Seuil d'alerte : en deçà, D est inversible mais le crosstalk n'est plus petit.
@@ -107,14 +107,14 @@ def inverse_distortion_matrix(
         Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
 
     Raises:
-        DegenerateDistortionError: si le déterminant réduit est trop petit.
+        SingularDmatrix: si le déterminant réduit est trop petit.
     """
     u, v, w, z, alpha = params.to_vector()
     sa = np.sqrt(alpha)
     determinant = (u * w - 1.0) * (v * z - 1.0)
 
     if abs(determinant) < tol:
-        raise DegenerateDistortionError(determinant, tol)
+        raise SingularDmatrix(determinant, tol)
     if abs(determinant) < WARN_CONDITIONING:
         logger.warning(
             "conditionnement dégradé : |(uw-1)(vz-1)| = %.3e ; le crosstalk "
@@ -200,7 +200,7 @@ def apply_correction(
         Le patch corrigé, de même forme et même dtype.
 
     Raises:
-        DegenerateDistortionError: si D est singulière.
+        SingularDmatrix: si D est singulière.
     """
     sigma = inverse_distortion_matrix(params, tol=tol)
     return _apply_matrix(sigma, observed, channel_axis)

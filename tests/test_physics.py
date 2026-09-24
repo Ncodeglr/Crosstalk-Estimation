@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import pytest
 
-from src.crosstalk.exceptions import DegenerateDistortionError
+from src.crosstalk.exceptions import SingularDmatrix
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import (
     CHANNEL_AXIS,
@@ -102,7 +102,7 @@ def test_melanger_les_deux_conventions_renomme_les_parametres():
 def test_determinant_nul_leve_une_exception():
     # u w = 1 exactement.
     degenere = CrosstalkParameters(u=2.0, v=0.1, w=0.5, z=0.1, alpha=1.0)
-    with pytest.raises(DegenerateDistortionError) as erreur:
+    with pytest.raises(SingularDmatrix) as erreur:
         inverse_distortion_matrix(degenere)
     assert "singulière" in str(erreur.value)
 
@@ -110,7 +110,7 @@ def test_determinant_nul_leve_une_exception():
 def test_le_seuil_de_singularite_est_reglable():
     presque = CrosstalkParameters(u=1.0, v=0.1, w=1.0 - 1e-6, z=0.1, alpha=1.0)
     inverse_distortion_matrix(presque, tol=1e-12)  # passe
-    with pytest.raises(DegenerateDistortionError):
+    with pytest.raises(SingularDmatrix):
         inverse_distortion_matrix(presque, tol=1e-3)
 
 

@@ -28,7 +28,7 @@ from .covariance import (
 )
 from .exceptions import (
     CrosstalkError,
-    DegenerateDistortionError,
+    SingularDmatrix,
     IllConditionedCovarianceError,
 )
 from .estimators import (
@@ -54,7 +54,7 @@ __all__ = [
     "polarimetric_covariance",
     "POL_ORDER",
     "CrosstalkError",
-    "DegenerateDistortionError",
+    "SingularDmatrix",
     "IllConditionedCovarianceError",
     "CrosstalkEstimator",
     "CrosstalkParameters",
