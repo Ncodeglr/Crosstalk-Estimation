@@ -35,12 +35,10 @@ class CrosstalkEstimator(ABC):
             tol: seuil de singularité de D, passé à `apply_correction`.
         """
         if not hasattr(type(self), "name"):
-            raise TypeError(
-                f"{type(self).__name__} doit définir un attribut de classe `name`"
-            )
+            raise TypeError(f"{type(self).__name__} doit définir un attribut de classe `name`")
         self.tol = float(tol)
 
-    # ------------------------------------------------------------- à implémenter
+    # à implémenter
 
     @abstractmethod
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
@@ -55,7 +53,7 @@ class CrosstalkEstimator(ABC):
             Les paramètres, exprimés dans la convention `POL_ORDER_ONERA`.
         """
 
-    # --------------------------------------------------------- hérité, commun
+    # hérité, commun
 
     def check_patch(self, patch: np.ndarray) -> None:
         """Valide la forme d'un patch : un seul patch `(4, H, W)`.
@@ -64,18 +62,13 @@ class CrosstalkEstimator(ABC):
             ValueError: si le patch n'est pas de rang 3 ou n'a pas 4 canaux.
         """
         if patch.ndim != 3:
-            raise ValueError(
-                f"patch de forme {patch.shape} : (4, H, W) attendu. Un estimateur "
+            raise ValueError(f"patch de forme {patch.shape} : (4, H, W) attendu. Un estimateur "
                 "rend un jeu de paramètres par patch ; pour un lot, itérez."
             )
         if patch.shape[0] != 4:
-            raise ValueError(
-                f"patch à {patch.shape[0]} canaux, 4 attendus"
-            )
+            raise ValueError(f"patch à {patch.shape[0]} canaux, 4 attendus")
 
-    def correct(
-        self, patch: np.ndarray, params: CrosstalkParameters | None = None
-    ) -> np.ndarray:
+    def correct(self, patch: np.ndarray, params: CrosstalkParameters | None = None) -> np.ndarray:
         """Corrige un patch du crosstalk : `s_chapeau = Sigma o`.
 
         Args:
@@ -94,9 +87,7 @@ class CrosstalkEstimator(ABC):
         self.check_patch(patch)
         return apply_correction(patch, params, tol=self.tol)
 
-    def estimate_and_correct(
-        self, patch: np.ndarray
-    ) -> tuple[np.ndarray, CrosstalkParameters]:
+    def estimate_and_correct(self, patch: np.ndarray) -> tuple[np.ndarray, CrosstalkParameters]:
         """Estime puis corrige, sans estimer deux fois.
 
         Returns:
@@ -106,6 +97,4 @@ class CrosstalkEstimator(ABC):
         return self.correct(patch, params), params
 
     def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}(name={self.name!r}, tol={self.tol:g})"
-        )
+        return (f"{type(self).__name__}(name={self.name!r}, tol={self.tol:g})")

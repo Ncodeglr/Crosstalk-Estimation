@@ -102,13 +102,17 @@ class ResidualReport:
         return self.initial_db - self.residual_db
 
     def as_row(self) -> dict[str, float]:
-        """Vue plate, prête pour un CSV."""
+        """Vue plate, prête pour un CSV.
+
+        La phase de `alpha` n'y figure pas : les formes fermées suivent
+        l'équation 15 de Babu et al. (2022), qui s'arrête au module, et la
+        colonne vaudrait zéro sur toutes les lignes.
+        """
         return {
             "initial_db": self.initial_db,
             "residual_db": self.residual_db,
             "reduction_db": self.reduction_db,
             "alpha_abs": float(abs(self.initial.alpha)),
-            "alpha_deg": self.initial.alpha_phase_deg(),
         }
 
 

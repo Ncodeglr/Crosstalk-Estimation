@@ -10,9 +10,15 @@ Le paquet sépare quatre responsabilités :
 - `estimators`  : ce qui distingue les méthodes, c'est-à-dire l'estimation de
   `theta` et elle seule, plus le registre qui les rend adressables par nom.
 
-Référence d'implémentation : Fore, A. G., Chapman, B. D., Hawkins, B. P.,
-Hensley, S., Jones, C. E., Michel, T. R., & Muellerschoen, R. J. (2015).
-UAVSAR Polarimetric Calibration. *IEEE TGRS*, 53(6), 3481-3491.
+Référence d'implémentation : Babu, A., & Kumar, S. (2022). Evaluation of
+Quad-Polarimetric UAVSAR Calibration. *Advances in Space Research*. L'ordre des
+polarisations, la matrice de distorsion et les formes fermées suivent ses
+équations 8 à 18.
+
+Référence secondaire, citée là où elle est la source d'un fait que Babu ne
+formule pas : Fore, A. G., Chapman, B. D., Hawkins, B. P., Hensley, S.,
+Jones, C. E., Michel, T. R., & Muellerschoen, R. J. (2015). UAVSAR Polarimetric
+Calibration. *IEEE TGRS*, 53(6), 3481-3491.
 """
 
 from .covariance import (

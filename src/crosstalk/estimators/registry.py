@@ -63,4 +63,4 @@ def create_from_config(config: Mapping[str, Any]) -> CrosstalkEstimator:
     params = config.get("params") or {}
     if not isinstance(params, Mapping):
         raise TypeError(f"'params' doit être un mapping, reçu {type(params).__name__}")
-    return create_estimator(config["name"], **params) #QueganEstimator(window='full', alpha_phase='fore', …)
+    return create_estimator(config["name"], **params) #QueganEstimator(window='full', tol=1e-08)

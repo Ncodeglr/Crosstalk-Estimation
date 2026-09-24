@@ -4,48 +4,41 @@ Les quatre termes de crosstalk se lisent directement dans la covariance du
 signal observé (Babu et al., 2022, équation 13), avec
 `Delta = C11 C44 - |C14|^2` ::
 
-    u = (C44 C21 - C41 C24) / Delta        v = (C11 C24 - C21 C14) / Delta
-    z = (C44 C31 - C41 C34) / Delta        w = (C11 C34 - C31 C14) / Delta
+    u = (C44 C31 - C41 C34) / Delta        v = (C11 C34 - C31 C14) / Delta
+    z = (C44 C21 - C41 C24) / Delta        w = (C11 C24 - C21 C14) / Delta
 
 puis le déséquilibre croisé (équations 15 à 18, réindexées) ::
 
-    X      = C32 - z C12 - w C42
-    alpha1 = (C22 - u C12 - v C42) / X
-    alpha2 = X* / (C33 - z* C31 - w* C34)
+    X      = C23 - z C13 - w C43
+    alpha1 = (C33 - u C13 - v C43) / X
+    alpha2 = X* / (C22 - z* C21 - w* C24)
 
-            |alpha1 alpha2| - 1 + sqrt( (|alpha1 alpha2| - 1)^2 + 4 |alpha2|^2 )
-    |alpha| = -----------------------------------------------------------------
-                                    2 |alpha2|
+             |alpha1 alpha2| - 1 + sqrt( (|alpha1 alpha2| - 1)^2 + 4 |alpha2|^2 )
+    alpha = -------------------------------------------------------------------
+                                     2 |alpha2|
 
 Indexation dans l'ordre `POL_ORDER = [HH, HV, VH, VV]`, indices 1 à 4 des
-articles ; `C_ij = <O_i O_j*>`.
+articles ; `C_ij = <O_i O_j*>`. Attention : ces expressions ne sont **pas**
+celles de Fore et al. (2015, équations 24 à 26), qui indexent `[HH, VH, HV, VV]`.
+Appliquer les leurs à des données rangées ainsi rend `(z, w, v, u)` au lieu de
+`(u, v, w, z)`, sans lever la moindre erreur.
 
-Phase de alpha. Les deux références divergent, et le paramètre `alpha_phase`
-rend ce choix explicite plutôt que subi :
-
-`"fore"` (défaut)
-    Fore et al. (2015), équation 25, multiplie le module ci-dessus par
-    `alpha1 / |alpha1|`. `alpha` est alors complexe.
-`"babu"`
-    Babu et al. (2022), équation 15, s'arrête au module ; `alpha` est réel
-    positif. À choisir pour reproduire fidèlement ses chiffres.
-
-Sur la pile Rosamond de ce projet, l'écart entre les deux vaut environ un degré
-(`arg(alpha)` médian mesuré à 1,3°), le produit JPL 2016 étant déjà bien
-étalonné en phase ; le défaut `"fore"` est donc retenu par principe de
-correction, pas par nécessité numérique.
+`alpha` est réel positif : l'équation 15 de Babu s'arrête au module. Fore et al.
+le multiplient en plus par `alpha1 / |alpha1|` ; sur la pile Rosamond de ce
+projet cette phase vaut 1,6° en médiane (étendue -3,7° à +15,2° sur 40 patchs
+256x256), le produit JPL 2016 étant déjà étalonné en phase. Elle n'entre dans
+aucune des métriques du paquet, qui ne portent que sur `(u, v, w, z)`.
 
 Domaine de validité. Ces expressions sont dérivées en négligeant les termes
-d'ordre deux et plus en `(u, v, w, z)` (Fore et al., 2015, après l'équation 24).
-L'estimateur est exact au premier ordre seulement : même sans bruit et avec un
-nombre infini d'échantillons, il subsiste un biais en `O(|theta|^2)`, soit de
-l'ordre du pour-cent à -20 dB.
+d'ordre deux et plus en `(u, v, w, z)` (Fore et al., 2015, après l'équation 24,
+énonce explicitement cette condition). L'estimateur est exact au premier ordre
+seulement : même sans bruit et avec un nombre infini d'échantillons, il subsiste
+un biais en `O(|theta|^2)`, soit de l'ordre du pour-cent à -20 dB.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Literal
 
 import numpy as np
 
@@ -57,8 +50,6 @@ from .base import CrosstalkEstimator
 from .registry import register_estimator
 
 logger = logging.getLogger(__name__)
-
-AlphaPhase = Literal["fore", "babu"]
 
 #: Seuils **relatifs** par défaut des garde-fous.
 #:
@@ -85,13 +76,12 @@ class QueganEstimator(CrosstalkEstimator):
             un jeu par patch ; c'est le mode de la comparaison réseau contre
             baselines. Ou un couple `(kh, kw)` — fenêtre glissante, un jeu par
             fenêtre puis moyenne ; `(5, 5)` reproduit Babu et al. (2022).
-        alpha_phase: `"fore"` ou `"babu"`, voir la documentation du module.
         tol: seuil de singularité de D, transmis à la correction.
         delta_tol: seuil relatif sur `|Delta| / (C11 C44)`.
         x_tol: seuil relatif sur `|X| / sqrt(C22 C33)`.
 
     Raises:
-        ValueError: si `alpha_phase` ou `window` est invalide.
+        ValueError: si `window` est invalide.
     """
 
     name = "quegan"
@@ -99,22 +89,16 @@ class QueganEstimator(CrosstalkEstimator):
     def __init__(
         self,
         window: WindowSpec = "full",
-        alpha_phase: AlphaPhase = "fore",
         tol: float = DEFAULT_TOL,
         delta_tol: float = DEFAULT_DELTA_TOL,
         x_tol: float = DEFAULT_X_TOL,
     ) -> None:
         super().__init__(tol=tol)
-        if alpha_phase not in ("fore", "babu"):
-            raise ValueError(
-                f"alpha_phase = {alpha_phase!r} : 'fore' ou 'babu' attendu"
-            )
         if window != "full":
             window = tuple(window)
             if len(window) != 2:
                 raise ValueError(f"window = {window!r} : 'full' ou (kh, kw) attendu")
         self.window = window
-        self.alpha_phase = alpha_phase
         self.delta_tol = float(delta_tol)
         self.x_tol = float(x_tol)
 
@@ -143,7 +127,7 @@ class QueganEstimator(CrosstalkEstimator):
         c41, c43, c44 = cov[..., 3, 0], cov[..., 3, 2], cov[..., 3, 3]
 
         with np.errstate(divide="ignore", invalid="ignore"):
-            # --- crosstalk, équation 24 -------------------------------------
+            # --- crosstalk, équation 13 -------------------------------------
             delta = c11 * c44 - np.abs(c14) ** 2
             rapport_delta = np.abs(delta) / np.abs(c11 * c44)
             u = (c44 * c31 - c41 * c34) / delta
@@ -151,7 +135,7 @@ class QueganEstimator(CrosstalkEstimator):
             z = (c44 * c21 - c41 * c24) / delta
             w = (c11 * c24 - c21 * c14) / delta
 
-            # --- déséquilibre croisé, équations 25 et 26 --------------------
+            # --- déséquilibre croisé, équations 15 à 18 ---------------------
             x = c23 - z * c13 - w * c43
             rapport_x = np.abs(x) / np.sqrt(np.abs(c22 * c33))
             alpha1 = (c33 - u * c13 - v * c43) / x
@@ -161,13 +145,9 @@ class QueganEstimator(CrosstalkEstimator):
             alpha2 = np.conj(x) / denominateur_2
 
             produit = np.abs(alpha1 * alpha2)
-            module = (
+            alpha = ((
                 produit - 1.0 + np.sqrt((produit - 1.0) ** 2 + 4.0 * np.abs(alpha2) ** 2)
-            ) / (2.0 * np.abs(alpha2))
-            if self.alpha_phase == "fore":
-                alpha = module * alpha1 / np.abs(alpha1)
-            else:
-                alpha = module.astype(np.complex128)
+            ) / (2.0 * np.abs(alpha2))).astype(np.complex128)
 
         rapports = {
             "Delta / (C11 C44)": rapport_delta,
@@ -178,10 +158,9 @@ class QueganEstimator(CrosstalkEstimator):
             (rapport_delta > self.delta_tol)
             & (rapport_x > self.x_tol)
             & (rapport_denom2 > self.x_tol)
-            # |alpha2| > 0 découle des deux critères précédents ; seul |alpha1|
-            # doit être testé, car il divise le facteur de phase de la variante
-            # "fore" sans apparaître au dénominateur d'aucun critère.
-            & (np.abs(alpha1) > 0.0)
+            # `|alpha2| > 0` découle des deux critères précédents, et `alpha1`
+            # n'apparaît que dans le produit `|alpha1 alpha2|` : aucun critère
+            # supplémentaire n'est nécessaire.
         )
 
         thetas = np.stack([u, v, w, z, alpha], axis=-1)
@@ -295,8 +274,4 @@ class QueganEstimator(CrosstalkEstimator):
         return lignes
 
     def __repr__(self) -> str:
-        return (
-            f"QueganEstimator(window={self.window!r}, "
-            f"alpha_phase={self.alpha_phase!r}, "
-            f"tol={self.tol:g})"
-        )
+        return f"QueganEstimator(window={self.window!r}, tol={self.tol:g})"

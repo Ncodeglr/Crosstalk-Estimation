@@ -87,7 +87,6 @@ def test_rapport_vue_plate():
         "residual_db",
         "reduction_db",
         "alpha_abs",
-        "alpha_deg",
     }
     assert ligne["alpha_abs"] == pytest.approx(1.2)
 

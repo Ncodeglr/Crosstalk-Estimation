@@ -55,12 +55,24 @@ def test_bout_en_bout_couplage_faible():
     assert erreur_relative(estime, vrai) < 0.03
 
 
-def test_alpha_est_retrouve():
+def test_alpha_est_retrouve_en_module():
+    """Seul le module est estimé : l'équation 15 de Babu s'y arrête.
+
+    Le jeu de référence porte pourtant une phase de 27°. Elle n'est pas
+    retrouvée, et ce n'est pas un défaut mais le choix de convention du projet —
+    `test_alpha_est_reel_positif` verrouille l'autre moitié du contrat.
+    """
     estime = estimateur().estimate(observe(theta(0.1), beta=0.002))
     assert abs(estime.alpha) == pytest.approx(abs(ALPHA), rel=0.02)
-    assert estime.alpha_phase_deg() == pytest.approx(
-        np.angle(ALPHA, deg=True), abs=2.0
-    )
+
+
+def test_alpha_est_reel_positif():
+    """Babu et al. (2022, éq. 15) s'arrête au module ; Fore et al. le complète
+    par le facteur de phase `alpha1 / |alpha1|`, que ce projet n'applique pas.
+    """
+    estime = estimateur().estimate(observe(theta(0.1), beta=0.002))
+    assert estime.alpha.imag == 0.0
+    assert estime.alpha.real > 0.0
 
 
 def test_le_biais_relatif_est_proportionnel_au_rapport_crosspol_copol():
@@ -110,7 +122,7 @@ def test_taille_de_patch_realiste():
 def test_l_estimateur_de_alpha_resout_l_identite_attendue():
     """Verrouille la formule de `alpha` indépendamment de la typographie.
 
-    En développant l'équation 25 de Fore et al. (2015), le module rendu est
+    En développant les équations 15 à 18 de Babu et al. (2022), le module rendu est
     l'unique racine positive de ::
 
         x - 1/x = |alpha1| - 1/|alpha2|
@@ -164,31 +176,6 @@ def test_un_patch_sans_distorsion_donne_un_crosstalk_negligeable():
     signal = observe(neutre, shape=(512, 512), beta=0.02)
     estime = estimateur().estimate(signal)
     assert estime.max_crosstalk_db() < -35.0
-
-
-# ======================================================== variantes de la phase
-
-
-def test_variante_babu_rend_un_alpha_reel():
-    patch = observe(theta(0.1), beta=0.002)
-    babu = estimateur(alpha_phase="babu").estimate(patch)
-    assert babu.alpha.imag == 0.0
-    assert babu.alpha.real > 0.0
-
-
-def test_les_deux_variantes_partagent_le_module_de_alpha():
-    patch = observe(theta(0.1), beta=0.002)
-    fore = estimateur(alpha_phase="fore").estimate(patch)
-    babu = estimateur(alpha_phase="babu").estimate(patch)
-    assert abs(fore.alpha) == pytest.approx(abs(babu.alpha), rel=1e-12)
-    np.testing.assert_allclose(
-        fore.to_vector()[:4], babu.to_vector()[:4], rtol=1e-12
-    )
-
-
-def test_variante_inconnue_refusee():
-    with pytest.raises(ValueError, match="alpha_phase"):
-        QueganEstimator(alpha_phase="kimura")
 
 
 # ============================================================ fenêtre glissante
@@ -287,10 +274,10 @@ def test_un_patch_entierement_vide_leve_une_exception():
 
 def test_enregistre_dans_le_registre():
     estime = create_from_config(
-        {"name": "quegan", "params": {"window": "full", "alpha_phase": "babu"}}
+        {"name": "quegan", "params": {"window": BABU_WINDOW}}
     )
     assert isinstance(estime, QueganEstimator)
-    assert estime.alpha_phase == "babu"
+    assert estime.window == BABU_WINDOW
 
 
 def test_correction_heritee_de_la_base():
@@ -304,6 +291,6 @@ def test_correction_heritee_de_la_base():
 
 
 def test_representation_lisible():
-    texte = repr(estimateur(window=BABU_WINDOW, alpha_phase="babu"))
-    assert "quegan" not in texte.lower() or "QueganEstimator" in texte
-    assert "(5, 5)" in texte and "babu" in texte
+    texte = repr(estimateur(window=BABU_WINDOW))
+    assert "QueganEstimator" in texte
+    assert "(5, 5)" in texte and "tol" in texte

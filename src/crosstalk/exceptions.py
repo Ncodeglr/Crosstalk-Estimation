@@ -18,7 +18,8 @@ class CrosstalkError(Exception):
 class DegenerateDistortionError(CrosstalkError):
     """La matrice de distorsion D n'est pas inversible numériquement.
 
-    D est inversible si et seulement si `(uw - 1)(vz - 1) != 0` (Fore et al.,2015, équation 15).
+    D est inversible si et seulement si `(uw - 1)(vz - 1) != 0` : c'est le
+    dénominateur de Sigma (Babu et al., 2022, équation 12).
     Le crosstalk réel étant de l'ordre de -20 dB, le produit `uw` vaut ~1e-2 et le déterminant reste proche de 1 : atteindre cette exception signale une estimation aberrante, pas une limite du modèle.
     """
 
@@ -34,8 +35,8 @@ class DegenerateDistortionError(CrosstalkError):
 class IllConditionedCovarianceError(CrosstalkError):
     """Une quantité dérivée de la covariance observée s'annule.
 
-    Concerne les dénominateurs des formes fermées de Quegan : `Delta` (Fore et
-    al., 2015, après l'équation 24) et `X` (équation 26).
+    Concerne les dénominateurs des formes fermées de Quegan : `Delta` et `X`
+    (Babu et al., 2022, équations 13 et 15 à 18).
     """
 
     def __init__(self, name: str, value: complex, tol: float) -> None:

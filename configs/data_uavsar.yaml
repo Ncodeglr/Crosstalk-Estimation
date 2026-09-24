@@ -116,6 +116,5 @@ baselines:
       name: quegan
       params:
         window: full     # le patch entier comme unique fenêtre d'estimation
-        alpha_phase: fore
 
 

@@ -33,11 +33,11 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
     """
     methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
-        estimateur = create_from_config(entree) # QueganEstimator(window='full', alpha_phase='fore', …
+        estimateur = create_from_config(entree) # QueganEstimator(window='full', tol=1e-08)
         label = entree.get("label", estimateur.name)
         if label in methodes:
             raise ValueError(f"étiquette dupliquée dans la configuration : {label!r}")
-        methodes[label] = estimateur #{'quegan_patch': QueganEstimator(window='full', alpha_phase='fore', …)}
+        methodes[label] = estimateur #{'quegan_patch': QueganEstimator(window='full', tol=1e-08)}
     return methodes
 
 
@@ -68,7 +68,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
             else:
                 ligne.update(rapport.as_row())
             lignes.append(ligne)
-    #lignes[i] = {'label': 'quegan_patch', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0, 'alpha_deg': 0.0}
+    #lignes[i] = {'label': 'quegan_patch', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0}
     #lignes[i+1] = {'label': 'quegan_patch', 'status': 'ill_conditioned'}
     return lignes
 
@@ -81,7 +81,7 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     entete = (
         f"{'méthode':>16} {'patchs':>7} {'échecs':>7} "
         f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13} "
-        f"{'|alpha|':>8} {'arg(alpha)':>11}"
+        f"{'|alpha|':>8}"
     )
     sorties = [entete, "-" * len(entete)]
     for label in labels:
@@ -89,18 +89,16 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
         valides = [ligne for ligne in groupe if ligne["status"] == "ok"]
         if not valides:
             sorties.append(f"{label:>16} {len(groupe):>7} {len(groupe):>7}"
-                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8} {'-':>11}")
+                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8}")
             continue
         mediane = {
             cle: float(np.median([ligne[cle] for ligne in valides]))
-            for cle in ("initial_db", "residual_db", "reduction_db",
-                        "alpha_abs", "alpha_deg")
+            for cle in ("initial_db", "residual_db", "reduction_db", "alpha_abs")
         }
         sorties.append(
             f"{label:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
             f"{mediane['initial_db']:>11.1f} {mediane['residual_db']:>12.1f} "
-            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f} "
-            f"{mediane['alpha_deg']:>10.1f}°"
+            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f}"
         )
     return "\n".join(sorties)
 

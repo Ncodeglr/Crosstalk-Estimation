@@ -6,11 +6,14 @@ modèle direct `o = D s + n` une fois les données étalonnées en gain absolu e
 déséquilibre co-polaire (`A = 1`, `k = 1/sqrt(alpha)` ; Fore et al., 2015,
 équations 11 à 13).
 
-`alpha` est **complexe**. Sa phase n'est pas un artefact : Fore et al. (2015,
-figures 7 et 9) mesurent `arg(alpha) ~ 25-30°` sur des données UAVSAR
-étalonnées en radiométrie et en phase mais non corrigées du crosstalk — soit
-exactement l'état des `.slc` de ce projet (`Cross Talk Removed = No` dans les
-`.ann`). La phase ne retombe à zéro qu'après correction du crosstalk.
+Le champ `alpha` est **complexe**, parce que le modèle direct l'autorise : Fore
+et al. (2015, figures 7 et 9) mesurent `arg(alpha) ~ 25-30°` sur des données
+UAVSAR étalonnées en radiométrie et en phase mais non corrigées du crosstalk.
+Les formes fermées de ce projet suivent en revanche l'équation 15 de Babu et al.
+(2022), qui s'arrête au module : `QueganEstimator` rend donc un `alpha` réel
+positif. Le type reste complexe pour que la distorsion et la correction de
+`physics` restent générales, et pour que les jeux de test puissent porter une
+phase.
 """
 
 from __future__ import annotations
