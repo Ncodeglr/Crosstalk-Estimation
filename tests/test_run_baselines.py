@@ -43,8 +43,7 @@ def patchs_synthetiques(nombre=3, taille=(128, 128)):
 def estimateurs():
     return rb.build_estimators(
         [
-            {"label": "patch", "name": "quegan",
-             "params": {"window": "full",}},
+            {"name": "quegan", "params": {"window": "full"}},
         ]
     )
 
@@ -55,10 +54,9 @@ def estimateurs():
 def test_la_configuration_livree_est_valide():
     """La config unique du dépôt doit se charger et s'instancier telle quelle.
 
-    Les étiquettes attendues sont déduites du fichier, pas recopiées : le test
-    reste valable quand on ajoute ou retire un estimateur du YAML, et ne
-    vérifie que le contrat — chaque entrée déclarée donne un estimateur, rangé
-    sous son étiquette.
+    Les noms attendus sont déduits du fichier, pas recopiés : le test reste
+    valable quand on ajoute ou retire un estimateur du YAML, et ne vérifie que
+    le contrat — chaque entrée déclarée donne un estimateur, rangé sous son nom.
     """
     chemin = RACINE / "configs" / "data_uavsar.yaml"
     config = yaml.safe_load(chemin.read_text(encoding="utf-8"))
@@ -66,18 +64,17 @@ def test_la_configuration_livree_est_valide():
     construits = rb.build_estimators(declarees)
 
     assert construits, "aucun estimateur déclaré dans baselines.estimators"
-    assert list(construits) == [e.get("label", e["name"]) for e in declarees]
-    for entree, estimateur in zip(declarees, construits.values()):
-        assert estimateur.name == entree["name"]
+    assert list(construits) == [entree["name"] for entree in declarees]
 
 
-def test_etiquette_par_defaut_vaut_le_nom():
+def test_la_cle_est_le_nom_de_la_methode():
     construits = rb.build_estimators([{"name": "quegan"}])
     assert list(construits) == ["quegan"]
 
 
-def test_etiquette_dupliquee_refusee():
-    with pytest.raises(ValueError, match="dupliquée"):
+def test_methode_declaree_deux_fois_refusee():
+    """Deux entrées de même `name` s'écraseraient silencieusement dans le dict."""
+    with pytest.raises(ValueError, match="deux fois"):
         rb.build_estimators([{"name": "quegan"}, {"name": "quegan"}])
 
 
@@ -92,7 +89,7 @@ def test_methode_inconnue_refusee():
 def test_une_ligne_par_patch_et_par_methode():
     lignes = rb.evaluate_patches(patchs_synthetiques(3), estimateurs())
     assert len(lignes) == 3
-    assert all(ligne["label"] == "patch" for ligne in lignes)
+    assert all(ligne["name"] == "quegan" for ligne in lignes)
     assert all(ligne["status"] == "ok" for ligne in lignes)
     assert all(ligne["reduction_db"] > 0 for ligne in lignes)
 
@@ -111,7 +108,7 @@ def test_une_ligne_ne_porte_que_ce_qui_est_affiche():
     """Aucun champ calculé puis jeté : la ligne et le tableau coïncident."""
     ligne = rb.evaluate_patches(patchs_synthetiques(1), estimateurs())[0]
     assert set(ligne) == {
-        "label",
+        "name",
         "status",
         "initial_db",
         "residual_db",
@@ -126,7 +123,7 @@ def test_une_ligne_ne_porte_que_ce_qui_est_affiche():
 def test_synthese_liste_les_methodes():
     lignes = rb.evaluate_patches(patchs_synthetiques(2), estimateurs())
     texte = rb.summarize(lignes)
-    assert "patch" in texte and "réduction dB" in texte
+    assert "quegan" in texte and "réduction dB" in texte
 
 
 def test_synthese_signale_une_methode_entierement_en_echec():

@@ -29,52 +29,7 @@ data:
   recompute_statistics: False
 
   # --- Normalisation ---------------------------------------------------------
-  # Contrainte physique : O = D S + N. Les .slc UAVSAR ne sont PAS corrigés du
-  # crosstalk : le tenseur (4, H, W) servi ici est donc O lui-même (signal
-  # intermédiaire S' de Babu, étalonné en gain et en déséquilibre de canaux mais
-  # pas en crosstalk), et non S. C'est bien l'entrée attendue par les
-  # estimateurs et par l'encodeur. Toute transformation appliquée en amont du
-  # réseau doit laisser D invariante, sinon le réseau apprend le crosstalk
-  # d'une autre matrice que celle qu'on cherche.
-  #
-  #   * Un scalaire réel global g, identique sur les 4 canaux, donne
-  #     g O = D (g S) : D est inchangée, C est multipliée par g^2, et les
-  #     estimateurs de Quegan (rapports homogènes de degré 4 sur degré 4) sont
-  #     strictement invariants. C'est la seule famille sûre. Elle commute en
-  #     outre avec toute distorsion linéaire : si un D synthétique est appliqué
-  #     pour fabriquer des paires d'entraînement, la place de la normalisation
-  #     dans la chaîne (avant ou après) est sans effet.
-  #   * Une normalisation PAR CANAL diag(g1..g4) donne (G D) S. G D n'appartient
-  #     à la famille D(u,v,w,z,alpha) que si g1 = g4 et g2 g3 = g1 g4, et dans
-  #     ce cas elle reparamétrise les cibles : (u,v,w,z,alpha) devient
-  #     (gu, gv, w/g, z/g, g^2 alpha). Égaliser les puissances de canaux revient
-  #     donc exactement à effacer alpha (les 1,0 dB d'écart HV/VH mesurés ici en
-  #     font partie) et à violer l'hypothèse "données déjà étalonnées" (A = 1,
-  #     k = 1/sqrt(alpha)). Hors de ces contraintes, le modèle direct devient
-  #     mal spécifié.
-  #   * Interdits pour la même raison : logamplitude / regular_logamplitude
-  #     (non linéaires en |z|, elles détruisent les rapports inter-canaux dont
-  #     vit l'estimation), la transform `normalize` de torchcvnn (blanchiment
-  #     2x2 [Re, Im] par canal : opération linéaire au sens large, qui mélange
-  #     z et z* et détruit les relations de phase porteuses de arg(u,v,w,z)),
-  #     et le retrait d'une moyenne non nulle (O - mu != D (S - mu')).
-  #
-  # `global_scalar_normalize` avec des statistiques IDENTIQUES sur les 4 canaux
-  # et des moyennes nulles se réduit exactement à la division par un scalaire :
-  # la classe calcule std = sqrt(trace(cov)) = sqrt(2 * 0.013521) = 0.16444.
-  #
-  # Valeur mesurée sur les 5 acquisitions (30 blocs de 512 lignes pleine
-  # fauchée, cf. scripts/) : RMS par canal de O -- donc crosstalk inclus --
-  # HH 0,2488 / HV 0,0778 / VH 0,0874 / VV 0,1804, soit
-  # sigma = sqrt(mean(RMS^2)) = 0,16444 (span-RMS). L'écart HV/VH de 1,0 dB
-  # mélange asymétrie de scène, alpha et crosstalk : raison de plus pour ne pas
-  # l'absorber dans la normalisation. Après
-  # transformation, RMS = 1, |z| médian ~ 0,15, p99 ~ 2,4, moyennes < 1e-4
-  # (le SLC est circulaire centré : rien à soustraire).
-  #
-  # recompute_statistics DOIT rester False : la routine du framework produit des
-  # statistiques par canal, qui réintroduiraient exactement la normalisation
-  # par canal proscrite ci-dessus.
+
   mean_complex_value:
     - [0.0, 0.0]
     - [0.0, 0.0]
@@ -88,15 +43,9 @@ data:
 
   transforms:
     - name: global_scalar_normalize
-
     # Queue de dynamique : |z| max ~ 500 sigma (réflecteurs ponctuels). Un clamp sur l'amplitude conserve la phase mais reste non linéaire ; à n'activer
-    # qu'en ablation, en gardant à l'esprit qu'il biaise les baselines
-    # statistiques (les cibles brillantes dominent C et violent déjà
-    # l'hypothèse de symétrie de réflexion).
-    # - name: clamp
-    #   params:
-    #     max_val: 30.0
-
+    # qu'en ablation, en gardant à l'esprit qu'il biaise les baselines statistiques (les cibles brillantes dominent C et violent déjà
+   
     # Pas de flip azimut : le crosstalk ne dépend pas de l'azimut, cette augmentation n'apporte aucune information (cf. modèle, §baselines).
     # Pas de flip range : il inverserait la dépendance en distance du crosstalk.
 
@@ -107,13 +56,11 @@ model:
 # --- Baselines statistiques -------------------------------------------------
 # Bloc lu par src/run_baselines.py et ignoré par cvnn. Chaque entrée est
 # instanciée par le registre (crosstalk.estimators.registry) : `name` doit être
-# un nom enregistré, `label` sert uniquement à distinguer deux configurations
-# d'une même méthode dans le CSV.
+# un nom enregistré, et sert aussi de clé dans le tableau de synthèse.
 baselines:
 
   estimators:
-    - label: quegan_patch
-      name: quegan
+    - name: quegan
       params:
         window: full     # le patch entier comme unique fenêtre d'estimation
 

@@ -6,9 +6,7 @@ la covariance sont **communs** à toutes les méthodes ; seule l'estimation de
 cette frontière — une méthode nouvelle n'écrit que `estimate`, et hérite du
 reste.
 
-Ordre des canaux. Le modèle suit Babu et al. (2022), dont l'ordre
-`[HH, HV, VH, VV]` est exactement celui que sert le pipeline : aucune
-conversion n'est nécessaire, ni à l'entrée ni à la sortie de `correct`.
+Ordre des canaux. Le modèle suit Babu et al. (2022), dont l'ordre`[HH, HV, VH, VV]` est exactement celui que sert le pipeline.
 """
 
 from __future__ import annotations
@@ -50,7 +48,7 @@ class CrosstalkEstimator(ABC):
             patch: `(4, H, W)` complexe, en ordre `POL_ORDER`.
 
         Returns:
-            Les paramètres, exprimés dans la convention `POL_ORDER_ONERA`.
+            Les paramètres `(u, v, w, z, alpha)`, dans la convention `POL_ORDER`.
         """
 
     # hérité, commun

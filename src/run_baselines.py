@@ -28,16 +28,14 @@ logger = logging.getLogger("run_baselines")
 #Méthodes
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
     """
-    Instancie les méthodes déclarées dans `baselines.estimators`.
-    L'étiquette d'une entrée vaut son `label`, ou le nom de la méthode s'il est absent.
+    Instancie les méthodes déclarées dans `baselines.estimators`, indexées par leur nom.
     """
     methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
         estimateur = create_from_config(entree) # QueganEstimator(window='full', tol=1e-08)
-        label = entree.get("label", estimateur.name)
-        if label in methodes:
-            raise ValueError(f"étiquette dupliquée dans la configuration : {label!r}")
-        methodes[label] = estimateur #{'quegan_patch': QueganEstimator(window='full', tol=1e-08)}
+        if estimateur.name in methodes:
+            raise ValueError(f"méthode déclarée deux fois : {estimateur.name!r}")
+        methodes[estimateur.name] = estimateur #{'quegan': QueganEstimator(window='full', tol=1e-08)}
     return methodes
 
 
@@ -50,7 +48,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
 
     Args:
         patches: itérable de patchs `(4, H, W)` complexes, dans l'ordre du pipeline.
-        estimators: méthodes à appliquer, indexées par leur étiquette.
+        estimators: méthodes à appliquer, indexées par leur nom.
 
     Returns:
         Une ligne par couple patch/méthode. Un patch sur lequel une méthode
@@ -58,18 +56,18 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
     """
     lignes: list[dict[str, Any]] = []
     for index, patch in enumerate(patches):
-        for label, estimateur in estimators.items():
-            ligne: dict[str, Any] = {"label": label, "status": "ok"}
+        for nom, estimateur in estimators.items():
+            ligne: dict[str, Any] = {"name": nom, "status": "ok"}
             try:
                 rapport = residual_crosstalk(patch, estimateur)
             except CrosstalkError as erreur:
                 ligne["status"] = "ill_conditioned"
-                logger.debug("patch %d, %s : %s", index, label, erreur)
+                logger.debug("patch %d, %s : %s", index, nom, erreur)
             else:
                 ligne.update(rapport.as_row())
             lignes.append(ligne)
-    #lignes[i] = {'label': 'quegan_patch', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0}
-    #lignes[i+1] = {'label': 'quegan_patch', 'status': 'ill_conditioned'}
+    #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0}
+    #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
     return lignes
 
 
@@ -77,18 +75,18 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     """
     Tableau de synthèse, une ligne par méthode.
     """
-    labels = sorted({ligne["label"] for ligne in lignes})
+    noms = sorted({ligne["name"] for ligne in lignes})
     entete = (
         f"{'méthode':>16} {'patchs':>7} {'échecs':>7} "
         f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13} "
         f"{'|alpha|':>8}"
     )
     sorties = [entete, "-" * len(entete)]
-    for label in labels:
-        groupe = [ligne for ligne in lignes if ligne["label"] == label]
+    for nom in noms:
+        groupe = [ligne for ligne in lignes if ligne["name"] == nom]
         valides = [ligne for ligne in groupe if ligne["status"] == "ok"]
         if not valides:
-            sorties.append(f"{label:>16} {len(groupe):>7} {len(groupe):>7}"
+            sorties.append(f"{nom:>16} {len(groupe):>7} {len(groupe):>7}"
                            f" {'-':>11} {'-':>12} {'-':>13} {'-':>8}")
             continue
         mediane = {
@@ -96,7 +94,7 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
             for cle in ("initial_db", "residual_db", "reduction_db", "alpha_abs")
         }
         sorties.append(
-            f"{label:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
+            f"{nom:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
             f"{mediane['initial_db']:>11.1f} {mediane['residual_db']:>12.1f} "
             f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f}"
         )

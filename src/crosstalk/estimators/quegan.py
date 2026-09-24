@@ -186,20 +186,20 @@ class QueganEstimator(CrosstalkEstimator):
         les `theta` obtenus sont moyennés sur **toutes** les fenêtres — les
         fenêtres mal conditionnées étant écartées.
 
-        La moyenne est prise sur les nombres complexes, pour les cinq
-        paramètres. C'est nettement le bon choix pour `(u, v, w, z)` : mesuré
-        sur 150 patchs de la pile Rosamond contre l'estimation plein patch,
-        moyenner les complexes donne -1,1 dB de biais, moyenner les modules
-        +6,6 dB. Pour `alpha` en revanche la phase par fenêtre est bruitée à
-        25 échantillons, et la moyenne vectorielle rétrécit le module de
-        **4 % environ** (2,4 % de biais dans l'autre sens si l'on moyennait les
-        modules). Le mode glissant sous-estime donc légèrement `|alpha|` ; c'est
-        cohérent avec l'instabilité de `alpha` que signale Fore et al. (2015,
-        §V-B), et le mode `"full"` n'en souffre pas.
+        La moyenne des `(u, v, w, z)` est prise sur les nombres complexes, ce qui
+        est nettement le bon choix : mesuré sur 150 patchs de la pile Rosamond
+        contre l'estimation plein patch, moyenner les complexes donne -1,1 dB
+        de biais, moyenner les modules +6,6 dB. `alpha` étant réel positif,
+        sa moyenne est arithmétique ; à 25 échantillons par fenêtre elle
+        surestime `|alpha|` de **2,4 %** environ par rapport au plein patch
+        (même mesure, 150 patchs 64x64), l'inégalité de Jensen jouant sur une
+        quantité positive bruitée. Le mode `"full"` n'en souffre pas.
 
         Note:
-            Reproduire Babu et al. (2022) demande une moyenne par ligne de
-            distance et non sur tout le patch : voir `estimate_range_lines`.
+            Cette moyenne porte sur **toutes** les fenêtres du patch, distance
+            comprise. Ce n'est donc pas le protocole de Babu et al. (2022,
+            §3.3.1), qui moyenne le long d'une seule ligne de distance : voir
+            `estimate_range_lines`.
 
         Raises:
             IllConditionedCovarianceError: en mode `"full"` si la covariance est
