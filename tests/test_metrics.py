@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.conventions import POL_ORDER_ONERA
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.metrics import (
     ResidualReport,
@@ -98,7 +97,7 @@ def test_residuel_sur_donnees_synthetiques():
         (256, 256), beta=0.01, rng=np.random.default_rng(0)
     )
     patch = apply_distortion(signal, THETA)
-    estimateur = QueganEstimator(source_order=POL_ORDER_ONERA)
+    estimateur = QueganEstimator()
     rapport = residual_crosstalk(patch, estimateur)
     assert rapport.initial_db == pytest.approx(THETA.max_crosstalk_db(), abs=1.0)
     assert rapport.reduction_db > 10.0
@@ -107,6 +106,6 @@ def test_residuel_sur_donnees_synthetiques():
 def test_residuel_propage_l_echec():
     from src.crosstalk.exceptions import IllConditionedCovarianceError
 
-    estimateur = QueganEstimator(source_order=POL_ORDER_ONERA)
+    estimateur = QueganEstimator()
     with pytest.raises(IllConditionedCovarianceError):
         residual_crosstalk(np.ones((4, 16, 16), dtype=np.complex64), estimateur)

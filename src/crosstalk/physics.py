@@ -5,22 +5,56 @@ d'Ainsworth ou d'un réseau. Toutes les méthodes d'estimation partagent le mêm
 modèle direct et la même correction ; seule l'estimation de `theta` les
 distingue.
 
-Modèle direct (Fore et al., 2015, équations 12 et 13), données déjà étalonnées
-en gain absolu et en déséquilibre co-polaire (`A = 1`, `k = 1/sqrt(alpha)`) ::
+Ordre des polarisations
+-----------------------
 
-    o = D s + n,   avec o, s dans l'ordre POL_ORDER_ONERA = [HH, VH, HV, VV]
+`POL_ORDER`, défini ici, est l'ordre du vecteur observé chez **Babu et al.
+(2022, équations 8-9)** ::
 
-        | 1      w.sa     v/sa     vw   |
-    D = | u      sa       uv/sa    v    |,      sa = sqrt(alpha)
-        | z      wz.sa    1/sa     w    |
-        | uz     z.sa     u/sa     1    |
+    o = [O_HH, O_HV, O_VH, O_VV]^T          (indices 1 à 4 dans les articles)
+
+C'est exactement l'ordre que sert le pipeline : `torchcvnn.datasets.SLCDataset`
+trie les polarisations alphabétiquement (`sorted(slcs.keys())`) avant de les
+empiler, ce qui donne `[HH, HV, VH, VV]`. **Aucune permutation n'est donc
+nécessaire**, et c'est la raison d'avoir retenu cette convention plutôt que
+celle de Fore et al. (2015, équation 11), qui ordonne `[HH, VH, HV, VV]`.
+
+Les deux conventions sont équivalentes, et non contradictoires : appliquées
+chacune avec sa propre matrice de distorsion et ses propres formes fermées,
+elles rendent les mêmes `(u, v, w, z, alpha)`, aux mêmes noms. Vérifié
+numériquement. Ce qui produit un renommage silencieux — `(u,v,w,z,alpha)`
+devenant `(z,w,v,u,1/alpha)` — c'est de les **mélanger**, par exemple en
+appliquant les formes fermées de l'un à des données rangées selon l'autre.
+
+Attention en lisant Babu et al. : son équation 10 reproduit la matrice D de Fore
+telle quelle, sur un vecteur pourtant ordonné autrement, et ses équations 16 à
+18 font de même pour `alpha`. Prises littéralement avec son équation 13, elles
+sont incohérentes. Les matrices ci-dessous sont donc dérivées de celles de Fore
+par permutation, puis vérifiées numériquement, plutôt que recopiées de son
+article.
+
+`synthetic.py` redéclare les indices `IDX_*` de ce même ordre ; leur cohérence
+avec `POL_ORDER` est vérifiée par `tests/test_synthetic.py`.
+
+Modèle direct
+-------------
+
+Données déjà étalonnées en gain absolu et en déséquilibre co-polaire
+(`A = 1`, `k = 1/sqrt(alpha)`) ::
+
+    o = D s + n,   avec o, s dans l'ordre POL_ORDER = [HH, HV, VH, VV]
+
+        | 1      v/sa     w.sa     vw   |
+    D = | z      1/sa     wz.sa    w    |,      sa = sqrt(alpha)
+        | u      uv/sa    sa       v    |
+        | uz     u/sa     z.sa     1    |
 
 Correction (équation 15), inverse analytique exact de D ::
 
-                  1        | 1        -w       -v       vw     |
-    Sigma = --------------- | -u/sa    1/sa     uv/sa    -v/sa  |
-            (uw-1)(vz-1)   | -z.sa    wz.sa    sa       -w.sa  |
-                           | uz       -z       -u       1      |
+                  1        | 1        -v       -w       vw     |
+    Sigma = --------------- | -z.sa    sa       wz.sa    -w.sa  |
+            (uw-1)(vz-1)   | -u/sa    uv/sa    1/sa     -v/sa  |
+                           | uz       -u       -z       1      |
 
 La correction réalisable sur données est `s_chapeau = Sigma o` : le bruit `n`
 étant inconnu, Sigma l'amplifie au lieu de le retrancher (équation 14). C'est
@@ -38,11 +72,16 @@ from __future__ import annotations
 import logging
 import numpy as np
 
-from .conventions import CHANNEL_AXIS
 from .exceptions import DegenerateDistortionError
 from .parameters import CrosstalkParameters
 
 logger = logging.getLogger(__name__)
+
+#: Ordre du modèle physique et du pipeline — Babu et al. (2022), équations 8-9.
+POL_ORDER: tuple[str, ...] = ("HH", "HV", "VH", "VV")
+
+#: Axe portant les polarisations dans un patch `(..., 4, H, W)`.
+CHANNEL_AXIS: int = -3
 
 #: Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `DegenerateDistortionError`.
 DEFAULT_TOL: float = 1e-8
@@ -52,22 +91,22 @@ WARN_CONDITIONING: float = 0.5
 
 
 def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
-    """Matrice de distorsion D (Fore et al., 2015, équation 13).
+    """Matrice de distorsion D (Babu et al., 2022, équation 10).
 
     Args:
         params: le jeu `(u, v, w, z, alpha)`.
 
     Returns:
-        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER_ONERA`.
+        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
     """
     u, v, w, z, alpha = params.to_vector()
     sa = np.sqrt(alpha)
     return np.array(
         [
-            [1.0, w * sa, v / sa, v * w],
-            [u, sa, u * v / sa, v],
-            [z, w * z * sa, 1.0 / sa, w],
-            [u * z, z * sa, u / sa, 1.0],
+            [1.0, v / sa, w * sa, v * w],
+            [z, 1.0 / sa, w * z * sa, w],
+            [u, u * v / sa, sa, v],
+            [u * z, u / sa, z * sa, 1.0],
         ],
         dtype=np.complex128,
     )
@@ -76,7 +115,7 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
 def inverse_distortion_matrix(
     params: CrosstalkParameters, tol: float = DEFAULT_TOL
 ) -> np.ndarray:
-    """Matrice de calibration Sigma (Fore et al., 2015, équation 15).
+    """Matrice de calibration Sigma (Babu et al., 2022, équation 12).
 
     Forme analytique exacte de `D^-1`, et non une approximation au premier
     ordre : `D @ Sigma == I` à la précision machine.
@@ -86,7 +125,7 @@ def inverse_distortion_matrix(
         tol: seuil sur `|(uw-1)(vz-1)|` sous lequel D est déclarée singulière.
 
     Returns:
-        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER_ONERA`.
+        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
 
     Raises:
         DegenerateDistortionError: si le déterminant réduit est trop petit.
@@ -107,10 +146,10 @@ def inverse_distortion_matrix(
     return (
         np.array(
             [
-                [1.0, -w, -v, v * w],
-                [-u / sa, 1.0 / sa, u * v / sa, -v / sa],
-                [-z * sa, w * z * sa, sa, -w * sa],
-                [u * z, -z, -u, 1.0],
+                [1.0, -v, -w, v * w],
+                [-z * sa, sa, w * z * sa, -w * sa],
+                [-u / sa, u * v / sa, 1.0 / sa, -v / sa],
+                [u * z, -u, -z, 1.0],
             ],
             dtype=np.complex128,
         )
@@ -150,7 +189,7 @@ def apply_distortion(
 
     Args:
         scattering: patch `(..., 4, H, W)` du signal vrai, ordre
-            `POL_ORDER_ONERA`.
+            `POL_ORDER`.
         params: le jeu `(u, v, w, z, alpha)` à appliquer.
         channel_axis: axe des polarisations.
 
@@ -173,7 +212,7 @@ def apply_correction(
 
     Args:
         observed: patch `(..., 4, H, W)` du signal observé, ordre
-            `POL_ORDER_ONERA`.
+            `POL_ORDER`.
         params: le jeu estimé.
         channel_axis: axe des polarisations.
         tol: seuil de singularité passé à `inverse_distortion_matrix`.

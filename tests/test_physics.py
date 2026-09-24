@@ -5,10 +5,11 @@ import logging
 import numpy as np
 import pytest
 
-from src.crosstalk.conventions import permutation
 from src.crosstalk.exceptions import DegenerateDistortionError
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import (
+    CHANNEL_AXIS,
+    POL_ORDER,
     apply_correction,
     apply_distortion,
     distortion_matrix,
@@ -61,27 +62,33 @@ def test_d_vaut_l_identite_sans_distorsion():
 
 
 def test_structure_de_d():
-    # Les coefficients que le modèle impose (Fore et al., équation 13).
+    """Coefficients imposés par le modèle, en ordre [HH, HV, VH, VV].
+
+    Le canal HV porte `1/sqrt(alpha)` et le canal VH `sqrt(alpha)` — c'est
+    l'inverse des positions qu'ils occupent chez Fore et al., dont l'ordre
+    croise les deux canaux.
+    """
     matrice = distortion_matrix(THETA)
     sa = np.sqrt(THETA.alpha)
     assert matrice[0, 0] == 1.0
     assert matrice[3, 3] == 1.0
-    assert matrice[1, 1] == pytest.approx(sa)
-    assert matrice[2, 2] == pytest.approx(1.0 / sa)
+    assert matrice[1, 1] == pytest.approx(1.0 / sa)   # HV
+    assert matrice[2, 2] == pytest.approx(sa)         # VH
     assert matrice[0, 3] == pytest.approx(THETA.v * THETA.w)
     assert matrice[3, 0] == pytest.approx(THETA.u * THETA.z)
 
 
-def test_permuter_les_canaux_croises_renomme_les_parametres():
-    """Le piège de convention, verrouillé par un test.
+def test_melanger_les_deux_conventions_renomme_les_parametres():
+    """Le piège que la convention retenue supprime, verrouillé par un test.
 
-    Permuter simultanément lignes et colonnes 2 et 3 de D — c'est-à-dire passer
-    de l'ordre de Fore et al. (2015) à celui de Babu et al. (2022) — redonne une
-    matrice de la même famille, avec (u, v, w, z, alpha) -> (z, w, v, u, 1/alpha).
-    C'est pourquoi l'oubli de la permutation ne lève aucune erreur : il renomme
-    silencieusement les paramètres.
+    Permuter simultanément lignes et colonnes 2 et 3 de D — c'est-à-dire lire
+    notre matrice dans l'ordre de Fore et al. (2015) au lieu de celui de Babu
+    et al. (2022) — redonne une matrice de la même famille, avec
+    `(u, v, w, z, alpha) -> (z, w, v, u, 1/alpha)`. Aucune erreur n'est levée :
+    seuls les noms changent. C'est pour cela que l'ordre des canaux doit rester
+    celui que déclare `physics.POL_ORDER`.
     """
-    perm = permutation(("HH", "HV", "VH", "VV"))  # échange 1 et 2
+    perm = [0, 2, 1, 3]
     permutee = distortion_matrix(THETA)[np.ix_(perm, perm)]
     renommee = CrosstalkParameters(
         u=THETA.z, v=THETA.w, w=THETA.v, z=THETA.u, alpha=1.0 / THETA.alpha
@@ -184,3 +191,27 @@ def test_la_correction_est_lineaire():
         facteur * apply_correction(signal, THETA),
         rtol=1e-10,
     )
+
+
+# ------------------------------------------------ convention d'ordre des canaux
+
+
+def test_l_ordre_du_modele_est_celui_de_babu():
+    """Babu et al. (2022, éq. 8-9) ordonne `[HH, HV, VH, VV]`."""
+    assert POL_ORDER == ("HH", "HV", "VH", "VV")
+
+
+def test_l_ordre_du_modele_est_celui_du_pipeline():
+    """`SLCDataset` trie les polarisations alphabétiquement avant de les empiler.
+
+    C'est l'invariant qui rend toute permutation inutile — et la raison d'avoir
+    retenu la convention de Babu plutôt que celle de Fore. S'il tombait, il
+    faudrait réintroduire une conversion à la frontière du paquet.
+    """
+    assert POL_ORDER == tuple(sorted(POL_ORDER))
+
+
+def test_axe_des_canaux_designe_les_polarisations():
+    """`-3` désigne bien l'axe des polarisations d'un patch `(..., 4, H, W)`."""
+    patch = np.zeros((2, 4, 8, 8), dtype=np.complex64)
+    assert patch.shape[CHANNEL_AXIS] == len(POL_ORDER)

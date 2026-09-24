@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 import yaml
 
-from src.crosstalk.conventions import POL_ORDER_ONERA
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import apply_distortion
 from src.crosstalk.synthetic import reflection_symmetric_scattering
@@ -45,7 +44,7 @@ def estimateurs():
     return rb.build_estimators(
         [
             {"label": "patch", "name": "quegan",
-             "params": {"window": "full", "source_order": list(POL_ORDER_ONERA)}},
+             "params": {"window": "full",}},
         ]
     )
 

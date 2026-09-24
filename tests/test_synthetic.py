@@ -3,12 +3,29 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.conventions import IDX_HH, IDX_HV, IDX_VH, IDX_VV
 from src.crosstalk.covariance import polarimetric_covariance
+from src.crosstalk.physics import POL_ORDER
 from src.crosstalk.synthetic import (
+    IDX_HH,
+    IDX_HV,
+    IDX_VH,
+    IDX_VV,
     quegan_covariance,
     reflection_symmetric_scattering,
 )
+
+
+def test_les_indices_locaux_suivent_l_ordre_du_modele():
+    """Le garde-fou de la double déclaration.
+
+    `synthetic` redéclare ses indices au lieu de les importer de `physics` ;
+    ce test est ce qui empêche les deux déclarations de diverger en silence —
+    une divergence qui ne lèverait aucune exception et se contenterait de
+    renommer les paramètres estimés.
+    """
+    assert (IDX_HH, IDX_HV, IDX_VH, IDX_VV) == tuple(
+        POL_ORDER.index(pol) for pol in ("HH", "HV", "VH", "VV")
+    )
 
 
 def test_structure_de_la_covariance_de_quegan():

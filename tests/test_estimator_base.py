@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.conventions import POL_ORDER_DATALOADER, POL_ORDER_ONERA, reorder
 from src.crosstalk.estimators.base import CrosstalkEstimator
 from src.crosstalk.exceptions import DegenerateDistortionError
 from src.crosstalk.parameters import CrosstalkParameters
@@ -66,7 +65,7 @@ def test_une_sous_classe_sans_nom_est_refusee():
 
 def test_representation_lisible():
     texte = repr(EstimateurConstant())
-    assert "constant" in texte and "source_order" in texte
+    assert "constant" in texte and "tol" in texte
 
 
 # ------------------------------------------------------- contrat sur les formes
@@ -85,38 +84,17 @@ def test_refuse_un_nombre_de_canaux_incorrect():
 # ------------------------------------------------------ contrat sur les canaux
 
 
-def test_correct_rend_le_patch_dans_l_ordre_d_entree():
-    """Le contrat d'ordre, vérifié de bout en bout.
+def test_correct_inverse_exactement_la_distorsion():
+    """Aucune conversion d'ordre : le patch entre et sort en `POL_ORDER`.
 
-    On fabrique un signal en ordre modèle, on le distord, on l'exprime dans
-    l'ordre du pipeline, et on vérifie que l'estimateur rend le signal d'origine
-    exprimé lui aussi dans l'ordre du pipeline : la correction ne déplace pas
-    les canaux.
+    C'est le bénéfice de la convention de Babu — l'ordre du modèle étant celui
+    du pipeline, `correct` est une pure application de Sigma.
     """
-    signal_onera = patch_aleatoire((4, 64, 64), dtype=np.complex128)
-    observe_onera = apply_distortion(signal_onera, THETA)
-    observe_pipeline = reorder(observe_onera, POL_ORDER_ONERA, POL_ORDER_DATALOADER)
-
-    corrige = EstimateurConstant().correct(observe_pipeline)
-
-    attendu = reorder(signal_onera, POL_ORDER_ONERA, POL_ORDER_DATALOADER)
-    np.testing.assert_allclose(corrige, attendu, rtol=1e-10, atol=1e-12)
-
-
-def test_oublier_la_permutation_donne_un_resultat_different():
-    # Garde-fou : si le test précédent passait aussi sans conversion, il ne
-    # prouverait rien.
-    observe = patch_aleatoire((4, 16, 16), dtype=np.complex128)
-    avec = EstimateurConstant(source_order=POL_ORDER_DATALOADER).correct(observe)
-    sans = EstimateurConstant(source_order=POL_ORDER_ONERA).correct(observe)
-    assert not np.allclose(avec, sans)
-
-
-def test_source_order_en_ordre_modele():
-    signal = patch_aleatoire((4, 16, 16), dtype=np.complex128)
+    signal = patch_aleatoire((4, 64, 64), dtype=np.complex128)
     observe = apply_distortion(signal, THETA)
-    corrige = EstimateurConstant(source_order=POL_ORDER_ONERA).correct(observe)
-    np.testing.assert_allclose(corrige, signal, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        EstimateurConstant().correct(observe), signal, rtol=1e-10, atol=1e-12
+    )
 
 
 # --------------------------------------------------------- correction héritée

@@ -118,7 +118,7 @@ def residual_crosstalk(
     """Estime, corrige, puis ré-estime sur les données corrigées.
 
     Args:
-        patch: `(4, H, W)` complexe, dans `estimator.source_order`.
+        patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
         estimator: la méthode évaluée. C'est elle qui juge sa propre correction,
             d'où la réserve énoncée en tête de module.
 

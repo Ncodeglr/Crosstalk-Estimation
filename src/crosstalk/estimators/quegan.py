@@ -1,13 +1,13 @@
 """Méthode de Quegan : estimation du crosstalk en forme fermée.
 
 Les quatre termes de crosstalk se lisent directement dans la covariance du
-signal observé (Fore et al., 2015, équation 24), avec
+signal observé (Babu et al., 2022, équation 13), avec
 `Delta = C11 C44 - |C14|^2` ::
 
     u = (C44 C21 - C41 C24) / Delta        v = (C11 C24 - C21 C14) / Delta
     z = (C44 C31 - C41 C34) / Delta        w = (C11 C34 - C31 C14) / Delta
 
-puis le déséquilibre croisé (équations 25 et 26) ::
+puis le déséquilibre croisé (équations 15 à 18, réindexées) ::
 
     X      = C32 - z C12 - w C42
     alpha1 = (C22 - u C12 - v C42) / X
@@ -17,7 +17,7 @@ puis le déséquilibre croisé (équations 25 et 26) ::
     |alpha| = -----------------------------------------------------------------
                                     2 |alpha2|
 
-Indexation dans l'ordre `POL_ORDER_ONERA = [HH, VH, HV, VV]`, indices 1 à 4 des
+Indexation dans l'ordre `POL_ORDER = [HH, HV, VH, VV]`, indices 1 à 4 des
 articles ; `C_ij = <O_i O_j*>`.
 
 Phase de alpha. Les deux références divergent, et le paramètre `alpha_phase`
@@ -45,11 +45,10 @@ l'ordre du pour-cent à -20 dB.
 from __future__ import annotations
 
 import logging
-from typing import Literal, Sequence
+from typing import Literal
 
 import numpy as np
 
-from ..conventions import POL_ORDER_DATALOADER
 from ..covariance import WindowSpec, polarimetric_covariance
 from ..exceptions import IllConditionedCovarianceError
 from ..parameters import CrosstalkParameters
@@ -87,7 +86,6 @@ class QueganEstimator(CrosstalkEstimator):
             baselines. Ou un couple `(kh, kw)` — fenêtre glissante, un jeu par
             fenêtre puis moyenne ; `(5, 5)` reproduit Babu et al. (2022).
         alpha_phase: `"fore"` ou `"babu"`, voir la documentation du module.
-        source_order: ordre des canaux des patchs reçus.
         tol: seuil de singularité de D, transmis à la correction.
         delta_tol: seuil relatif sur `|Delta| / (C11 C44)`.
         x_tol: seuil relatif sur `|X| / sqrt(C22 C33)`.
@@ -102,12 +100,11 @@ class QueganEstimator(CrosstalkEstimator):
         self,
         window: WindowSpec = "full",
         alpha_phase: AlphaPhase = "fore",
-        source_order: Sequence[str] = POL_ORDER_DATALOADER,
         tol: float = DEFAULT_TOL,
         delta_tol: float = DEFAULT_DELTA_TOL,
         x_tol: float = DEFAULT_X_TOL,
     ) -> None:
-        super().__init__(source_order=source_order, tol=tol)
+        super().__init__(tol=tol)
         if alpha_phase not in ("fore", "babu"):
             raise ValueError(
                 f"alpha_phase = {alpha_phase!r} : 'fore' ou 'babu' attendu"
@@ -135,32 +132,32 @@ class QueganEstimator(CrosstalkEstimator):
             `valides` est le masque booléen `(...)`, et `rapports` le
             dictionnaire des critères de conditionnement, pour le diagnostic.
         """
-        c11, c12, c14 = cov[..., 0, 0], cov[..., 0, 1], cov[..., 0, 3]
-        c21, c22, c24 = cov[..., 1, 0], cov[..., 1, 1], cov[..., 1, 3]
-        c31, c32, c33, c34 = (
-            cov[..., 2, 0],
-            cov[..., 2, 1],
-            cov[..., 2, 2],
-            cov[..., 2, 3],
+        c11, c13, c14 = cov[..., 0, 0], cov[..., 0, 2], cov[..., 0, 3]
+        c21, c22, c23, c24 = (
+            cov[..., 1, 0],
+            cov[..., 1, 1],
+            cov[..., 1, 2],
+            cov[..., 1, 3],
         )
-        c41, c42, c44 = cov[..., 3, 0], cov[..., 3, 1], cov[..., 3, 3]
+        c31, c33, c34 = cov[..., 2, 0], cov[..., 2, 2], cov[..., 2, 3]
+        c41, c43, c44 = cov[..., 3, 0], cov[..., 3, 2], cov[..., 3, 3]
 
         with np.errstate(divide="ignore", invalid="ignore"):
             # --- crosstalk, équation 24 -------------------------------------
             delta = c11 * c44 - np.abs(c14) ** 2
             rapport_delta = np.abs(delta) / np.abs(c11 * c44)
-            u = (c44 * c21 - c41 * c24) / delta
-            v = (c11 * c24 - c21 * c14) / delta
-            z = (c44 * c31 - c41 * c34) / delta
-            w = (c11 * c34 - c31 * c14) / delta
+            u = (c44 * c31 - c41 * c34) / delta
+            v = (c11 * c34 - c31 * c14) / delta
+            z = (c44 * c21 - c41 * c24) / delta
+            w = (c11 * c24 - c21 * c14) / delta
 
             # --- déséquilibre croisé, équations 25 et 26 --------------------
-            x = c32 - z * c12 - w * c42
+            x = c23 - z * c13 - w * c43
             rapport_x = np.abs(x) / np.sqrt(np.abs(c22 * c33))
-            alpha1 = (c22 - u * c12 - v * c42) / x
+            alpha1 = (c33 - u * c13 - v * c43) / x
 
-            denominateur_2 = c33 - np.conj(z) * c31 - np.conj(w) * c34
-            rapport_denom2 = np.abs(denominateur_2) / np.abs(c33)
+            denominateur_2 = c22 - np.conj(z) * c21 - np.conj(w) * c24
+            rapport_denom2 = np.abs(denominateur_2) / np.abs(c22)
             alpha2 = np.conj(x) / denominateur_2
 
             produit = np.abs(alpha1 * alpha2)
@@ -175,7 +172,7 @@ class QueganEstimator(CrosstalkEstimator):
         rapports = {
             "Delta / (C11 C44)": rapport_delta,
             "X / sqrt(C22 C33)": rapport_x,
-            "(C33 - z* C31 - w* C34) / C33": rapport_denom2,
+            "(C22 - z* C21 - w* C24) / C22": rapport_denom2,
         }
         valides = (
             (rapport_delta > self.delta_tol)
@@ -229,7 +226,8 @@ class QueganEstimator(CrosstalkEstimator):
             IllConditionedCovarianceError: en mode `"full"` si la covariance est
                 dégénérée ; en mode glissant si aucune fenêtre n'est exploitable.
         """
-        cov = polarimetric_covariance(self.to_model_order(patch), self.window)
+        self.check_patch(patch)
+        cov = polarimetric_covariance(patch, self.window)
         thetas, valides, rapports = self._solve(cov)
 
         if self.window == "full":
@@ -262,7 +260,7 @@ class QueganEstimator(CrosstalkEstimator):
         rangent l'azimut en lignes et la distance en colonnes.
 
         Args:
-            patch: `(4, H, W)` complexe, dans `self.source_order`.
+            patch: `(4, H, W)` complexe, en ordre `POL_ORDER`.
 
         Returns:
             Liste de `W - kw + 1` jeux, un par position de fenêtre en distance.
@@ -277,7 +275,8 @@ class QueganEstimator(CrosstalkEstimator):
                 "estimate_range_lines demande une fenêtre glissante ; "
                 "instanciez QueganEstimator(window=(5, 5))"
             )
-        cov = polarimetric_covariance(self.to_model_order(patch), self.window)
+        self.check_patch(patch)
+        cov = polarimetric_covariance(patch, self.window)
         thetas, valides, rapports = self._solve(cov)
 
         lignes: list[CrosstalkParameters] = []
@@ -299,5 +298,5 @@ class QueganEstimator(CrosstalkEstimator):
         return (
             f"QueganEstimator(window={self.window!r}, "
             f"alpha_phase={self.alpha_phase!r}, "
-            f"source_order={self.source_order}, tol={self.tol:g})"
+            f"tol={self.tol:g})"
         )

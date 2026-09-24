@@ -5,7 +5,6 @@ import logging
 import numpy as np
 import pytest
 
-from src.crosstalk.conventions import POL_ORDER_DATALOADER, POL_ORDER_ONERA, reorder
 from src.crosstalk.covariance import BABU_WINDOW
 from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
@@ -33,7 +32,6 @@ def observe(params, shape=(1024, 1024), beta=0.05, graine=0, **kwargs):
 
 
 def estimateur(**kwargs) -> QueganEstimator:
-    kwargs.setdefault("source_order", POL_ORDER_ONERA)
     return QueganEstimator(**kwargs)
 
 
@@ -54,16 +52,6 @@ def test_bout_en_bout_couplage_faible():
     """
     vrai = theta(0.1)
     estime = estimateur().estimate(observe(vrai, beta=0.002))
-    assert erreur_relative(estime, vrai) < 0.03
-
-
-def test_bout_en_bout_dans_l_ordre_du_pipeline():
-    """Même chose, mais en passant par la conversion de canaux."""
-    vrai = theta(0.1)
-    en_pipeline = reorder(
-        observe(vrai, beta=0.002), POL_ORDER_ONERA, POL_ORDER_DATALOADER
-    )
-    estime = QueganEstimator(source_order=POL_ORDER_DATALOADER).estimate(en_pipeline)
     assert erreur_relative(estime, vrai) < 0.03
 
 

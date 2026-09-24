@@ -1,9 +1,9 @@
 """Covariance polarimétrique du signal **observé**.
 
 Toutes les méthodes statistiques d'estimation du crosstalk partent de la même
-quantité (Fore et al., 2015, équation 16) ::
+quantité (Babu et al., 2022 ; Fore et al., 2015, équation 16) ::
 
-    C_ij = < O_i O_j* >,        i, j dans 1..4, ordre POL_ORDER_ONERA
+    C_ij = < O_i O_j* >,        i, j dans 1..4, ordre POL_ORDER = [HH, HV, VH, VV]
 
 où `<.>` est une moyenne spatiale locale. C est hermitienne et semi-définie
 positive. Elle est calculée sur `O`, le signal **observé**, et non sur le signal
@@ -34,9 +34,8 @@ Deux échelles de moyennage, à ne pas confondre :
     moyenner des rapports n'est pas le rapport des moyennes — c'est pourquoi
     elle appartient à l'estimateur et non à ce module.
 
-Ce module suppose ses entrées déjà réordonnées en `POL_ORDER_ONERA` ; la
-conversion depuis l'ordre du pipeline est faite une seule fois, à la frontière
-du paquet, par `conventions.to_onera_order`.
+Ce module attend ses entrées en `physics.POL_ORDER`, qui est déjà l'ordre
+produit par le pipeline : aucune conversion n'a lieu nulle part dans le paquet.
 """
 
 from __future__ import annotations
@@ -66,7 +65,7 @@ def _check_patch(patch: np.ndarray) -> None:
     if patch.shape[-3] != 4:
         raise ValueError(
             f"l'axe -3 porte {patch.shape[-3]} canaux, 4 attendus "
-            "(le patch doit être en ordre POL_ORDER_ONERA)"
+            "(le patch doit être en ordre POL_ORDER)"
         )
 
 
@@ -87,7 +86,7 @@ def polarimetric_covariance(
     """Covariance polarimétrique du signal observé.
 
     Args:
-        patch: `(..., 4, H, W)` complexe, en ordre `POL_ORDER_ONERA`. Les
+        patch: `(..., 4, H, W)` complexe, en ordre `POL_ORDER`. Les
             dimensions de tête éventuelles (lot) sont conservées.
         window: `"full"` pour traiter le patch comme une unique fenêtre, ou un
             couple `(kh, kw)` pour une fenêtre glissante — `(5, 5)` reproduit

@@ -6,7 +6,7 @@ appliquer une distorsion connue, et de comparer.
 
 Encore faut-il que ce `S` respecte les hypothèses de la méthode, sans quoi
 l'échec du test ne prouverait rien. Quegan suppose la covariance vraie
-(Fore et al., 2015, équation 17), dans l'ordre `POL_ORDER_ONERA` ::
+(Fore et al., 2015, équation 17 ; Babu et al., 2022 §3.3.3), dans l'ordre `physics.POL_ORDER` ::
 
               | sigma_hh    0       0      sigma_hhvv |
         C_Q = |    0      beta    beta         0      |
@@ -30,7 +30,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from .conventions import IDX_HH, IDX_HV, IDX_VH, IDX_VV
+#: Indices 0-based dans `physics.POL_ORDER` (les articles indexent à partir
+#: de 1). Redéclarés ici plutôt qu'importés pour que ce module de génération
+#: reste indépendant du modèle qu'il sert à tester ; `tests/test_synthetic.py`
+#: verrouille leur cohérence avec `POL_ORDER`.
+IDX_HH, IDX_HV, IDX_VH, IDX_VV = 0, 1, 2, 3
 
 
 def quegan_covariance(
@@ -39,7 +43,7 @@ def quegan_covariance(
     rho_copol: complex = 0.6,
     beta: float = 0.05,
 ) -> np.ndarray:
-    """Covariance vraie supposée par Quegan (Fore et al., 2015, équation 17).
+    """Covariance vraie supposée par Quegan (Fore et al., 2015, équation 17 ; Babu et al., 2022 §3.3.3).
 
     Args:
         sigma_hh: puissance du canal HH, `<|S_HH|^2>`.
@@ -49,7 +53,7 @@ def quegan_covariance(
         beta: puissance des canaux croisés, `<|S_HV|^2> = <|S_VH|^2>`.
 
     Returns:
-        `(4, 4)` complex128, dans l'ordre `POL_ORDER_ONERA`.
+        `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
 
     Raises:
         ValueError: si `|rho_copol| >= 1` ou si une puissance est négative.
@@ -89,7 +93,7 @@ def reflection_symmetric_scattering(
         dtype: type complexe de sortie.
 
     Returns:
-        `(4, *shape)` dans l'ordre `POL_ORDER_ONERA`, avec `S_HV = S_VH`
+        `(4, *shape)` dans l'ordre `POL_ORDER`, avec `S_HV = S_VH`
         exactement et une corrélation co-pol/cross-pol nulle en espérance.
     """
     if rng is None:
