@@ -124,6 +124,59 @@ Tout se règle dans le bloc `baselines:` de
 La frontière est stricte : le modèle physique et la covariance sont **communs**
 à toutes les méthodes ; une méthode nouvelle n'écrit que `estimate`.
 
+### Chaîne de traitement
+
+Les `.slc` sortent de l'instrument **déjà distordus** — `Cross Talk Removed = No`
+dans les `.ann`. La chaîne ne fait donc qu'estimer puis corriger ; la distorsion
+n'est jamais appliquée aux données réelles.
+
+| # | opération | code | entrée → sortie |
+|---|---|---|---|
+| 1 | lire les 4 `.slc` | `torchcvnn.SLCDataset` | 4 fichiers 61 349 × 9 874 `complex64` |
+| 2 | empiler en ordre alphabétique | transform `PolSAR` | `o = (4, 256, 256)` |
+| 3 | normaliser | `GlobalScalarNormalize` | `o / 0.16444` |
+| 4 | **covariance** | `covariance.polarimetric_covariance` | `C = (4, 4)` `complex128` |
+| 5 | **formes fermées** | `estimators.quegan.QueganEstimator._solve` | `theta = (u, v, w, z, alpha)` |
+| 6 | **correction** | `physics.apply_matrix(Sigma, o)` | `s_chapeau = (4, 256, 256)` |
+| 7 | ré-estimer sur `s_chapeau` | `estimate` | crosstalk résiduel |
+
+Tracé sur le patch de contrôle `(30000, 4500)` de l'acquisition du 11 février :
+
+```
+ÉTAPE 1   HH 0.007157   HV 0.000731   VH 0.001004   VV 0.007269   (puissances moyennes)
+ÉTAPE 4   diagonale de C = [0.007157, 0.000731, 0.001004, 0.007269]   <- les mêmes
+ÉTAPE 5   Delta = C11 C44 - |C14|² = 0.00003841
+          u = 0.053956 - 0.038570j     fuite HH -> VH
+          z = 0.064295 - 0.066135j     fuite HH -> HV
+          v = -0.098416 - 0.009808j    fuite VV -> VH
+          w = -0.032636 + 0.008085j    fuite VV -> HV
+          |alpha| = 1.208398           déséquilibre HV / VH
+          crosstalk = -20.10 dB
+ÉTAPE 7   résiduel = -30.71 dB         réduction 10.62 dB
+```
+
+Les étapes 4 à 7 tournent sur chacun des 4541 patchs de la partition de test, et
+`summarize` prend la médiane de chaque colonne.
+
+**Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape 4 réduit
+65 536 pixels × 4 canaux à une matrice 4×4. Toute l'information y est : Quegan
+suppose que sur le signal **vrai**, les termes co-pol/cross-pol
+`<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
+Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** est donc du
+crosstalk — c'est exactement ce que lisent les formes fermées.
+
+**La normalisation ne change pas `theta`.** `GlobalScalarNormalize` divise par un
+scalaire réel unique. Sous une homothétie globale `g`, `D` devient `g·D`, et
+`(u, v, w, z)` sont des **rapports** de coefficients de `D`, donc invariants. Une
+normalisation *par canal* les changerait ; celle qui est configurée ne le fait
+pas — voir « Point d'attention : la normalisation » plus haut.
+
+**`apply_distortion` ne tourne jamais sur les données réelles.** Elle sert
+uniquement aux tests, pour fabriquer une observation à `theta` connu — le seul
+moyen de disposer d'une vérité terrain, puisque les `.slc` n'en ont pas. C'est
+ainsi qu'est mesuré le biais résiduel de 1 % du modèle, sans bruit et à un
+million d'échantillons : le terme `O(|theta|²)` que Quegan néglige.
+
 ### Convention d'ordre des canaux
 
 **C'est le point le plus délicat du projet.** Une erreur d'ordre ne lève aucune

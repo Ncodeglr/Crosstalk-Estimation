@@ -1,66 +1,3 @@
-"""Modèle physique du crosstalk : D, Sigma, et leur application aux données.
-
-Ce module est **méthode-agnostique** : il ne contient rien de Quegan,
-d'Ainsworth ou d'un réseau. Toutes les méthodes d'estimation partagent le même
-modèle direct et la même correction ; seule l'estimation de `theta` les
-distingue.
-
-Source des matrices
--------------------
-
-**Fore et al. (2015) est la seule des deux références qui forme un système
-fermé** : `Sigma_eq15 @ D_eq13 = I` à 2.2e-16 près, et ses équations 24 à 26
-retrouvent exactement le `theta` injecté par son équation 13. Les matrices
-ci-dessous sont donc les siennes, transposées de son ordre `[HH, VH, HV, VV]`
-vers celui du pipeline par la permutation qui échange HV et VH — et non
-recopiées de Babu et al. `tests/test_physics.py` ancre `D` sur son équation 13.
-
-Ce que Babu et al. (2022) apporte se limite à deux choses : l'ordre de canaux
-retenu ici, et la correction du terme `4|alpha_2|^2` de l'équation 15, que le
-texte de Fore imprime `4 + |alpha_2|^2`.
-
-Attention en revanche à ses matrices. Son équation 8 est celle de Fore à
-l'identique (écart exactement nul) mais sur un vecteur réordonné, donc non
-réindexée ; ses équations 10 et 12 y ajoutent une faute de transcription — la
-colonne HV divisée par `sqrt(alpha)` au lieu d'être multipliée, soit un facteur
-`1/alpha` mesuré sur trois entrées — si bien que son `Sigma` n'inverse aucune de
-ses deux `D` (2.1e-02). Seule son équation 13 est correctement réindexée.
-
-`synthetic.py` redéclare les indices `IDX_*` de ce même ordre ; leur cohérence
-avec `POL_ORDER` est vérifiée par `tests/test_synthetic.py`.
-
-Modèle direct
--------------
-
-Données déjà étalonnées en gain absolu et en déséquilibre co-polaire
-(`A = 1`, `k = 1/sqrt(alpha)`) ::
-
-    o = D s + n,   avec o, s dans l'ordre POL_ORDER = [HH, HV, VH, VV]
-
-        | 1      v/sa     w.sa     vw   |
-    D = | z      1/sa     wz.sa    w    |,      sa = sqrt(alpha)
-        | u      uv/sa    sa       v    |
-        | uz     u/sa     z.sa     1    |
-
-Correction (équation 15), inverse analytique exact de D ::
-
-                  1        | 1        -v       -w       vw     |
-    Sigma = --------------- | -z.sa    sa       wz.sa    -w.sa  |
-            (uw-1)(vz-1)   | -u/sa    uv/sa    1/sa     -v/sa  |
-                           | uz       -u       -z       1      |
-
-La correction réalisable sur données est `s_chapeau = Sigma o` : le bruit `n`
-étant inconnu, Sigma l'amplifie au lieu de le retrancher (équation 14). C'est
-une limite du modèle, pas de cette implémentation, et elle doit être prise en
-compte dans l'évaluation.
-
-Branche de la racine carrée : `sqrt(alpha)` est pris sur la branche principale
-de NumPy. Le choix de branche n'est pas neutre — remplacer `sa` par `-sa` donne
-`D diag(1, -1, -1, 1)`, soit un changement de signe des canaux croisés — mais il
-est sans conséquence tant que la même convention sert à distordre et à corriger,
-ce que garantit le passage systématique par ce module.
-"""
-
 from __future__ import annotations
 import logging
 import numpy as np
@@ -69,31 +6,22 @@ from .parameters import CrosstalkParameters
 
 logger = logging.getLogger(__name__)
 
-#: Ordre du modèle physique et du pipeline — Babu et al. (2022), équations 8-9.
-POL_ORDER: tuple[str, ...] = ("HH", "HV", "VH", "VV")
-
-#: Axe portant les polarisations dans un patch `(..., 4, H, W)`.
-CHANNEL_AXIS: int = -3
-
-#: Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `SingularDmatrixError`.
-DEFAULT_TOL: float = 1e-8
-
-#: Seuil d'alerte : en deçà, D est inversible mais le crosstalk n'est plus petit.
-WARN_CONDITIONING: float = 0.5
+POL_ORDER: tuple[str, ...] = ("HH", "HV", "VH", "VV") # Ordre du modèle physique et du pipeline — Babu équations 8-9
+CHANNEL_AXIS: int = -3 # Axe portant les polarisations dans un patch `(..., 4, H, W)`
+DEFAULT_TOL: float = 1e-8 # Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `SingularDmatrixError`
+WARN_CONDITIONING: float = 0.5 # Seuil d'alerte : en deçà, D est inversible mais le crosstalk n'est plus petit.
 
 
 def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
-    """Matrice de distorsion D : Fore et al. (2015, équation 13), réindexée.
-
-    Transposée de l'ordre `[HH, VH, HV, VV]` de Fore vers `POL_ORDER` par la
-    permutation qui échange HV et VH. **Ce n'est pas l'équation 10 de Babu et
-    al.**, qui est fautive — voir l'en-tête du module.
-
-    Args:
-        params: le jeu `(u, v, w, z, alpha)`.
-
-    Returns:
-        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
+    """
+    Matrice de distorsion D, en ordre `POL_ORDER`.
+    Ses coefficients sont ceux de l'équation 13 de Fore et al. (2015), **déjà réindexés** :
+    lignes et colonnes 2 et 3 ont été échangées une fois pour toutes à l'écriture, puisque Fore ordonne [HH, VH, HV, VV].
+    Aucune permutation n'a donc lieu à l'exécution — ni ici, ni ailleurs dans le paquet.
+   
+    Args: params: le jeu `(u, v, w, z, alpha)`.
+    
+    Returns: Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
     """
     u, v, w, z, alpha = params.to_vector()
     sa = np.sqrt(alpha)
@@ -108,10 +36,12 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
     )
 
 
-def inverse_distortion_matrix(
-    params: CrosstalkParameters, tol: float = DEFAULT_TOL
-) -> np.ndarray:
-    """Matrice de calibration Sigma : Fore et al. (2015, équation 15), réindexée.
+def inverse_distortion_matrix(params: CrosstalkParameters, tol: float = DEFAULT_TOL) -> np.ndarray:
+    """
+    Matrice de calibration Sigma, en ordre `POL_ORDER`.
+
+    Ses coefficients sont ceux de l'équation 15 de Fore, **déjà
+    réindexés** de la même façon que ceux de `distortion_matrix
 
     Forme analytique exacte de `D^-1`, et non une approximation au premier
     ordre : `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et
@@ -122,11 +52,9 @@ def inverse_distortion_matrix(
         params: le jeu `(u, v, w, z, alpha)`.
         tol: seuil sur `|(uw-1)(vz-1)|` sous lequel D est déclarée singulière.
 
-    Returns:
-        Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
+    Returns: Sigma, Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`
 
-    Raises:
-        SingularDmatrixError: si le déterminant réduit est trop petit.
+    Raises: SingularDmatrixError: si le déterminant réduit est trop petit.
     """
     u, v, w, z, alpha = params.to_vector()
     sa = np.sqrt(alpha)
@@ -155,18 +83,33 @@ def inverse_distortion_matrix(
     )
 
 
-def _apply_matrix(
-    matrix: np.ndarray, data: np.ndarray, channel_axis: int
-) -> np.ndarray:
-    """Contracte `matrix` avec l'axe des polarisations de `data`, sans boucle.
+def apply_matrix(matrix: np.ndarray, data: np.ndarray, channel_axis: int) -> np.ndarray:
+    """
+    Contracte matrix avec l'axe des polarisations de data, sans boucle.
+    Moteur commun des fonctions apply_distortion et apply_correction
 
-    Le calcul se fait en complex128 ; le dtype d'entrée est restitué en sortie
-    pour que des patchs complex64 le restent.
+    Args:
+        matrix: (4, 4) complexe, en ordre POL_ORDER :  
+            -Soit D, rendue par distortion_matrix pour distordre 
+            -Soit Sigma, rendue par inverse_distortion_matrix pour corriger.
+        
+        data: les données polarimétriques, de forme quelconque pourvu que
+            `channel_axis` porte les 4 polarisations en ordre `POL_ORDER`.
+            Dans ce projet c'est soit le signal vrai `s`, synthétique, que
+            l'on distord, soit le patch observé `o` du dataloader, `complex64`
+            et de forme `(4, H, W)` ou `(lot, 4, H, W)`, que l'on corrige.
+        
+        channel_axis: position de l'axe des polarisations, `-3` pour un patch.
+
+    Returns:
+        Le résultat `matrix @ data`, appliqué au vecteur des 4 polarisations de
+        chaque pixel. Même forme et même dtype que `data` — le calcul se fait
+        en complex128 pour la précision, mais un patch `complex64` le reste.
+
+    Raises: ValueError: si `channel_axis` ne porte pas 4 canaux.
     """
     if data.shape[channel_axis] != 4:
-        raise ValueError(
-            f"l'axe {channel_axis} porte {data.shape[channel_axis]} canaux, 4 attendus"
-        )
+        raise ValueError(f"l'axe {channel_axis} porte {data.shape[channel_axis]} canaux, 4 attendus")
     moved = np.moveaxis(data, channel_axis, -1)
     result = np.einsum("ij,...j->...i", matrix, moved.astype(np.complex128))
     result = np.moveaxis(result, -1, channel_axis)
@@ -175,51 +118,37 @@ def _apply_matrix(
     return result
 
 
-def apply_distortion(
-    scattering: np.ndarray,
-    params: CrosstalkParameters,
-    channel_axis: int = CHANNEL_AXIS,
-) -> np.ndarray:
-    """Applique le modèle direct sans bruit : `o = D s`.
-
-    Sert à simuler des observations à `theta` connu — c'est le seul moyen de
-    disposer d'une vérité terrain, les données réelles n'en ayant pas.
+def apply_distortion(scattering: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
+    """
+    Applique le modèle direct sans bruit : `o = D s`.
+    Sert à simuler des observations à theta connu — c'est le seul moyen de disposer d'une vérité terrain, les données réelles n'en ayant pas.
 
     Args:
-        scattering: patch `(..., 4, H, W)` du signal vrai, ordre
-            `POL_ORDER`.
+        scattering: patch `(..., 4, H, W)` du signal vrai, ordre POL_ORDER
         params: le jeu `(u, v, w, z, alpha)` à appliquer.
         channel_axis: axe des polarisations.
 
-    Returns:
-        Le patch distordu, de même forme et même dtype.
+    Returns: Le patch distordu, de même forme et même dtype.
     """
-    return _apply_matrix(distortion_matrix(params), scattering, channel_axis)
+    return apply_matrix(distortion_matrix(params), scattering, channel_axis)
 
 
-def apply_correction(
-    observed: np.ndarray,
-    params: CrosstalkParameters,
-    channel_axis: int = CHANNEL_AXIS,
-    tol: float = DEFAULT_TOL,
-) -> np.ndarray:
-    """Corrige un patch observé : `s_chapeau = Sigma o` (équation 14).
+def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,tol: float = DEFAULT_TOL,) -> np.ndarray:
+    """
+    Corrige un patch observé : `s_chapeau = Sigma o` (équation 14).
 
     Le bruit n'étant pas connu, il n'est pas retranché et se trouve amplifié par
     Sigma. La correction est donc exacte sur données sans bruit uniquement.
 
     Args:
-        observed: patch `(..., 4, H, W)` du signal observé, ordre
-            `POL_ORDER`.
+        observed: patch `(..., 4, H, W)` du signal observé, ordre POL_ORDER.
         params: le jeu estimé.
         channel_axis: axe des polarisations.
         tol: seuil de singularité passé à `inverse_distortion_matrix`.
 
-    Returns:
-        Le patch corrigé, de même forme et même dtype.
+    Returns: Le patch corrigé, de même forme et même dtype.
 
-    Raises:
-        SingularDmatrixError: si D est singulière.
+    Raises: SingularDmatrixError: si D est singulière.
     """
     sigma = inverse_distortion_matrix(params, tol=tol)
-    return _apply_matrix(sigma, observed, channel_axis)
+    return apply_matrix(sigma, observed, channel_axis)
