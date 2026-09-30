@@ -193,6 +193,60 @@ def test_la_correction_est_lineaire():
     )
 
 
+# ------------------------------------------- ancrage sur la référence publiée
+
+
+def test_d_est_la_matrice_de_fore_reindexee():
+    """Ancre `D` sur l'équation 13 de Fore et al. (2015).
+
+    Les autres tests ne vérifient que la **cohérence interne** — `Sigma @ D = I`,
+    ou l'aller-retour `s -> D s -> theta`. Une même erreur commise dans `D` et
+    dans `Sigma` leur échapperait, et une erreur commise dans `D` et dans les
+    formes fermées de Quegan aussi. Ce test est le seul qui confronte le code à
+    une source extérieure.
+
+    Fore ordonne `[HH, VH, HV, VV]` ; la permutation `[0, 2, 1, 3]` transpose sa
+    matrice vers `POL_ORDER`. C'est Fore et non Babu et al. (2022) qui sert de
+    référence ici : son équation 10 divise la colonne HV par `sqrt(alpha)` là où
+    son équation 8 la multiplie, et son `Sigma` (équation 12) n'inverse ni l'une
+    ni l'autre.
+    """
+    sa = np.sqrt(THETA.alpha)
+    u, v, w, z = THETA.u, THETA.v, THETA.w, THETA.z
+    d_fore = np.array(
+        [
+            [1.0,   w * sa,     v / sa,     v * w],
+            [u,     sa,         u * v / sa, v    ],
+            [z,     w * z * sa, 1.0 / sa,   w    ],
+            [u * z, z * sa,     u / sa,     1.0  ],
+        ],
+        dtype=np.complex128,
+    )
+    perm = [0, 2, 1, 3]
+    np.testing.assert_allclose(
+        distortion_matrix(THETA), d_fore[np.ix_(perm, perm)], atol=1e-14
+    )
+
+
+def test_sigma_est_la_matrice_de_fore_reindexee():
+    """Même ancrage pour `Sigma`, sur l'équation 15 de Fore et al. (2015)."""
+    sa = np.sqrt(THETA.alpha)
+    u, v, w, z = THETA.u, THETA.v, THETA.w, THETA.z
+    sigma_fore = np.array(
+        [
+            [1.0,      -w,          -v,          v * w    ],
+            [-u / sa,  1.0 / sa,    u * v / sa,  -v / sa  ],
+            [-z * sa,  w * z * sa,  sa,          -w * sa  ],
+            [u * z,    -z,          -u,          1.0      ],
+        ],
+        dtype=np.complex128,
+    ) / ((u * w - 1.0) * (v * z - 1.0))
+    perm = [0, 2, 1, 3]
+    np.testing.assert_allclose(
+        inverse_distortion_matrix(THETA), sigma_fore[np.ix_(perm, perm)], atol=1e-14
+    )
+
+
 # ------------------------------------------------ convention d'ordre des canaux
 
 

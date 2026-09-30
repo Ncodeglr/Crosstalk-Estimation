@@ -36,6 +36,8 @@ import logging
 from typing import Literal, Union
 import numpy as np
 
+from .physics import POL_ORDER
+
 logger = logging.getLogger(__name__)
 
 BABU_WINDOW: tuple[int, int] = (5, 5) # Fenêtre glissante de Babu
@@ -46,9 +48,9 @@ MIN_SAMPLES: int = 16 # En deçà, la covariance 4x4 est estimée sur trop peu d
 def _check_patch(patch: np.ndarray) -> None:
     if patch.ndim < 3:
         raise ValueError(f"patch de forme {patch.shape} : (..., 4, H, W) attendu")
-    if patch.shape[-3] != 4:
-        raise ValueError(f"l'axe -3 porte {patch.shape[-3]} canaux, 4 attendus "
-            "(le patch doit être en ordre POL_ORDER)")
+    if patch.shape[-3] != len(POL_ORDER):
+        raise ValueError(f"l'axe -3 porte {patch.shape[-3]} canaux, {len(POL_ORDER)} attendus "
+            f"(le patch doit être en ordre {POL_ORDER})")
 
 
 def _check_window(window: "WindowSpec", height: int, width: int) -> None:

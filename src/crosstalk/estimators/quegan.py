@@ -1,13 +1,16 @@
 """Méthode de Quegan : estimation du crosstalk en forme fermée.
 
 Les quatre termes de crosstalk se lisent directement dans la covariance du
-signal observé (Babu et al., 2022, équation 13), avec
-`Delta = C11 C44 - |C14|^2` ::
+signal observé — Fore et al. (2015, équation 24) réindexée, ce qui coïncide
+avec l'équation 13 de Babu et al. (2022), la seule qu'il ait lui-même
+réindexée — avec `Delta = C11 C44 - |C14|^2` ::
 
     u = (C44 C31 - C41 C34) / Delta        v = (C11 C34 - C31 C14) / Delta
     z = (C44 C21 - C41 C24) / Delta        w = (C11 C24 - C21 C14) / Delta
 
-puis le déséquilibre croisé (équations 15 à 18, réindexées) ::
+puis le déséquilibre croisé (Fore et al., équations 25 et 26, réindexées ;
+les équations 16 à 18 de Babu et al. sont celles de Fore **non** réindexées et
+contredisent donc sa propre équation 13) ::
 
     X      = C23 - z C13 - w C43
     alpha1 = (C33 - u C13 - v C43) / X
@@ -17,6 +20,12 @@ puis le déséquilibre croisé (équations 15 à 18, réindexées) ::
     alpha = -------------------------------------------------------------------
                                      2 |alpha2|
 
+Le terme `4 |alpha2|^2` sous la racine vient de l'équation 15 de Babu et al. ;
+le texte de Fore imprime `4 + |alpha2|^2`. Sur un `alpha` vrai de 1,3000, la
+première forme rend 1,2990 et la seconde 1,2199 — c'est le seul endroit où
+Babu corrige Fore. L'identité `x - 1/x = |alpha1| - 1/|alpha2|`, vérifiée par
+`test_l_estimateur_de_alpha_resout_l_identite_attendue`, verrouille ce choix.
+
 Indexation dans l'ordre `POL_ORDER = [HH, HV, VH, VV]`, indices 1 à 4 des
 articles ; `C_ij = <O_i O_j*>`. Attention : ces expressions ne sont **pas**
 celles de Fore et al. (2015, équations 24 à 26), qui indexent `[HH, VH, HV, VV]`.
@@ -24,7 +33,7 @@ Appliquer les leurs à des données rangées ainsi rend `(z, w, v, u)` au lieu d
 `(u, v, w, z)`, sans lever la moindre erreur.
 
 `alpha` est réel positif : l'équation 15 de Babu s'arrête au module. Fore et al.
-le multiplient en plus par `alpha1 / |alpha1|` ; sur la pile Rosamond de ce
+(équation 25) le multiplient en plus par `alpha1 / |alpha1|` ; sur la pile Rosamond de ce
 projet cette phase vaut 1,6° en médiane (étendue -3,7° à +15,2° sur 40 patchs
 256x256), le produit JPL 2016 étant déjà étalonné en phase. Elle n'entre dans
 aucune des métriques du paquet, qui ne portent que sur `(u, v, w, z)`.

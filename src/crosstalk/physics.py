@@ -5,12 +5,26 @@ d'Ainsworth ou d'un réseau. Toutes les méthodes d'estimation partagent le mêm
 modèle direct et la même correction ; seule l'estimation de `theta` les
 distingue.
 
-Attention en lisant Babu et al. : son équation 10 reproduit la matrice D de Fore
-telle quelle, sur un vecteur pourtant ordonné autrement, et ses équations 16 à
-18 font de même pour `alpha`. Prises littéralement avec son équation 13, elles
-sont incohérentes. Les matrices ci-dessous sont donc dérivées de celles de Fore
-par permutation, puis vérifiées numériquement, plutôt que recopiées de son
-article.
+Source des matrices
+-------------------
+
+**Fore et al. (2015) est la seule des deux références qui forme un système
+fermé** : `Sigma_eq15 @ D_eq13 = I` à 2.2e-16 près, et ses équations 24 à 26
+retrouvent exactement le `theta` injecté par son équation 13. Les matrices
+ci-dessous sont donc les siennes, transposées de son ordre `[HH, VH, HV, VV]`
+vers celui du pipeline par la permutation qui échange HV et VH — et non
+recopiées de Babu et al. `tests/test_physics.py` ancre `D` sur son équation 13.
+
+Ce que Babu et al. (2022) apporte se limite à deux choses : l'ordre de canaux
+retenu ici, et la correction du terme `4|alpha_2|^2` de l'équation 15, que le
+texte de Fore imprime `4 + |alpha_2|^2`.
+
+Attention en revanche à ses matrices. Son équation 8 est celle de Fore à
+l'identique (écart exactement nul) mais sur un vecteur réordonné, donc non
+réindexée ; ses équations 10 et 12 y ajoutent une faute de transcription — la
+colonne HV divisée par `sqrt(alpha)` au lieu d'être multipliée, soit un facteur
+`1/alpha` mesuré sur trois entrées — si bien que son `Sigma` n'inverse aucune de
+ses deux `D` (2.1e-02). Seule son équation 13 est correctement réindexée.
 
 `synthetic.py` redéclare les indices `IDX_*` de ce même ordre ; leur cohérence
 avec `POL_ORDER` est vérifiée par `tests/test_synthetic.py`.
@@ -50,7 +64,6 @@ ce que garantit le passage systématique par ce module.
 from __future__ import annotations
 import logging
 import numpy as np
-
 from .exceptions import SingularDmatrixError
 from .parameters import CrosstalkParameters
 
@@ -70,7 +83,11 @@ WARN_CONDITIONING: float = 0.5
 
 
 def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
-    """Matrice de distorsion D (Babu et al., 2022, équation 10).
+    """Matrice de distorsion D : Fore et al. (2015, équation 13), réindexée.
+
+    Transposée de l'ordre `[HH, VH, HV, VV]` de Fore vers `POL_ORDER` par la
+    permutation qui échange HV et VH. **Ce n'est pas l'équation 10 de Babu et
+    al.**, qui est fautive — voir l'en-tête du module.
 
     Args:
         params: le jeu `(u, v, w, z, alpha)`.
@@ -94,10 +111,12 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
 def inverse_distortion_matrix(
     params: CrosstalkParameters, tol: float = DEFAULT_TOL
 ) -> np.ndarray:
-    """Matrice de calibration Sigma (Babu et al., 2022, équation 12).
+    """Matrice de calibration Sigma : Fore et al. (2015, équation 15), réindexée.
 
     Forme analytique exacte de `D^-1`, et non une approximation au premier
-    ordre : `D @ Sigma == I` à la précision machine.
+    ordre : `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et
+    al. porte la même faute de transcription que son équation 10 et n'inverse
+    ni l'une ni l'autre de ses matrices de distorsion.
 
     Args:
         params: le jeu `(u, v, w, z, alpha)`.

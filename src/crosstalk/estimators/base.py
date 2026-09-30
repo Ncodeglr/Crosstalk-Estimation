@@ -11,7 +11,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import ClassVar
 from ..parameters import CrosstalkParameters
-from ..physics import DEFAULT_TOL, apply_correction
+from ..physics import DEFAULT_TOL, POL_ORDER, apply_correction
 
 # Class CrosstalkEstimator(ABC) est une classe abstraite qui définit l'interface commune pour toutes les méthodes d'estimation du crosstalk. 
 # Attribut de classe `name` qui doit être défini par chaque sous-classe concrète
@@ -41,8 +41,9 @@ class CrosstalkEstimator(ABC):
         if patch.ndim != 3:
             raise ValueError(f"patch de forme {patch.shape} : (4, H, W) attendu. Un estimateur "
             "rend un jeu de paramètres par patch ; pour un lot, itérez.")
-        if patch.shape[0] != 4:
-            raise ValueError(f"patch à {patch.shape[0]} canaux, 4 attendus")
+        if patch.shape[0] != len(POL_ORDER):
+            raise ValueError(f"patch à {patch.shape[0]} canaux, {len(POL_ORDER)} attendus "
+            f"(le patch doit être en ordre {POL_ORDER})")
 
     def correct(self, patch: np.ndarray, params: CrosstalkParameters | None = None) -> np.ndarray:
         """
