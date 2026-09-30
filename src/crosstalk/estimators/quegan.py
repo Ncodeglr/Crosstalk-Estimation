@@ -1,4 +1,5 @@
-"""Méthode de Quegan : estimation du crosstalk en forme fermée.
+"""
+Méthode de Quegan : estimation du crosstalk en forme fermée.
 
 Les quatre termes de crosstalk se lisent directement dans la covariance du
 signal observé — Fore et al. (2015, équation 24) réindexée, ce qui coïncide
@@ -20,11 +21,7 @@ contredisent donc sa propre équation 13) ::
     alpha = -------------------------------------------------------------------
                                      2 |alpha2|
 
-Le terme `4 |alpha2|^2` sous la racine vient de l'équation 15 de Babu et al. ;
-le texte de Fore imprime `4 + |alpha2|^2`. Sur un `alpha` vrai de 1,3000, la
-première forme rend 1,2990 et la seconde 1,2199 — c'est le seul endroit où
-Babu corrige Fore. L'identité `x - 1/x = |alpha1| - 1/|alpha2|`, vérifiée par
-`test_l_estimateur_de_alpha_resout_l_identite_attendue`, verrouille ce choix.
+
 
 Indexation dans l'ordre `POL_ORDER = [HH, HV, VH, VV]`, indices 1 à 4 des
 articles ; `C_ij = <O_i O_j*>`. Attention : ces expressions ne sont **pas**
@@ -38,19 +35,11 @@ projet cette phase vaut 1,6° en médiane (étendue -3,7° à +15,2° sur 40 pat
 256x256), le produit JPL 2016 étant déjà étalonné en phase. Elle n'entre dans
 aucune des métriques du paquet, qui ne portent que sur `(u, v, w, z)`.
 
-Domaine de validité. Ces expressions sont dérivées en négligeant les termes
-d'ordre deux et plus en `(u, v, w, z)` (Fore et al., 2015, après l'équation 24,
-énonce explicitement cette condition). L'estimateur est exact au premier ordre
-seulement : même sans bruit et avec un nombre infini d'échantillons, il subsiste
-un biais en `O(|theta|^2)`, soit de l'ordre du pour-cent à -20 dB.
 """
 
 from __future__ import annotations
-
 import logging
-
 import numpy as np
-
 from ..covariance import WindowSpec, polarimetric_covariance
 from ..exceptions import IllConditionedCovarianceError
 from ..parameters import CrosstalkParameters
@@ -68,20 +57,19 @@ logger = logging.getLogger(__name__)
 #: rien dire. Les rapports ci-dessous sont sans dimension.
 #:
 #: Ordres de grandeur mesurés sur 600 patchs 64x64 de la pile Rosamond :
-#: `|Delta|/(C11 C44)` descend à 0,080 et `|X|/sqrt(C22 C33)` à 0,027. Les
-#: valeurs par défaut sont très en deçà : elles ne se déclenchent que sur une
-#: dégénérescence vraie (patch constant, canal éteint), pas sur une scène
-#: difficile.
+#: `|Delta|/(C11 C44)` descend à 0,080 et `|X|/sqrt(C22 C33)` à 0,027. 
+#: Les valeurs par défaut sont très en deçà : elles ne se déclenchent que sur une dégénérescence vraie (patch constant, canal éteint), pas sur une scène difficile.
 DEFAULT_DELTA_TOL: float = 1e-6
 DEFAULT_X_TOL: float = 1e-6
 
 
 @register_estimator
 class QueganEstimator(CrosstalkEstimator):
-    """Estimation du crosstalk par les formes fermées de Quegan (1994).
+    """
+    Estimation du crosstalk par les formes fermées de Quegan (1994).
 
     Args:
-        window: `"full"` — le patch entier est une unique fenêtre d'estimation,
+        window: "full" — le patch entier est une unique fenêtre d'estimation,
             un jeu par patch ; c'est le mode de la comparaison réseau contre
             baselines. Ou un couple `(kh, kw)` — fenêtre glissante, un jeu par
             fenêtre puis moyenne ; `(5, 5)` reproduit Babu et al. (2022).
@@ -89,41 +77,33 @@ class QueganEstimator(CrosstalkEstimator):
         delta_tol: seuil relatif sur `|Delta| / (C11 C44)`.
         x_tol: seuil relatif sur `|X| / sqrt(C22 C33)`.
 
-    Raises:
-        ValueError: si `window` est invalide.
+    Raises: ValueError: si `window` est invalide.
     """
 
     name = "quegan"
 
-    def __init__(
-        self,
-        window: WindowSpec = "full",
-        tol: float = DEFAULT_TOL,
-        delta_tol: float = DEFAULT_DELTA_TOL,
-        x_tol: float = DEFAULT_X_TOL,
-    ) -> None:
+    def __init__(self,window: WindowSpec = "full",tol: float = DEFAULT_TOL,delta_tol: float = DEFAULT_DELTA_TOL,x_tol: float = DEFAULT_X_TOL) -> None:
         super().__init__(tol=tol)
         if window != "full":
             window = tuple(window)
             if len(window) != 2:
                 raise ValueError(f"window = {window!r} : 'full' ou (kh, kw) attendu")
         self.window = window
-        self.delta_tol = float(delta_tol)
+        self.delta_tol = float(delta_tol) 
         self.x_tol = float(x_tol)
 
-    # ------------------------------------------------------------ formes fermées
+    # -----------------------------Formes Fermées----------------------------------------------
 
     def _solve(self, cov: np.ndarray) -> tuple[np.ndarray, np.ndarray, dict]:
-        """Résout les formes fermées, vectorisé sur les dimensions de tête.
+        """
+        Résout les formes fermées, vectorisé sur les dimensions de tête.
 
-        Args:
-            cov: `(..., 4, 4)` complex128.
+        Args: cov: `(..., 4, 4)` complex128.
 
-        Returns:
-            `(thetas, valides, rapports)` où `thetas` est `(..., 5)` dans
-            l'ordre `(u, v, w, z, alpha)` avec `NaN` là où un garde-fou a joué,
-            `valides` est le masque booléen `(...)`, et `rapports` le
-            dictionnaire des critères de conditionnement, pour le diagnostic.
+        Returns: (thetas, valides, rapports) où :
+            -thetas : (..., 5) dans l'ordre `(u, v, w, z, alpha)` avec `NaN` là où un garde-fou a joué,
+            -valides : tableau de booléens : une case par fenêtre d'estimation, qui dit si son theta est exploitable.
+            -rapports : le dictionnaire des critères de conditionnement, pour le diagnostic.
         """
         c11, c13, c14 = cov[..., 0, 0], cov[..., 0, 2], cov[..., 0, 3]
         c21, c22, c23, c24 = (
@@ -136,15 +116,17 @@ class QueganEstimator(CrosstalkEstimator):
         c41, c43, c44 = cov[..., 3, 0], cov[..., 3, 2], cov[..., 3, 3]
 
         with np.errstate(divide="ignore", invalid="ignore"):
-            # --- crosstalk, équation 13 -------------------------------------
-            delta = c11 * c44 - np.abs(c14) ** 2
+            #np.errstate(divide="ignore") permet de supprimer les avertissements de division par zéro / invalid="ignore" permet de supprimer les avertissements de calculs invalides, comme la division par zéro ou la racine carrée d'un nombre négatif
+            
+            # ---------------------------------Crosstalk--------------------------------------------------
+            delta = c11 * c44 - np.abs(c14) ** 2 #Dans le papier de Babu, ils ont une erreur de transcription, ils écrivent c11*c44 - c14*c41, mais c41 est le conjugué de c14, donc ça ne change pas le résultat final. Mais pour être cohérent avec l'article, on utilise c11*c44 - |c14|^2
             rapport_delta = np.abs(delta) / np.abs(c11 * c44)
             u = (c44 * c31 - c41 * c34) / delta
             v = (c11 * c34 - c31 * c14) / delta
             z = (c44 * c21 - c41 * c24) / delta
             w = (c11 * c24 - c21 * c14) / delta
 
-            # --- déséquilibre croisé, équations 15 à 18 ---------------------
+            # --------------------------Déséquilibre croisé - (Équations 15 à 18)--------------------------
             x = c23 - z * c13 - w * c43
             rapport_x = np.abs(x) / np.sqrt(np.abs(c22 * c33))
             alpha1 = (c33 - u * c13 - v * c43) / x
@@ -176,24 +158,36 @@ class QueganEstimator(CrosstalkEstimator):
         thetas = np.where(valides[..., None], thetas, np.nan)
         return thetas, np.asarray(valides), rapports
 
+    @staticmethod
+    def _pire(valeurs: np.ndarray) -> float:
+        """Valeur la plus dégradée d'un critère, `nan` comptant pour la pire.
+
+        Un critère vaut `nan` quand son dénominateur s'est annulé — canal
+        éteint, patch constant. C'est donc le cas le plus grave, mais `nan`
+        perd toute comparaison (`nan < x` et `x < nan` sont tous deux faux),
+        si bien qu'un `min` naïf ne le sélectionne jamais et nomme un critère
+        sain dans le message d'erreur.
+        """
+        valeurs = np.asarray(valeurs)
+        if not np.isfinite(valeurs).all():
+            return float("-inf")
+        return float(valeurs.min())
+
     def _raise_ill_conditioned(self, rapports: dict) -> None:
         """Lève en nommant le critère le plus dégradé."""
-        nom, valeur = min(
-            ((nom, float(np.min(val))) for nom, val in rapports.items()),
-            key=lambda couple: couple[1],
-        )
+        nom = min(rapports, key=lambda cle: self._pire(rapports[cle]))
+        valeur = np.asarray(rapports[nom])
+        valeur = float(valeur[np.isfinite(valeur)].min()) if np.isfinite(valeur).any() else float("nan")
         seuil = self.delta_tol if nom.startswith("Delta") else self.x_tol
         raise IllConditionedCovarianceError(nom, valeur, seuil)
 
-    # ---------------------------------------------------------------- interface
+    # -------------------------interface-------------------------------------------
 
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
 
-        En mode `"full"`, les formes fermées sont appliquées à l'unique
-        covariance du patch. En mode glissant, elles le sont à chaque fenêtre et
-        les `theta` obtenus sont moyennés sur **toutes** les fenêtres — les
-        fenêtres mal conditionnées étant écartées.
+        En mode `"full"`, les formes fermées sont appliquées à l'unique covariance du patch. 
+        En mode glissant, elles le sont à chaque fenêtre et les `theta` obtenus sont moyennés sur **toutes** les fenêtres — les fenêtres mal conditionnées étant écartées.
 
         La moyenne des `(u, v, w, z)` est prise sur les nombres complexes, ce qui
         est nettement le bon choix : mesuré sur 150 patchs de la pile Rosamond
@@ -205,10 +199,8 @@ class QueganEstimator(CrosstalkEstimator):
         quantité positive bruitée. Le mode `"full"` n'en souffre pas.
 
         Note:
-            Cette moyenne porte sur **toutes** les fenêtres du patch, distance
-            comprise. Ce n'est donc pas le protocole de Babu et al. (2022,
-            §3.3.1), qui moyenne le long d'une seule ligne de distance : voir
-            `estimate_range_lines`.
+            Cette moyenne porte sur **toutes** les fenêtres du patch, distance comprise. 
+            Ce n'est donc pas le protocole de Babu (§3.3.1), qui moyenne le long d'une seule ligne de distance : voir estimate_range_lines.
 
         Raises:
             IllConditionedCovarianceError: en mode `"full"` si la covariance est
@@ -237,26 +229,20 @@ class QueganEstimator(CrosstalkEstimator):
         )
 
     def estimate_range_lines(self, patch: np.ndarray) -> list[CrosstalkParameters]:
-        """Un jeu par ligne de distance, à la manière de Babu et al. (2022).
+        """
+        Un jeu par ligne de distance, à la manière de Babu.
+        
+        Le crosstalk varie lentement en distance et pas du tout en azimut. 
+        Babu (§3.3.1) estiment donc un `theta` par fenêtre 5x5 glissante, moyennent ces `theta` **le long d'une ligne de distance**, puis corrigent toute la ligne avec ce jeu unique.
+        Une ligne de distance est une colonne du patch : les `.slc` UAVSAR rangent l'azimut en lignes et la distance en colonnes.
 
-        Le crosstalk varie lentement en distance et pas du tout en azimut. Babu
-        et al. (2022, §3.3.1) estiment donc un `theta` par fenêtre 5x5 glissante,
-        moyennent ces `theta` **le long d'une ligne de distance**, puis corrigent
-        toute la ligne avec ce jeu unique.
+        Args: patch: (4, H, W) complexe, en ordre POL_ORDER.
 
-        Une ligne de distance est une colonne du patch : les `.slc` UAVSAR
-        rangent l'azimut en lignes et la distance en colonnes.
-
-        Args:
-            patch: `(4, H, W)` complexe, en ordre `POL_ORDER`.
-
-        Returns:
-            Liste de `W - kw + 1` jeux, un par position de fenêtre en distance.
+        Returns: Liste de W - kw + 1 jeux, un par position de fenêtre en distance.
 
         Raises:
             ValueError: si l'estimateur est en mode `"full"`.
-            IllConditionedCovarianceError: si une ligne n'a aucune fenêtre
-                exploitable.
+            IllConditionedCovarianceError: si une ligne n'a aucune fenêtre exploitable.
         """
         if self.window == "full":
             raise ValueError(

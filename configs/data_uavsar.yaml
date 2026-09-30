@@ -22,10 +22,7 @@ data:
   shuffle: True
   valid_ratio: 0.1
   test_ratio: 0.1
-  # null = toute la pile. Mettre un entier pour une mise au point rapide ;
-  # la réduction a lieu AVANT le découpage train/valid/test, donc elle rétrécit
-  # aussi la partition de test.
-  max_num_samples: null
+  max_num_samples: null  # null = toute la pile. Mettre un entier pour une mise au point rapide ; # la réduction a lieu AVANT le découpage train/valid/test, donc elle rétrécit aussi la partition de test.
   recompute_statistics: False
 
   # --- Normalisation ---------------------------------------------------------
@@ -62,6 +59,6 @@ baselines:
   estimators:
     - name: quegan
       params:
-        window: full     # le patch entier comme unique fenêtre d'estimation
+        window: [5, 5]   # fenêtre glissante de Babu et al. (2022), §3.3.1 ; En window = full traiterait le patch entier comme une fenêtre unique
 
 

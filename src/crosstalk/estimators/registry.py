@@ -7,27 +7,24 @@ T = TypeVar("T", bound=type[CrosstalkEstimator])
 
 
 def register_estimator(cls: T) -> T:
-    """Décorateur : enregistre une classe sous son attribut `name`.
+    """
+    Décorateur : enregistre une classe sous son attribut `name`.
 
-    Args:
-        cls: sous-classe concrète de `CrosstalkEstimator`.
+    Args: cls: sous-classe concrète de `CrosstalkEstimator`.
 
-    Returns:
-        La classe, inchangée.
+    Returns: La classe, inchangée.
 
     Raises:
         TypeError: si `cls` n'est pas une sous-classe de `CrosstalkEstimator`ou ne définit pas `name`.
         ValueError: si le nom est déjà pris par une autre classe.
     """
     if not (isinstance(cls, type) and issubclass(cls, CrosstalkEstimator)):
-        raise TypeError(
-            f"{cls!r} n'est pas une sous-classe de CrosstalkEstimator"
-        )
+        raise TypeError(f"{cls!r} n'est pas une sous-classe de CrosstalkEstimator")
+    
     name = getattr(cls, "name", None)
     if not isinstance(name, str) or not name:
-        raise TypeError(
-            f"{cls.__name__} doit définir un attribut de classe `name` non vide"
-        )
+        raise TypeError(f"{cls.__name__} doit définir un attribut de classe `name` non vide")
+    
     existant = _ESTIMATORS.get(name)
     if existant is not None and existant is not cls:
         raise ValueError(f"le nom {name!r} est déjà enregistré par {existant.__name__}")

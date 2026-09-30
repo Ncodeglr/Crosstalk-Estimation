@@ -99,12 +99,23 @@ python src/run_baselines.py        # depuis la racine du dépôt
 ```
          méthode  patchs  échecs  initial dB  résiduel dB  réduction dB  |alpha|
 --------------------------------------------------------------------------------
-          quegan    4541       0       -20.1        -30.7          10.2    1.187
+          quegan    4541       0       -21.2        -30.7           9.5    1.226
 ```
 
 Chaque colonne est la **médiane** sur les patchs, un `theta` étant estimé par
 patch. Ces valeurs dépendent de `seed:`, qui fixe le découpage train / valid /
-test : changer la graine change les patchs évalués, pas la méthode.
+test : changer la graine change les patchs évalués, pas la méthode. Durée :
+6 min 33 s.
+
+À titre de repère, Babu et al. (2022, table 4) annoncent **-22,49 dB** non
+calibré. Son résiduel après Quegan, **-25,33 dB**, n'est pas comparable au nôtre :
+il le mesure aux réflecteurs en coin (§4.6), là où `residual_crosstalk` ré-estime
+sur les données corrigées — voir l'avertissement en tête de `metrics.py`.
+
+La fenêtre glissante coûte environ 12× le mode `full` en temps de calcul. Sur
+cette pile, elle déplace le crosstalk de -20,1 à -21,2 dB et `|alpha|` de 1,187 à
+1,226 ; cette hausse est un effet de Jensen — moyenner 63 504 estimations
+bruitées d'une quantité positive la surestime.
 
 Tout se règle dans le bloc `baselines:` de
 [configs/data_uavsar.yaml](configs/data_uavsar.yaml).
@@ -135,8 +146,8 @@ n'est jamais appliquée aux données réelles.
 | 1 | lire les 4 `.slc` | `torchcvnn.SLCDataset` | 4 fichiers 61 349 × 9 874 `complex64` |
 | 2 | empiler en ordre alphabétique | transform `PolSAR` | `o = (4, 256, 256)` |
 | 3 | normaliser | `GlobalScalarNormalize` | `o / 0.16444` |
-| 4 | **covariance** | `covariance.polarimetric_covariance` | `C = (4, 4)` `complex128` |
-| 5 | **formes fermées** | `estimators.quegan.QueganEstimator._solve` | `theta = (u, v, w, z, alpha)` |
+| 4 | **covariance**, fenêtre glissante 5×5 | `covariance.polarimetric_covariance` | `C = (252, 252, 4, 4)` `complex128` |
+| 5 | **formes fermées** par fenêtre, puis moyenne | `estimators.quegan.QueganEstimator._solve` | `theta = (u, v, w, z, alpha)` |
 | 6 | **correction** | `physics.apply_matrix(Sigma, o)` | `s_chapeau = (4, 256, 256)` |
 | 7 | ré-estimer sur `s_chapeau` | `estimate` | crosstalk résiduel |
 
@@ -144,23 +155,24 @@ Tracé sur le patch de contrôle `(30000, 4500)` de l'acquisition du 11 février
 
 ```
 ÉTAPE 1   HH 0.007157   HV 0.000731   VH 0.001004   VV 0.007269   (puissances moyennes)
-ÉTAPE 4   diagonale de C = [0.007157, 0.000731, 0.001004, 0.007269]   <- les mêmes
-ÉTAPE 5   Delta = C11 C44 - |C14|² = 0.00003841
-          u = 0.053956 - 0.038570j     fuite HH -> VH
-          z = 0.064295 - 0.066135j     fuite HH -> HV
-          v = -0.098416 - 0.009808j    fuite VV -> VH
-          w = -0.032636 + 0.008085j    fuite VV -> HV
-          |alpha| = 1.208398           déséquilibre HV / VH
-          crosstalk = -20.10 dB
-ÉTAPE 7   résiduel = -30.71 dB         réduction 10.62 dB
+ÉTAPE 4   C de forme (252, 252, 4, 4) : 63 504 fenêtres 5×5, une matrice chacune
+          fenêtres retenues : 63 504 / 63 504
+ÉTAPE 5   moyenne des 63 504 theta
+          u =  0.024319 + 0.005222j    fuite HH -> VH
+          z =  0.046798 - 0.025522j    fuite HH -> HV
+          v = -0.072366 - 0.033255j    fuite VV -> VH
+          w = -0.013079 - 0.015735j    fuite VV -> HV
+          |alpha| = 1.290804           déséquilibre HV / VH
+          crosstalk = -21.98 dB
+ÉTAPE 7   résiduel = -32.59 dB         réduction 10.62 dB
 ```
 
 Les étapes 4 à 7 tournent sur chacun des 4541 patchs de la partition de test, et
 `summarize` prend la médiane de chaque colonne.
 
 **Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape 4 réduit
-65 536 pixels × 4 canaux à une matrice 4×4. Toute l'information y est : Quegan
-suppose que sur le signal **vrai**, les termes co-pol/cross-pol
+les 25 pixels × 4 canaux de chaque fenêtre à une matrice 4×4. Toute
+l'information y est : Quegan suppose que sur le signal **vrai**, les termes co-pol/cross-pol
 `<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
 Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** est donc du
 crosstalk — c'est exactement ce que lisent les formes fermées.
@@ -269,16 +281,33 @@ la verrouille.
 
 ### Ce qui n'est pas implémenté
 
-- **Le masquage de Fore §V-B** : il retire les pixels dont la corrélation HH–VV
-  dépasse 0,2 dans une boîte 5×5 avant d'estimer, puisque Quegan suppose cette
-  corrélation nulle. La covariance est ici calculée sur **tous** les pixels du
-  patch. C'est aussi, littéralement, le mécanisme qui sépare Quegan de
-  l'« improved Quegan » de Babu §3.3.2 (seuil 0,4 sur `r(S_hh, S_vh)` et
-  `r(S_vv, S_hv)`).
-- **Le protocole par ligne de distance** de Babu §3.3.1 : `estimate_range_lines`
-  existe mais l'orchestration appelle `estimate`, un `theta` par patch. Mesuré,
-  l'écart entre les deux protocoles est de 0,03 dB.
-- **Ainsworth et al. (2006)**, méthode itérative décrite en annexe A-A de Fore.
+Le paquet suit **Babu et al. (2022), §3.3.1** — le Quegan de base. Trois écarts
+subsistent, chacun assumé pour une raison précise.
+
+**Le moyennage par ligne de distance.** Babu moyenne les `theta` le long d'une
+ligne de distance puis calibre cette ligne. Le projet moyenne sur tout le patch
+et rend **un `theta` par patch**, parce que le CVNN à venir produira lui aussi un
+jeu par patch : une baseline à 252 jeux par patch ne lui serait pas comparable.
+`QueganEstimator.estimate_range_lines` implémente le protocole de Babu et reste
+disponible ; l'écart mesuré entre les deux est de **0,79 dB** sur le crosstalk.
+
+**Le masque de corrélation — délibérément absent.** Le Quegan de Babu §3.3.1
+n'en a aucun. Le masque est ce qui définit l'**improved Quegan** du §3.3.2, qui
+écarte les pixels dont `|r(HH,VH)|` ou `|r(VV,HV)|` dépasse 0,4 (Kimura et al.,
+2004, équation 19) et modifie en outre l'estimation de `alpha` (son équation 20,
+avec le rapport de bruit `m`). L'ajouter ici ferait basculer l'estimateur hors de
+son périmètre sans changer son nom.
+
+⚠️ Ne pas confondre avec le masque de **Fore §V-B**, qui porte sur un autre
+couple — `|r(HH,VV)| > 0,2` — et n'est pas le même critère. Mesuré sur 250 patchs
+de cette pile : celui de Kimura en conserve **91 %**, celui de Fore **21 %**, et
+les deux sont statistiquement décorrélés (`rho_s = -0,10`, non significatif).
+Fore justifie pourtant le sien en invoquant la nullité des corrélations
+co-pol/cross-pol — or son équation 17 laisse le terme HH–VV explicitement
+**non nul**. Sa justification décrit les couples de Kimura, pas le sien.
+
+**Ainsworth et al. (2006)**, méthode itérative décrite en annexe A-A de Fore et
+au §3.3.3 de Babu. Non implémentée.
 
 ### Tests
 

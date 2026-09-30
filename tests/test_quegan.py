@@ -227,6 +227,28 @@ def test_le_message_nomme_le_critere_degrade():
     assert "C11 C44" in str(erreur.value) or "C22 C33" in str(erreur.value)
 
 
+def test_le_message_nomme_le_bon_critere_quand_un_autre_vaut_nan():
+    """Un critère `nan` doit l'emporter dans le diagnostic.
+
+    Canaux croisés éteints : `Delta / (C11 C44)` reste sain à 0,999 tandis que
+    `X / sqrt(C22 C33)` vaut `nan`, son dénominateur s'étant annulé. Comme
+    `nan` perd toute comparaison, un `min` naïf gardait son premier élément et
+    accusait `Delta` — en affichant « 9.992e-01 < tol = 1.000e-06 », ce qui est
+    faux et envoie le lecteur sur une fausse piste.
+    """
+    rng = np.random.default_rng(0)
+    copol = (rng.normal(size=(64, 64)) + 1j * rng.normal(size=(64, 64))).astype(np.complex64)
+    patch = np.stack(
+        [copol, np.zeros_like(copol), np.zeros_like(copol),
+         (rng.normal(size=(64, 64)) + 1j * rng.normal(size=(64, 64))).astype(np.complex64)]
+    )
+    with pytest.raises(IllConditionedCovarianceError) as erreur:
+        estimateur().estimate(patch)
+    assert "C22 C33" in erreur.value.name, (
+        f"critère rapporté : {erreur.value.name!r} ; le fautif est X / sqrt(C22 C33)"
+    )
+
+
 def test_les_seuils_sont_relatifs_donc_invariants_d_echelle():
     """Une homothétie ne doit pas faire basculer un garde-fou.
 
