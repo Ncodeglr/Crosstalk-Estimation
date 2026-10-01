@@ -1,7 +1,7 @@
 """
 Les cinq paramètres de distorsion polarimétrique.theta = (u, v, w, z, alpha)
 Ce sont les seules inconnues du modèle direct `o = D s + n` une fois les données étalonnées en gain absolu et en
-déséquilibre co-polaire (`A = 1`, `k = 1/sqrt(alpha)` ; Fore et al., 2015, équations 11 à 13).
+déséquilibre co-polaire (`A = 1`, `k = 1/sqrt(alpha) Fore et al., 2015, équations 11 à 13.
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ CROSSTALK_NAMES: tuple[str, ...] = ("u", "v", "w", "z")
 class CrosstalkParameters:
     """
     @dataclass permet de rendre le jeu de paramètres immuable et plus léger (slots), elles sont dédiées au stockage de données, avec très peu de code.
-    frozen=True permet l'immuabilité et la sécurité
-    slots=True permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
+    frozen = True permet l'immuabilité et la sécurité
+    slots = True permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
     
     Jeu immuable `(u, v, w, z, alpha)` pour un patch ou une ligne de distance.
 
@@ -45,18 +45,21 @@ class CrosstalkParameters:
         if self.alpha == 0:
             raise ValueError("alpha nul : D fait intervenir 1/sqrt(alpha) et n'est pas définie")
 
+    
     #--------------------------------Vecteurs----------------------------------
 
     @classmethod #Signifie que la méthode est liée à la classe et non à une instance de la classe. Elle peut être appelée sur la classe elle-même, sans avoir besoin de créer une instance de la classe.
     def from_vector(cls, theta: Iterable[complex]) -> "CrosstalkParameters":
-        """Construit depuis un vecteur ordonné selon `PARAMETER_NAMES`."""
+        """
+        Permet de créer une instance de la CrosstalkParameters à partir d'un vecteur ordonné selon `PARAMETER_NAMES`.
+        """
         values = np.asarray(list(theta))
         if values.shape != (5,):
             raise ValueError(f"vecteur de forme {values.shape}, (5,) attendu")
         return cls(*(complex(value) for value in values))
 
     def to_vector(self) -> np.ndarray:
-        """Vecteur `(5,)` complex128 ordonné selon `PARAMETER_NAMES`."""
+        """Vecteur (5,) complex128 ordonné selon `PARAMETER_NAMES`."""
         return np.array([getattr(self, name) for name in PARAMETER_NAMES], dtype=np.complex128)
 
     #------------------------------Lectures physiques------------------------
@@ -65,10 +68,8 @@ class CrosstalkParameters:
         """
         Module des quatre termes de crosstalk en dB : `20 log10 |.|`.
 
-        C'est l'échelle des figures 7 à 9 de Fore et al. (2015) et des tableaux
-        de Babu et al. (2022) : -20 dB environ avant calibration.
-
-        Un terme exactement nul rend `-inf`, qui est sa valeur en dB : c'est le cas d'un jeu neutre, pas une erreur, et l'avertissement NumPy associé est donc réduit au silence.
+        C'est l'échelle des figures 7 à 9 de Fore et des tableaux de Babu : -20 dB environ avant calibration.
+        Un terme exactement nul rend `-inf`, qui est sa valeur en dB : c'est le cas d'un jeu neutre, pas une erreur, et l'avertissement NumPy associé est donc réduit au silence avec le np.errstate(divide="ignore").
         """
         with np.errstate(divide="ignore"):
             #np.errstate(divide="ignore") permet de supprimer les avertissements de division par zéro, ce qui est utile ici car on peut avoir des termes de crosstalk nuls

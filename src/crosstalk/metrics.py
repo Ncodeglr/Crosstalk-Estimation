@@ -96,12 +96,11 @@ def reciprocity(patch: np.ndarray) -> float:
         return float(np.abs(np.mean(hv * np.conj(vh))) / denominateur)
 
 
-def corner_reflector_crosstalk(
-    hh: complex, hv: complex, vh: complex, vv: complex
-) -> float:
-    """Fuite co-pol vers cross-pol mesurée à un trièdre, en dB.
+def corner_reflector_crosstalk(hh: complex, hv: complex, vh: complex, vv: complex) -> float:
+    """
+    Fuite co-pol vers cross-pol mesurée à un trièdre, en dB.
 
-    **La seule vérité terrain disponible sur ces données.** Un trièdre a pour
+    La seule vérité terrain disponible sur ces données. Un trièdre a pour
     matrice de diffusion `S = sqrt(sigma) * I` (Fore et al., 2015, équation 5) :
     ses canaux croisés sont **nuls par construction**. Tout ce qu'on y mesure
     est donc du crosstalk, sans aucune hypothèse de modèle — contrairement au
@@ -115,18 +114,15 @@ def corner_reflector_crosstalk(
     de `CrosstalkParameters.max_crosstalk_db`, qui porte sur les paramètres
     isolés — les deux peuvent différer par compensation entre termes.
 
-    Args:
-        hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur,
-            en ordre `physics.POL_ORDER`.
+    Args: hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur, en ordre `physics.POL_ORDER`.
 
     Returns:
-        `20 log10( max(|hv|, |vh|) / sqrt(|hh| |vv|) )`. La référence co-polaire
-        est la moyenne géométrique des deux canaux, et non `|hh|` seul, pour ne
-        pas dépendre du déséquilibre résiduel entre HH et VV.
+        20 log10( max(|hv|, |vh|) / sqrt(|hh| |vv|) ). 
+        La référence co-polaire est la moyenne géométrique des deux canaux, et non `|hh|` seul, pour ne pas dépendre du déséquilibre résiduel entre HH et VV.
 
-        Rend `-inf` sur un trièdre parfait, et une valeur **non finie** quand la
+        Rend `-inf` sur un trièdre parfait, et une valeur non finie quand la
         référence co-polaire s'annule — `inf` si les canaux croisés ne sont pas
-        nuls, `nan` s'ils le sont aussi. L'appelant doit donc filtrer par
+        nuls, nan si les canaux croisés le sont aussi. L'appelant doit donc filtrer par
         `np.isfinite`, comme le fait le garde-fou de `QueganEstimator._solve` :
         un réflecteur absent ou masqué ne doit pas produire un chiffre.
     """
@@ -137,14 +133,18 @@ def corner_reflector_crosstalk(
 
 @dataclass(frozen=True, slots=True)
 class ResidualReport:
-    """Résultat du protocole de résiduel de Fore et al. (2015, §V).
+    """
+    @dataclass permet de rendre le jeu de paramètres immuable et plus léger (slots), elles sont dédiées au stockage de données, avec très peu de code.
+        -frozen=True permet l'immuabilité et la sécurité
+        -slots=True permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
+        
+    Résultat du protocole de résiduel de Fore (§V).
 
     Attributes:
         initial: jeu estimé sur les données d'origine.
         residual: jeu ré-estimé sur les données corrigées.
         reciprocity_before: cohérence HV/VH avant correction.
-        reciprocity_after: la même après correction. C'est la seule des quatre
-            grandeurs que l'estimateur ne juge pas lui-même.
+        reciprocity_after: la même après correction. C'est la seule des quatre grandeurs que l'estimateur ne juge pas lui-même.
     """
 
     initial: CrosstalkParameters
@@ -184,19 +184,16 @@ class ResidualReport:
         }
 
 
-def residual_crosstalk(
-    patch: np.ndarray, estimator: "CrosstalkEstimator"
-) -> ResidualReport:
-    """Estime, corrige, puis ré-estime sur les données corrigées.
+def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> ResidualReport:
+    """
+    Estime, corrige, puis ré-estime sur les données corrigées.
 
     Args:
         patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
-        estimator: la méthode évaluée. C'est elle qui juge sa propre correction,
-            d'où la réserve énoncée en tête de module.
+        estimator: la méthode évaluée. C'est elle qui juge sa propre correction, d'où la réserve énoncée en tête de module.
 
     Returns:
-        Le rapport complet : les deux jeux, et la cohérence HV/VH de part et
-        d'autre de la correction.
+        Le rapport complet : les deux jeux, et la cohérence HV/VH de part et d'autre de la correction.
 
     Raises:
         IllConditionedCovarianceError: si l'une des deux estimations échoue.

@@ -152,7 +152,7 @@ class QueganEstimator(CrosstalkEstimator):
         raise IllConditionedCovarianceError(nom, valeur, seuil)
 
     # -----------------------------Interface-------------------------------------------
-
+    #On override la méthode estimate de la classe mère CrosstalkEstimator pour implémenter l'estimation du crosstalk selon Quegan. Cette méthode prend en entrée un patch d'observation et renvoie les paramètres de crosstalk estimés.
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
         Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
@@ -170,7 +170,7 @@ class QueganEstimator(CrosstalkEstimator):
         quantité positive bruitée. Le mode "full" n'en souffre pas.
 
         Note:
-            Cette moyenne porte sur **toutes** les fenêtres du patch, distance comprise. 
+            Cette moyenne porte sur toutes les fenêtres du patch, distance comprise. 
             Ce n'est donc pas le protocole de Babu (§3.3.1), qui moyenne le long d'une seule ligne de distance : voir estimate_range_lines.
 
         Raises:

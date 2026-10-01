@@ -23,7 +23,7 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
     
     Returns: Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
     """
-    u, v, w, z, alpha = params.to_vector()
+    u, v, w, z, alpha = params.to_vector() # Utilise la méthode to_vector de parameters.py pour obtenir les valeurs des paramètres du vecteur
     sa = np.sqrt(alpha)
     return np.array(
         [
@@ -39,14 +39,12 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
 def inverse_distortion_matrix(params: CrosstalkParameters, tol: float = DEFAULT_TOL) -> np.ndarray:
     """
     Matrice de calibration Sigma, en ordre `POL_ORDER`.
+    Ses coefficients sont ceux de Fore équation 15 de, déjà réindexés de la même façon que ceux de distortion_matrix
 
-    Ses coefficients sont ceux de l'équation 15 de Fore, **déjà
-    réindexés** de la même façon que ceux de `distortion_matrix
-
-    Forme analytique exacte de `D^-1`, et non une approximation au premier
-    ordre : `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et
-    al. porte la même faute de transcription que son équation 10 et n'inverse
-    ni l'une ni l'autre de ses matrices de distorsion.
+    Forme analytique exacte de `D^-1`, et non une approximation au premier ordre : 
+        `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et
+        l'équation 15 de Fore porte la même faute de transcription que son équation 10 et n'inverse
+        ni l'une ni l'autre de ses matrices de distorsion.
 
     Args:
         params: le jeu `(u, v, w, z, alpha)`.
@@ -118,7 +116,7 @@ def apply_matrix(matrix: np.ndarray, data: np.ndarray, channel_axis: int) -> np.
     return result
 
 
-def apply_distortion(scattering: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
+def apply_distortion(sVector_scattering: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
     """
     Applique le modèle direct sans bruit : `o = D s`.
     Sert à simuler des observations à theta connu — c'est le seul moyen de disposer d'une vérité terrain, les données réelles n'en ayant pas.
@@ -130,18 +128,18 @@ def apply_distortion(scattering: np.ndarray,params: CrosstalkParameters,channel_
 
     Returns: Le patch distordu, de même forme et même dtype.
     """
-    return apply_matrix(distortion_matrix(params), scattering, channel_axis)
+    return apply_matrix(distortion_matrix(params), sVector_scattering, channel_axis)
 
 
 def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,tol: float = DEFAULT_TOL,) -> np.ndarray:
     """
-    Corrige un patch observé : `s_chapeau = Sigma o` (équation 14).
+    Corrige un patch observé : s_corrigé = Sigma @ o (Fore équation 14).
 
-    Le bruit n'étant pas connu, il n'est pas retranché et se trouve amplifié par
-    Sigma. La correction est donc exacte sur données sans bruit uniquement.
+    Le bruit n'étant pas connu, il n'est pas retranché et se trouve amplifié par Sigma. 
+    La correction est donc exacte sur données sans bruit uniquement.
 
     Args:
-        observed: patch `(..., 4, H, W)` du signal observé, ordre POL_ORDER.
+        observed: patch (..., 4, H, W) du signal observé, ordre POL_ORDER.
         params: le jeu estimé.
         channel_axis: axe des polarisations.
         tol: seuil de singularité passé à `inverse_distortion_matrix`.
