@@ -38,7 +38,13 @@ from .estimators import (
     create_from_config,
     register_estimator,
 )
-from .metrics import ResidualReport, parameter_errors, residual_crosstalk
+from .metrics import (
+    ResidualReport,
+    corner_reflector_crosstalk,
+    parameter_errors,
+    reciprocity,
+    residual_crosstalk,
+)
 from .parameters import CrosstalkParameters
 from .physics import (
     POL_ORDER,
@@ -59,7 +65,9 @@ __all__ = [
     "CrosstalkEstimator",
     "CrosstalkParameters",
     "ResidualReport",
+    "corner_reflector_crosstalk",
     "parameter_errors",
+    "reciprocity",
     "residual_crosstalk",
     "available_estimators",
     "create_estimator",

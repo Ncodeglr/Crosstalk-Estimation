@@ -287,6 +287,53 @@ def infer_classes_from_dataloader(dataloader: DataLoader) -> int:
 
     return len(unique_labels)
 
+def _groupes_par_emplacement(dataset: Any) -> Optional[List[List[int]]]:
+    """Regroupe les index d'une pile co-enregistrée par emplacement au sol.
+
+    Une pile UAVSAR (`SLCDataset`) concatène N acquisitions de la *même* trace,
+    découpées avec la même grille de patchs : l'index global s'écrit
+    ``date * nb_emplacements + emplacement``, et les N index qui partagent le
+    même reste modulo ``nb_emplacements`` regardent le même bout de sol.
+
+    Mélanger ces index un par un (le `random.shuffle` utilisé jusqu'ici) place
+    presque toujours au moins une des N dates d'un emplacement dans le train et
+    une autre dans le test : mesuré sur la pile Rosamd_35012_04 (5 dates,
+    184 415 patchs pour une grille de 128 px), 99,9 % des emplacements de test
+    sont aussi vus en apprentissage. Comme le crosstalk d'un même emplacement est corrélé d'une
+    date à l'autre (r = +0,607 sur le vecteur thêta), le test ne mesure plus
+    alors une généralisation mais une mémorisation du sol.
+
+    Le regroupement par emplacement supprime cette fuite (0,0 % mesuré) sans
+    toucher au volume ni à la couverture : les 77 colonnes de portée restent
+    présentes des deux côtés. On groupe par *emplacement* et non par bandes
+    contiguës (d'azimut ou de portée) parce que le crosstalk varie le long des
+    deux axes — rho_s = -0,192 en azimut (p = 1,5e-05, effet de scène) et
+    rho_s = +0,498 en portée (p = 1,2e-32, effet d'antenne) — si bien que des
+    bandes contiguës donnent deux distributions différentes : 1,68 dB d'écart
+    entre médianes, Mann-Whitney p ~ 0.
+
+    Renvoie None — et le mélange index par index reste alors utilisé — dès que
+    le jeu de données n'est pas une telle pile : pas d'attribut `patch_counts`,
+    une seule acquisition, ou des acquisitions de tailles différentes, auquel
+    cas les index ne sont plus alignés et le regroupement n'aurait pas de sens.
+    """
+    patch_counts = getattr(dataset, "patch_counts", None)
+    if not isinstance(patch_counts, dict) or len(patch_counts) < 2:
+        return None
+
+    comptes = list(patch_counts.values())
+    nb_emplacements = comptes[0]
+    if any(compte != nb_emplacements for compte in comptes):
+        return None
+    if len(comptes) * nb_emplacements != len(dataset):
+        return None
+
+    return [
+        [date * nb_emplacements + emplacement for date in range(len(comptes))]
+        for emplacement in range(nb_emplacements)
+    ]
+
+
 def get_dataloaders(cfg: dict, use_cuda: bool) -> Tuple[DataLoader, DataLoader]:
     """Create training and validation data loaders based on configuration."""
     dataset_config = _parse_dataset_config(cfg)
@@ -336,19 +383,46 @@ def get_dataloaders(cfg: dict, use_cuda: bool) -> Tuple[DataLoader, DataLoader]:
                 base_dataset_for_split, task, cfg
             )
         else:
-            logger.info("Using random split")
-            indices = list(range(len(base_dataset_for_split)))
-            random.shuffle(indices)
+            # Découpage aléatoire. Sur une pile co-enregistrée (plusieurs
+            # acquisitions de la même trace), on ne mélange pas les patchs un
+            # par un mais les emplacements au sol : les N dates d'un même
+            # emplacement partent ensemble du même côté, sans quoi le test
+            # rejoue du sol déjà vu en apprentissage (voir
+            # `_groupes_par_emplacement` pour les mesures). Sur tout autre jeu
+            # de données, le mélange index par index est conservé tel quel.
+            groupes = _groupes_par_emplacement(base_dataset_for_split)
+            if groupes is None:
+                logger.info("Using random split")
+                indices = list(range(len(base_dataset_for_split)))
+                random.shuffle(indices)
+                taille_groupe = 1
+            else:
+                taille_groupe = len(groupes[0])
+                logger.info(
+                    f"Using random split grouped by ground location "
+                    f"({len(groupes)} locations x {taille_groupe} acquisitions)"
+                )
+                random.shuffle(groupes)
+                indices = [index for groupe in groupes for index in groupe]
             
             # Apply max_num_samples limit if specified
             max_num_samples = cfg["data"].get("max_num_samples")
             if max_num_samples is not None and max_num_samples > 0:
-                indices = indices[:max_num_samples]
-                logger.info(f"Limited dataset to {max_num_samples} samples (max_num_samples)")
+                # tronqué à un nombre entier de groupes, pour ne pas couper un
+                # emplacement en deux
+                indices = indices[: max_num_samples - max_num_samples % taille_groupe]
+                logger.info(f"Limited dataset to {len(indices)} samples (max_num_samples)")
             
             test_ratio = cfg["data"].get("test_ratio")
             num_valid = int(cfg["data"]["valid_ratio"] * len(indices))
             num_test = int(test_ratio * len(indices))
+            
+            # Les frontières tombent sur des frontières de groupe : les index
+            # étant rangés groupe par groupe, il suffit d'arrondir les tailles
+            # au multiple inférieur (`taille_groupe` vaut 1 hors pile, ce qui
+            # laisse alors les tailles inchangées).
+            num_valid -= num_valid % taille_groupe
+            num_test -= num_test % taille_groupe
             
             num_train = len(indices) - num_valid - num_test
             train_indices = indices[:num_train]
@@ -633,11 +707,24 @@ def get_dataset_split_indices(
         if dataset_config["dataset_name"] in ["PolSFDataset", "S1SLC"] and task in ["segmentation", "classification"]:
             return get_label_based_split_indices(base_dataset, task, cfg)
         else:
-            indices = list(range(len(base_dataset)))
-            random.shuffle(indices)
+            # Même regroupement par emplacement que dans `get_dataloaders`,
+            # sans quoi la visualisation afficherait un découpage que
+            # l'apprentissage n'utilise pas.
+            groupes = _groupes_par_emplacement(base_dataset)
+            if groupes is None:
+                indices = list(range(len(base_dataset)))
+                random.shuffle(indices)
+                taille_groupe = 1
+            else:
+                taille_groupe = len(groupes[0])
+                random.shuffle(groupes)
+                indices = [index for groupe in groupes for index in groupe]
+
             test_ratio = cfg["data"].get("test_ratio")
             num_valid = int(cfg["data"]["valid_ratio"] * len(indices))
             num_test = int(test_ratio * len(indices))
+            num_valid -= num_valid % taille_groupe
+            num_test -= num_test % taille_groupe
             num_train = len(indices) - num_valid - num_test
             
             train_indices = indices[:num_train]

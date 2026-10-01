@@ -21,22 +21,19 @@ Quegan et Ainsworth (résiduels de -15 à -20 dB contre -30 dB) et que Babu et a
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-
 import numpy as np
-
 from .parameters import CROSSTALK_NAMES, CrosstalkParameters
+from .physics import POL_ORDER
 
 if TYPE_CHECKING:  # pragma: no cover
     from .estimators.base import CrosstalkEstimator
 
 
-def parameter_errors(
-    estimate: CrosstalkParameters, reference: CrosstalkParameters
-) -> dict[str, float]:
-    """Écarts entre un jeu estimé et la vérité terrain.
+def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParameters) -> dict[str, float]:
+    """
+    Écarts entre un jeu estimé et la vérité terrain.
 
     N'a de sens que sur données synthétiques, `reference` étant le `theta`
     effectivement appliqué par `physics.apply_distortion`.
@@ -47,19 +44,16 @@ def parameter_errors(
 
     Returns:
         Dictionnaire plat, prêt pour un CSV :
-
-        - `abs_error_u` .. `abs_error_z` : `|theta_estime - theta_vrai|` ;
-        - `rel_error_u` .. `rel_error_z` : le même, rapporté à `|theta_vrai|`
-          (`inf` si le terme vrai est nul) ;
-        - `max_rel_error` : le pire des quatre ;
-        - `alpha_error_db` : écart des modules de alpha, en dB.
+        - abs_error_u .. abs_error_z : |theta_estime - theta_vrai|
+        - rel_error_u .. rel_error_z : le même, rapporté à |theta_vrai| (inf si le terme vrai est nul)
+        - max_rel_error : le pire des quatre ;
+        - alpha_error_db : écart des modules de alpha, en dB.
 
     Note:
-        L'écart des **phases** de alpha n'est pas rendu. Les formes fermées du
-        projet suivent l'équation 15 de Babu et al. (2022), qui s'arrête au
-        module : un `alpha` estimé est réel positif, donc un tel écart vaudrait
-        toujours l'opposé de la phase de référence. Il aurait l'apparence d'une
-        mesure sans en être une.
+        L'écart des phases de alpha n'est pas rendu. Les formes fermées du
+        projet suivent l'équation 15 de Babu, qui s'arrête au module : 
+            un alpha estimé est réel positif, donc un tel écart vaudrait
+            toujours l'opposé de la phase de référence. Il aurait l'apparence d'une mesure sans en être une.
     """
     resultats: dict[str, float] = {}
     relatives: list[float] = []
@@ -72,9 +66,73 @@ def parameter_errors(
             relative = float(absolue / abs(vrai)) if vrai != 0 else float("inf")
         resultats[f"rel_error_{name}"] = relative
         relatives.append(relative)
-    resultats["max_rel_error"] = max(relatives)
+    resultats["max_rel_error"] = max(relatives) #max_rel_error prend le pire des quatre, pas la moyenne — un seul paramètre mal estimé suffit à fausser la correction, donc on ne veut pas qu'il soit noyé.
+    
+    #Pour alpha, on ne rend que l'écart des modules en dB
     resultats["alpha_error_db"] = estimate.alpha_db() - reference.alpha_db()
     return resultats
+
+
+def reciprocity(patch: np.ndarray) -> float:
+    """
+    Cohérence entre les canaux croisés : `|<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)`.
+
+    Validation indépendante de l'estimateur, contrairement au résiduel. 
+    Un radar monostatique émet et reçoit sur la même antenne, donc la réciprocité S_HV = S_VH est une propriété du capteur et non du modèle de Quegan. 
+    Le crosstalk la viole, une correction qui la rétablit démontre quelque chose que l'estimateur n'a pas optimisé.
+
+    C'est le contrôle du §4.4 de Babu, dont les figures 7a et 8a tracent HV contre VH avant et après calibration : un nuage dispersé devient une droite.
+
+    Args : patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
+
+    Returns:
+        Un réel dans `[0, 1]`, `1` pour une réciprocité parfaite. Rend `nan` si
+        l'un des deux canaux croisés est éteint.
+    """
+    hv = patch[POL_ORDER.index("HV")].ravel()
+    vh = patch[POL_ORDER.index("VH")].ravel()
+    denominateur = np.sqrt(np.mean(np.abs(hv) ** 2) * np.mean(np.abs(vh) ** 2))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return float(np.abs(np.mean(hv * np.conj(vh))) / denominateur)
+
+
+def corner_reflector_crosstalk(
+    hh: complex, hv: complex, vh: complex, vv: complex
+) -> float:
+    """Fuite co-pol vers cross-pol mesurée à un trièdre, en dB.
+
+    **La seule vérité terrain disponible sur ces données.** Un trièdre a pour
+    matrice de diffusion `S = sqrt(sigma) * I` (Fore et al., 2015, équation 5) :
+    ses canaux croisés sont **nuls par construction**. Tout ce qu'on y mesure
+    est donc du crosstalk, sans aucune hypothèse de modèle — contrairement au
+    résiduel de `residual_crosstalk`, que le même estimateur juge.
+
+    C'est la mesure de Babu et al. (2022, §4.6 et figure 9).
+
+    Au premier ordre en `(u, v, w, z)`, appliquer `D` à `S = I` donne
+    `O_HV / O_HH = z + w` et `O_VH / O_VV = u + v` : la fuite rendue ici vaut
+    donc `max(|z + w|, |u + v|)`. Ce n'est **pas** le `max 20 log10 |u,v,w,z|`
+    de `CrosstalkParameters.max_crosstalk_db`, qui porte sur les paramètres
+    isolés — les deux peuvent différer par compensation entre termes.
+
+    Args:
+        hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur,
+            en ordre `physics.POL_ORDER`.
+
+    Returns:
+        `20 log10( max(|hv|, |vh|) / sqrt(|hh| |vv|) )`. La référence co-polaire
+        est la moyenne géométrique des deux canaux, et non `|hh|` seul, pour ne
+        pas dépendre du déséquilibre résiduel entre HH et VV.
+
+        Rend `-inf` sur un trièdre parfait, et une valeur **non finie** quand la
+        référence co-polaire s'annule — `inf` si les canaux croisés ne sont pas
+        nuls, `nan` s'ils le sont aussi. L'appelant doit donc filtrer par
+        `np.isfinite`, comme le fait le garde-fou de `QueganEstimator._solve` :
+        un réflecteur absent ou masqué ne doit pas produire un chiffre.
+    """
+    copol = np.sqrt(abs(hh) * abs(vv))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return float(20.0 * np.log10(max(abs(hv), abs(vh)) / copol))
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +142,15 @@ class ResidualReport:
     Attributes:
         initial: jeu estimé sur les données d'origine.
         residual: jeu ré-estimé sur les données corrigées.
+        reciprocity_before: cohérence HV/VH avant correction.
+        reciprocity_after: la même après correction. C'est la seule des quatre
+            grandeurs que l'estimateur ne juge pas lui-même.
     """
 
     initial: CrosstalkParameters
     residual: CrosstalkParameters
+    reciprocity_before: float = float("nan")
+    reciprocity_after: float = float("nan")
 
     @property
     def initial_db(self) -> float:
@@ -116,6 +179,8 @@ class ResidualReport:
             "residual_db": self.residual_db,
             "reduction_db": self.reduction_db,
             "alpha_abs": float(abs(self.initial.alpha)),
+            "reciprocity_before": self.reciprocity_before,
+            "reciprocity_after": self.reciprocity_after,
         }
 
 
@@ -130,11 +195,17 @@ def residual_crosstalk(
             d'où la réserve énoncée en tête de module.
 
     Returns:
-        Le couple `(jeu initial, jeu résiduel)`.
+        Le rapport complet : les deux jeux, et la cohérence HV/VH de part et
+        d'autre de la correction.
 
     Raises:
         IllConditionedCovarianceError: si l'une des deux estimations échoue.
         SingularDmatrixError: si la correction est impossible.
     """
     corrige, initial = estimator.estimate_and_correct(patch)
-    return ResidualReport(initial=initial, residual=estimator.estimate(corrige))
+    return ResidualReport(
+        initial=initial,
+        residual=estimator.estimate(corrige),
+        reciprocity_before=reciprocity(patch),
+        reciprocity_after=reciprocity(corrige),
+    )

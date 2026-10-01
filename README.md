@@ -97,10 +97,14 @@ python src/run_baselines.py        # depuis la racine du dépôt
 ```
 
 ```
-         méthode  patchs  échecs  initial dB  résiduel dB  réduction dB  |alpha|
---------------------------------------------------------------------------------
-          quegan    4541       0       -21.2        -30.7           9.5    1.226
+         méthode  patchs  échecs  initial dB  résiduel dB  réduction dB  |alpha|  récip. avant  récip. après
+------------------------------------------------------------------------------------------------------------
+          quegan    4541       0       -21.1        -30.6           9.5    1.225         0.831         0.853
 ```
+
+Les deux dernières colonnes sont la validation indépendante décrite plus bas :
+la réduction de 9,5 dB est jugée par l'estimateur lui-même, la réciprocité ne
+l'est pas.
 
 Chaque colonne est la **médiane** sur les patchs, un `theta` étant estimé par
 patch. Ces valeurs dépendent de `seed:`, qui fixe le découpage train / valid /
@@ -308,6 +312,150 @@ co-pol/cross-pol — or son équation 17 laisse le terme HH–VV explicitement
 
 **Ainsworth et al. (2006)**, méthode itérative décrite en annexe A-A de Fore et
 au §3.3.3 de Babu. Non implémentée.
+
+### Validation : trois niveaux de preuve
+
+Les `.slc` n'ont pas de vérité terrain : on ne peut pas savoir si un `theta`
+estimé est juste. Le projet s'appuie donc sur trois contrôles d'exigence
+croissante, dont deux sont indépendants de l'estimateur.
+
+| niveau | ce qui juge | où |
+|---|---|---|
+| 1. crosstalk résiduel | **l'estimateur lui-même** | `run_baselines.py` |
+| 2. réciprocité HV/VH | la physique du capteur | `run_baselines.py` |
+| 3. réflecteurs en coin | la réponse connue d'un trièdre | `measure_reflectors.py` |
+
+#### Niveau 1 — le résiduel, et pourquoi il ne prouve rien
+
+`residual_crosstalk` estime, corrige, puis **ré-estime avec le même estimateur**.
+La réduction obtenue est donc optimiste par construction, et dominée par le
+plancher propre de la méthode plutôt que par ce que la correction a retiré.
+
+Deux mesures le montrent. Les modes `full` et `(5, 5)` diffèrent de 0,9 dB sur
+le crosstalk initial mais s'accordent à 0,1 dB sur le résiduel : les deux butent
+sur le même plancher. Et un seul indice faux dans les formes fermées laisse la
+campagne rendre `-20.10 dB`, identique à la décimale, sans rien signaler.
+
+Cette métrique sert à **comparer des méthodes entre elles**, jamais à annoncer
+une performance absolue.
+
+#### Niveau 2 — la réciprocité, indépendante et sans données extérieures
+
+Un radar monostatique émet et reçoit sur la même antenne : `S_HV = S_VH` est une
+propriété du **capteur**, pas du modèle de Quegan. Le crosstalk la viole, et
+`metrics.reciprocity` mesure la cohérence `|<HV VH*>| / sqrt(<|HV|²><|VH|²>)`,
+valant 1 pour une réciprocité parfaite.
+
+Elle est indépendante parce que `estimate` ne lit que des corrélations
+co-pol/cross-pol, jamais l'accord entre HV et VH. C'est le contrôle du §4.4 de
+Babu et al. (2022), dont les figures 7a et 8a tracent HV contre VH avant et
+après calibration.
+
+#### Niveau 3 — les réflecteurs en coin, la seule vérité terrain
+
+Un trièdre répond `S = sqrt(sigma) I` (Fore et al., 2015, équation 5) : ses
+canaux croisés sont **nuls par construction**. Tout ce qu'on y mesure est donc du
+crosstalk, sans hypothèse de modèle. C'est le §4.6 de Babu et sa figure 9.
+
+```bash
+python src/measure_reflectors.py        # ~4 min, les 5 acquisitions
+```
+
+**Localisation.** Le catalogue JPL `data/corner_reflectors/rosamond_<date>.csv`
+donne latitude, longitude, azimut et côté de 27 réflecteurs. Le fichier `.llh`
+donne la position géographique de chaque pixel de la grille 2x8 : l'inverser par
+plus proche voisin, puis multiplier par le nombre de vues — 8 en azimut, 2 en
+distance — place chaque réflecteur à 2-5 pixels près. Un raffinement sur le
+maximum de `|HH|` fait le reste.
+
+Le référentiel choisi au téléchargement — `instantaneous-crust`, `mean-crust` ou
+`tide-free` — n'est consigné ni dans l'en-tête du `.csv` ni dans l'article de
+Babu. Il est sans conséquence : les trois diffèrent d'au plus 30 cm, soit
+0,13 pixel en distance. Vérifié en déplaçant chaque réflecteur de 30 cm dans les
+quatre directions — le pixel localisé reste identique pour les 15.
+
+**Deux filtres indispensables.**
+
+Le réseau de Rosamond comporte **deux jeux orientés à 180°**, un par direction de
+vol. Les réflecteurs à 170-175° renvoient une amplitude de 0,1 à 1,5 ; ceux à
+349-355°, alignés sur le `Peg Heading` de -10,03° du `.ann`, renvoient 23 à 83.
+Sans ce filtre, douze mesures sur vingt-sept seraient du bruit.
+
+Un contrôle de signature écarte ensuite ce qui n'est pas un trièdre :
+`|VV/HH|` dans `[0,7 ; 1,4]` et phase co-polaire sous 30°. Les cibles brillantes
+non réflectrices de la zone présentent `|VV/HH| ~ 0,2` et des phases de 150°.
+
+Quinze réflecteurs répondent — dix de 2,44 m et cinq de 4,80 m — aux mêmes
+positions au pixel près sur les cinq dates. Les huit que Babu utilise (13, 14,
+15, 17, 18, 20, 21, 22) sont tous dans le lot.
+
+#### Le piège de circularité, et comment il est évité
+
+Mesurer au réflecteur ne suffit pas : encore faut-il que le `theta` appliqué ne
+vienne pas de lui.
+
+Le lac sec rétrodiffuse si peu qu'un réflecteur porte **23 à 31 % de la puissance
+d'un patch 256x256, dans un seul pixel**. Estimer `theta` sur ce patch revient
+donc à l'ajuster sur le réflecteur, puis à s'en servir pour le corriger. Mesuré :
+la fuite chutait de 18 dB, et un `theta` pris 512 pixels à côté ne donnait plus
+aucune amélioration.
+
+`theta_de_la_bande` lève la circularité par deux précautions :
+
+- la **bande** de Fore §V-B — `±10` colonnes sur toute la hauteur de la fauchée,
+  et non un patch ;
+- la **moyenne des `theta`** plutôt que de la covariance. C'est le point décisif :
+  moyenner `C` laisse un pixel brillant écraser l'estimation, moyenner les
+  `theta` donne le même poids à chacune des 1,04 million de fenêtres 5x5. Le
+  réflecteur ne pèse plus que `2,4e-05`.
+
+⚠️ **C'est une justification de fond du protocole de Babu §3.3.1 que ni lui ni
+Fore n'énoncent**, et elle n'apparaît que sur une scène portant des cibles
+ponctuelles. C'est aussi pourquoi `measure_reflectors.py` force `window: [5, 5]`
+en dur plutôt que de lire le YAML : `full` y redonnerait des résultats circulaires.
+
+Contrôle : un `theta` estimé 200 colonnes à côté corrige aussi bien, à 1,0-3,0 dB
+près et sans biais systématique.
+
+#### Résultats aux réflecteurs
+
+Quinze trièdres par acquisition, soixante-quinze mesures. Fuite co-pol vers
+cross-pol, médiane par date :
+
+| date | n | avant | après | réduction | Babu, avant | Babu, après\* |
+|---|---|---|---|---|---|---|
+| 11 février | 15 | −24,80 dB | −36,07 dB | 11,28 dB | −21,62 dB | −32,89 dB |
+| 20 mai | 15 | −24,58 dB | **−30,99 dB** | 6,40 dB | **−19,94 dB** | **−27,51 dB** |
+| 10 juin | 15 | −24,33 dB | −37,75 dB | 13,42 dB | −20,82 dB | −30,47 dB |
+| 16 août | 15 | −24,36 dB | −36,00 dB | 11,64 dB | −21,70 dB | −30,85 dB |
+| 20 septembre | 15 | −24,59 dB | −33,60 dB | 9,01 dB | −21,88 dB | −30,29 dB |
+| **ensemble** | **75** | **−24,46 dB** | **−35,55 dB** | **11,08 dB** | −21,19 dB | −30,31 dB |
+
+\* colonne « Babu, après » = son **improved** Quegan (figure 9). Son Quegan
+simple est à −25,33 dB (table 4).
+
+**Ce qui concorde.** Le 20 mai ressort comme la pire date des deux côtés —
+après correction, −30,99 dB ici contre −27,51 dB chez lui, dans les deux cas le
+maximum de la série. La corrélation de rang entre les deux colonnes « après »
+vaut `rho_s = +0,70`, et celle de Pearson `+0,74` sur cinq points.
+
+**Ce qui diffère, et reste inexpliqué.** La correction obtenue est
+systématiquement meilleure que son Quegan simple (−35,55 contre −25,33 dB) et
+reste 3,5 dB en dessous de son improved Quegan. Trois pistes, non tranchées :
+
+1. **Son `alpha` est peut-être faux.** Ses équations 16 à 18 sont celles de Fore
+   **non réindexées** — sur un cas de référence, elles donnent `|alpha| = 1,0908`
+   au lieu de `1,2990`. Un `alpha` erroné dégrade directement la correction, et
+   c'est précisément ce qui sépare son Quegan de son improved Quegan.
+2. **L'étalonnage amont.** Il applique son équation 7 — gain absolu, déséquilibre
+   de canal, biais de phase — avant la correction de crosstalk ; ce projet part
+   du produit JPL tel quel.
+3. **Sa définition de la fuite au réflecteur**, que l'article ne précise pas.
+   Celle d'ici est `max(|HV|, |VH|) / sqrt(|HH| |VV|)` au pixel de pic.
+
+Le « avant », lui, est quasi constant d'une date à l'autre — 0,47 dB d'étendue,
+contre 1,94 dB chez Babu — ce qui est cohérent avec un crosstalk instrumental
+stable, mais n'explique pas pourquoi sa mesure varie davantage.
 
 ### Tests
 

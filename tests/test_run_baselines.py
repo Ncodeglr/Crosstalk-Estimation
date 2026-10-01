@@ -114,6 +114,8 @@ def test_une_ligne_ne_porte_que_ce_qui_est_affiche():
         "residual_db",
         "reduction_db",
         "alpha_abs",
+        "reciprocity_before",
+        "reciprocity_after",
     }
 
 

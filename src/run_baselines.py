@@ -66,7 +66,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
             else:
                 ligne.update(rapport.as_row())
             lignes.append(ligne)
-    #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0}
+    #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0, 'reciprocity_before': 0.83, 'reciprocity_after': 0.86}
     #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
     return lignes
 
@@ -79,7 +79,7 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     entete = (
         f"{'méthode':>16} {'patchs':>7} {'échecs':>7} "
         f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13} "
-        f"{'|alpha|':>8}"
+        f"{'|alpha|':>8} {'récip. avant':>13} {'récip. après':>13}"
     )
     sorties = [entete, "-" * len(entete)]
     for nom in noms:
@@ -87,16 +87,19 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
         valides = [ligne for ligne in groupe if ligne["status"] == "ok"]
         if not valides:
             sorties.append(f"{nom:>16} {len(groupe):>7} {len(groupe):>7}"
-                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8}")
+                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8}"
+                           f" {'-':>13} {'-':>13}")
             continue
         mediane = {
             cle: float(np.median([ligne[cle] for ligne in valides]))
-            for cle in ("initial_db", "residual_db", "reduction_db", "alpha_abs")
+            for cle in ("initial_db", "residual_db", "reduction_db", "alpha_abs",
+                        "reciprocity_before", "reciprocity_after")
         }
         sorties.append(
             f"{nom:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
             f"{mediane['initial_db']:>11.1f} {mediane['residual_db']:>12.1f} "
-            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f}"
+            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f} "
+            f"{mediane['reciprocity_before']:>13.3f} {mediane['reciprocity_after']:>13.3f}"
         )
     return "\n".join(sorties)
 
