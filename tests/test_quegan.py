@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import pytest
 
-from src.crosstalk.covariance import BABU_WINDOW
+from src.crosstalk.covariance import BABU_WINDOW, polarimetric_covariance
 from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.exceptions import IllConditionedCovarianceError
@@ -225,6 +225,33 @@ def test_le_message_nomme_le_critere_degrade():
     with pytest.raises(IllConditionedCovarianceError) as erreur:
         estimateur().estimate(constant)
     assert "C11 C44" in str(erreur.value) or "C22 C33" in str(erreur.value)
+
+
+def test_une_fenetre_exactement_nulle_est_ecartee():
+    """Un critère `inf` doit invalider la fenêtre, comme un `nan`.
+
+    Sur une fenêtre exactement nulle, la table de sommes cumulées laisse un
+    résidu d'annulation de l'ordre de 1e-18 au lieu de zéro : `C11` ressort
+    légèrement **négative** et `|X| / sqrt(C22 C33)` vaut `inf`. Or `inf > tol`
+    est vrai, là où `nan > tol` est faux — sans filtre de finitude, la fenêtre
+    était déclarée exploitable et son `theta` calculé sur du bruit numérique.
+
+    Le cas se rencontre sur les patchs de bord de fauchée, où les `.slc`
+    contiennent des zéros exacts.
+    """
+    rng = np.random.default_rng(0)
+    patch = (rng.normal(size=(4, 64, 64)) + 1j * rng.normal(size=(4, 64, 64))).astype(
+        np.complex64
+    )
+    patch[:, :, 20:30] = 0                       # dix colonnes éteintes
+    estime = estimateur(window=BABU_WINDOW)
+    _, valides, rapports = estime._solve(polarimetric_covariance(patch, BABU_WINDOW))
+
+    non_finis = ~np.isfinite(np.asarray(rapports["X / sqrt(C22 C33)"]))
+    assert non_finis.any(), "le cas à tester n'est pas reproduit"
+    assert not valides[non_finis].any(), (
+        f"{valides[non_finis].sum()} fenêtres à critère non fini déclarées valides"
+    )
 
 
 def test_le_message_nomme_le_bon_critere_quand_un_autre_vaut_nan():

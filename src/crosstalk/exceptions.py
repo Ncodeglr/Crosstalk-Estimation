@@ -34,7 +34,7 @@ class IllConditionedCovarianceError(CrosstalkError):
     """
     Une quantité dérivée de la covariance observée s'annule. 
     Concerne les dénominateurs des formes fermées de Quegan : `Delta` et `X`
-    (Babu et al., 2022, équations 13 et 15 à 18).
+    (Babu, équations 13 et 15 à 18).
     """
 
     def __init__(self, name: str, value: complex, tol: float) -> None:

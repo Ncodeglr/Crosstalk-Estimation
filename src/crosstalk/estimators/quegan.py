@@ -1,40 +1,5 @@
 """
 Méthode de Quegan : estimation du crosstalk en forme fermée.
-
-Les quatre termes de crosstalk se lisent directement dans la covariance du
-signal observé — Fore et al. (2015, équation 24) réindexée, ce qui coïncide
-avec l'équation 13 de Babu et al. (2022), la seule qu'il ait lui-même
-réindexée — avec `Delta = C11 C44 - |C14|^2` ::
-
-    u = (C44 C31 - C41 C34) / Delta        v = (C11 C34 - C31 C14) / Delta
-    z = (C44 C21 - C41 C24) / Delta        w = (C11 C24 - C21 C14) / Delta
-
-puis le déséquilibre croisé (Fore et al., équations 25 et 26, réindexées ;
-les équations 16 à 18 de Babu et al. sont celles de Fore **non** réindexées et
-contredisent donc sa propre équation 13) ::
-
-    X      = C23 - z C13 - w C43
-    alpha1 = (C33 - u C13 - v C43) / X
-    alpha2 = X* / (C22 - z* C21 - w* C24)
-
-             |alpha1 alpha2| - 1 + sqrt( (|alpha1 alpha2| - 1)^2 + 4 |alpha2|^2 )
-    alpha = -------------------------------------------------------------------
-                                     2 |alpha2|
-
-
-
-Indexation dans l'ordre `POL_ORDER = [HH, HV, VH, VV]`, indices 1 à 4 des
-articles ; `C_ij = <O_i O_j*>`. Attention : ces expressions ne sont **pas**
-celles de Fore et al. (2015, équations 24 à 26), qui indexent `[HH, VH, HV, VV]`.
-Appliquer les leurs à des données rangées ainsi rend `(z, w, v, u)` au lieu de
-`(u, v, w, z)`, sans lever la moindre erreur.
-
-`alpha` est réel positif : l'équation 15 de Babu s'arrête au module. Fore et al.
-(équation 25) le multiplient en plus par `alpha1 / |alpha1|` ; sur la pile Rosamond de ce
-projet cette phase vaut 1,6° en médiane (étendue -3,7° à +15,2° sur 40 patchs
-256x256), le produit JPL 2016 étant déjà étalonné en phase. Elle n'entre dans
-aucune des métriques du paquet, qui ne portent que sur `(u, v, w, z)`.
-
 """
 
 from __future__ import annotations
@@ -69,10 +34,10 @@ class QueganEstimator(CrosstalkEstimator):
     Estimation du crosstalk par les formes fermées de Quegan (1994).
 
     Args:
-        window: "full" — le patch entier est une unique fenêtre d'estimation,
-            un jeu par patch ; c'est le mode de la comparaison réseau contre
-            baselines. Ou un couple `(kh, kw)` — fenêtre glissante, un jeu par
-            fenêtre puis moyenne ; `(5, 5)` reproduit Babu et al. (2022).
+        window: 
+        -"full" : le patch entier est une unique fenêtre d'estimation, un jeu par patch ; c'est le mode de la comparaison réseau contre baselines. Ou un couple `(kh, kw)` 
+        -"fenêtre 5x5" : un jeu par fenêtre puis moyenne reproduit Babu.
+        
         tol: seuil de singularité de D, transmis à la correction.
         delta_tol: seuil relatif sur `|Delta| / (C11 C44)`.
         x_tol: seuil relatif sur `|X| / sqrt(C22 C33)`.
@@ -145,28 +110,33 @@ class QueganEstimator(CrosstalkEstimator):
             "X / sqrt(C22 C33)": rapport_x,
             "(C22 - z* C21 - w* C24) / C22": rapport_denom2,
         }
+        # `isfinite` n'est pas redondant avec les seuils. Un `nan` est bien
+        # rejeté, puisque `nan > tol` est faux ; un `inf` ne l'est pas, car
+        # `inf > tol` est vrai. Or une fenêtre exactement nulle en produit : la
+        # table de sommes cumulées y laisse un résidu d'annulation de ~1e-18 au
+        # lieu de zéro, si bien que `|X| / sqrt(C22 C33)` vaut `inf` et que la
+        # fenêtre serait déclarée exploitable sur du bruit numérique pur. Les
+        # trois rapports étant bornés par construction — `rapport_delta` vaut
+        # `1 - |rho_HHVV|^2`, donc entre 0 et 1 — ce filtre ne peut écarter
+        # aucune valeur légitime.
         valides = (
-            (rapport_delta > self.delta_tol)
-            & (rapport_x > self.x_tol)
-            & (rapport_denom2 > self.x_tol)
-            # `|alpha2| > 0` découle des deux critères précédents, et `alpha1`
-            # n'apparaît que dans le produit `|alpha1 alpha2|` : aucun critère
-            # supplémentaire n'est nécessaire.
+            np.isfinite(rapport_delta) & (rapport_delta > self.delta_tol)
+            & np.isfinite(rapport_x) & (rapport_x > self.x_tol)
+            & np.isfinite(rapport_denom2) & (rapport_denom2 > self.x_tol)
         )
 
         thetas = np.stack([u, v, w, z, alpha], axis=-1)
         thetas = np.where(valides[..., None], thetas, np.nan)
-        return thetas, np.asarray(valides), rapports
+        return thetas, np.asarray(valides), rapports 
 
     @staticmethod
     def _pire(valeurs: np.ndarray) -> float:
-        """Valeur la plus dégradée d'un critère, `nan` comptant pour la pire.
+        """
+        Valeur la plus dégradée d'un critère, nan comptant pour la pire.
 
-        Un critère vaut `nan` quand son dénominateur s'est annulé — canal
-        éteint, patch constant. C'est donc le cas le plus grave, mais `nan`
-        perd toute comparaison (`nan < x` et `x < nan` sont tous deux faux),
-        si bien qu'un `min` naïf ne le sélectionne jamais et nomme un critère
-        sain dans le message d'erreur.
+        Un critère vaut `nan` quand son dénominateur s'est annulé : canal éteint, patch constant. 
+        C'est donc le cas le plus grave, mais nan perd toute comparaison (nan < x et x < nan sont tous deux faux),
+        si bien qu'un `min` naïf ne le sélectionne jamais et nomme un critère sain dans le message d'erreur.
         """
         valeurs = np.asarray(valeurs)
         if not np.isfinite(valeurs).all():
@@ -181,22 +151,23 @@ class QueganEstimator(CrosstalkEstimator):
         seuil = self.delta_tol if nom.startswith("Delta") else self.x_tol
         raise IllConditionedCovarianceError(nom, valeur, seuil)
 
-    # -------------------------interface-------------------------------------------
+    # -----------------------------Interface-------------------------------------------
 
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
-        """Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
+        """
+        Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
 
-        En mode `"full"`, les formes fermées sont appliquées à l'unique covariance du patch. 
-        En mode glissant, elles le sont à chaque fenêtre et les `theta` obtenus sont moyennés sur **toutes** les fenêtres — les fenêtres mal conditionnées étant écartées.
+        En mode "full" : les formes fermées sont appliquées à l'unique covariance du patch. 
+        En mode "5x5" : elles le sont à chaque fenêtre et les theta obtenus sont moyennés sur **toutes** les fenêtres — les fenêtres mal conditionnées étant écartées.
 
-        La moyenne des `(u, v, w, z)` est prise sur les nombres complexes, ce qui
+        La moyenne des (u, v, w, z) est prise sur les nombres complexes, ce qui
         est nettement le bon choix : mesuré sur 150 patchs de la pile Rosamond
         contre l'estimation plein patch, moyenner les complexes donne -1,1 dB
         de biais, moyenner les modules +6,6 dB. `alpha` étant réel positif,
         sa moyenne est arithmétique ; à 25 échantillons par fenêtre elle
         surestime `|alpha|` de **2,4 %** environ par rapport au plein patch
         (même mesure, 150 patchs 64x64), l'inégalité de Jensen jouant sur une
-        quantité positive bruitée. Le mode `"full"` n'en souffre pas.
+        quantité positive bruitée. Le mode "full" n'en souffre pas.
 
         Note:
             Cette moyenne porte sur **toutes** les fenêtres du patch, distance comprise. 
@@ -204,7 +175,7 @@ class QueganEstimator(CrosstalkEstimator):
 
         Raises:
             IllConditionedCovarianceError: en mode `"full"` si la covariance est
-                dégénérée ; en mode glissant si aucune fenêtre n'est exploitable.
+                dégénérée ; en mode 5x5 si aucune fenêtre n'est exploitable.
         """
         self.check_patch(patch)
         cov = polarimetric_covariance(patch, self.window)
@@ -224,9 +195,7 @@ class QueganEstimator(CrosstalkEstimator):
                 valides.size - retenues,
                 valides.size,
             )
-        return CrosstalkParameters.from_vector(
-            thetas[valides].mean(axis=0)
-        )
+        return CrosstalkParameters.from_vector(thetas[valides].mean(axis=0))
 
     def estimate_range_lines(self, patch: np.ndarray) -> list[CrosstalkParameters]:
         """

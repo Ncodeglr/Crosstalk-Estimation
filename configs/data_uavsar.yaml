@@ -5,7 +5,7 @@
 # transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn découpe train/valid/test et construit les DataLoader.
 
 task: reconstruction
-seed: 11
+seed: 38
 
 data:
   dataset:
@@ -59,6 +59,6 @@ baselines:
   estimators:
     - name: quegan
       params:
-        window: [5, 5]   # fenêtre glissante de Babu et al. (2022), §3.3.1 ; En window = full traiterait le patch entier comme une fenêtre unique
+        window: full   # fenêtre glissante de Babu et al. (2022), §3.3.1 ; En window = full traiterait le patch entier comme une fenêtre unique
 
 
