@@ -1,7 +1,6 @@
 # Crosstalk Estimation
 
 Estimation du crosstalk sur images SAR par apprentissage profond.
-Projet de recherche — SONDRA Lab, CentraleSupélec.
 
 ## Installation
 
