@@ -91,6 +91,26 @@ def test_en_fenetre_glissante_alpha_moyenne_module_et_phase_separement():
     assert abs(estime) > abs(np.mean(alphas))
 
 
+def test_par_ligne_de_distance_alpha_suit_la_meme_regle_de_moyenne():
+    """`estimate_range_lines` moyenne alpha comme `estimate` : module moyen, phase moyenne.
+
+    Une ligne de distance est une colonne : la dispersion de phase doit donc
+    venir de l'azimut. Moitiés haute et basse aux phases de alpha opposées.
+    """
+    haut = theta(0.1)
+    bas = CrosstalkParameters(haut.u, haut.v, haut.w, haut.z, np.conj(haut.alpha))
+    patch = np.concatenate(
+        [observe(haut, shape=(32, 16), beta=0.002), observe(bas, shape=(32, 16), beta=0.002)],
+        axis=-2,
+    )
+    est = QueganEstimator(window=BABU_WINDOW)
+    thetas, valides, _ = est._solve(polarimetric_covariance(patch, BABU_WINDOW))
+    for colonne, ligne in enumerate(est.estimate_range_lines(patch)):
+        alphas = thetas[:, colonne, 4][valides[:, colonne]]
+        assert abs(ligne.alpha) == pytest.approx(np.mean(np.abs(alphas)), rel=1e-12)
+        assert abs(ligne.alpha) > abs(np.mean(alphas))
+
+
 def test_le_biais_relatif_est_proportionnel_au_rapport_crosspol_copol():
     """Caractérise le biais structurel de la méthode.
 

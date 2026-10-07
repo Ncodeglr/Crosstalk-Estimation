@@ -1,6 +1,10 @@
 # Crosstalk Estimation
 
-Estimation du crosstalk sur images SAR par apprentissage profond.
+Estimation du crosstalk polarimétrique sur la pile UAVSAR Rosamd_35012_04, en
+reproduisant le protocole de Babu et al. (2022). Le projet fournit les
+**baselines statistiques** (méthode de Quegan) et leur **validation aux
+réflecteurs en coin** ; un encodeur à valeurs complexes (CVNN) leur sera ensuite
+comparé.
 
 ## Installation
 
@@ -46,6 +50,11 @@ change à chaque modification du code.
 | `data/corner_reflectors/rosamond_<date>.csv` | catalogue JPL des réflecteurs — chaîne B seulement |
 | [configs/data_uavsar.yaml](configs/data_uavsar.yaml) | taille de patch, graine, ratios du découpage, normalisation, bloc `baselines:` |
 
+Les `.slc` sont étalonnés en gain et en phase par JPL, mais **pas corrigés du
+crosstalk** — ce que confirme la mesure du déséquilibre de canaux (voir
+« Le déséquilibre de canaux »). La chaîne ne fait donc qu'estimer puis corriger
+le crosstalk ; la distorsion n'est jamais appliquée aux données réelles.
+
 ### Chaîne A — `python src/run_baselines.py`
 
 | # | étape | code | entrée → sortie |
@@ -59,7 +68,7 @@ change à chaque modification du code.
 | A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 284 lots |
 | A8 | lire les patchs | `run_baselines.iter_patches` | lot `(16, 4, 256, 256)` `complex64` → un patch numpy `(4, 256, 256)` à la fois |
 | A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
-| A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-e ci-dessous, et tracé sur un patch réel dans « Chaîne de traitement » plus bas |
+| A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-e ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
 | A10a | covariance | `covariance.polarimetric_covariance` | 16 produits `O_i O_j*`, table de sommes cumulées → `C` de forme `(252, 252, 4, 4)` `complex128`, soit **63 504 fenêtres 5×5** |
 | A10b | formes fermées | `QueganEstimator._solve` | par fenêtre : `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; masque `valides` : rapports finis et au-dessus des seuils |
 | A10c | moyenne | `QueganEstimator.estimate` | moyenne des `theta` sur les fenêtres valides → un `CrosstalkParameters` par patch |
@@ -118,18 +127,14 @@ qui le précèdent.
 
 ## Pipeline de données
 
-Entièrement assuré par les deux frameworks existants, sans code spécifique au
-projet :
+Assuré par [`torchcvnn`](https://github.com/torchcvnn/torchcvnn) (lecture des
+`.slc`, grille de patchs) et [`cvnn`](https://github.com/QuentinGABOT/cvnn)
+(découpage, transformations, `DataLoader`) ; leur enchaînement est détaillé aux
+étapes A3 à A8 de la carte du projet. Le seul code propre au projet est le
+branchement de `UavsarSLC` dans `cvnn`, décrit ci-dessous. Les données attendues
+sont dans `data/Rosamd_35012_04/`, soit environ 97 Go pour les 20 `.slc`.
 
-- [`torchcvnn`](https://github.com/torchcvnn/torchcvnn) — `SLCDataset` découvre
-  les `.slc`, lit les `.ann`, découpe la grille de patchs et rend un dictionnaire
-  `{HH, HV, VH, VV}` ; la transform `PolSAR` l'empile en `(4, H, W)` complexe.
-- [`cvnn`](https://github.com/QuentinGABOT/cvnn) — `get_dataloaders`
-  découpe train / validation / test et construit les `DataLoader`.
-
-Données attendues : `data/Rosamd_35012_04/`, pile UAVSAR *Stack SLC* de
-5 acquisitions × 4 polarisations, 61 349 × 9 874 pixels `complex64` par fichier
-(4,85 Go chacun, ~92 Go au total).
+Pour charger les patchs, par exemple côté CVNN :
 
 ```python
 import sys, yaml
@@ -142,25 +147,22 @@ train_loader, valid_loader, test_loader = get_dataloaders(cfg, use_cuda=True)
 batch = next(iter(train_loader))    # (B, 4, H, W) complex64, canaux [HH, HV, VH, VV]
 ```
 
-Tout se règle dans [configs/data_uavsar.yaml](configs/data_uavsar.yaml) :
-taille et pas des patchs, ratios de découpe, `batch_size`, `num_workers`,
-transforms.
-
 ### Branchement dans cvnn
 
-`UavsarSLC` a été ajouté au framework comme n'importe quel autre dataset, en
-deux endroits :
+`UavsarSLC` a été ajouté au framework comme n'importe quel autre dataset :
 
 - `cvnn/src/cvnn/dataset_registry.py` — entrée `UavsarSLC`
   (`type: polsar`, 4 canaux, sans étiquettes) ;
 - `cvnn/src/cvnn/data.py` — import de `SLCDataset`, branche
   `elif dataset_name == "UavsarSLC"` dans `_create_dataset`, et `UavsarSLC`
-  ajouté à la liste des datasets à `patch_size`.
+  ajouté à la liste des datasets à `patch_size` ;
+- `cvnn/src/cvnn/data.py` — `_groupes_par_emplacement` : sur une pile
+  co-enregistrée, le découpage mélange les **emplacements au sol** et non les
+  patchs, pour que les 5 dates d'un même lieu tombent du même côté. Le mélange
+  patch par patch plaçait 99,9 % des emplacements de test aussi dans le train.
 
-ℹ️ Contrairement à ce qu'indiquait une version antérieure de ce fichier, `cvnn/`
-**est suivi par Git dans ce dépôt** (136 fichiers) : le `.gitignore` ne contient
-aucune règle le concernant. Ces deux modifications sont donc versionnées ici, et
-il reste souhaitable de les reporter en amont dans le dépôt `cvnn`.
+`cvnn/` est versionné dans ce dépôt ; ces modifications restent à reporter en
+amont dans le dépôt `cvnn`.
 
 ### Point d'attention : la normalisation
 
@@ -191,6 +193,11 @@ physique. La configuration livrée obtient cela **sans code**, en donnant la
 Si vous remettez `recompute_statistics: True`, `cvnn` réécrit ces valeurs avec
 une covariance par canal et le comportement du tableau ci-dessus revient.
 
+C'est aussi ce qui laisse les **baselines** intactes : `GlobalScalarNormalize`
+divise ici les 4 canaux par le même scalaire (0,16444), si bien que `theta`, la
+réciprocité et la fuite aux réflecteurs, qui sont des rapports, n'en dépendent
+pas.
+
 ## Estimation du crosstalk
 
 Paquet `src/crosstalk/`, indépendant du réseau : il fournit les **baselines
@@ -217,86 +224,37 @@ test : changer la graine change les patchs évalués, pas la méthode. Sortie
 ci-dessus : `seed: 38`, découpage groupé par emplacement au sol. Durée :
 environ 6 min 30 s.
 
-À titre de repère, Babu et al. (2022, table 4) annoncent **-22,49 dB** non
-calibré. Son résiduel après Quegan, **-25,33 dB**, n'est pas comparable au nôtre :
-il le mesure aux réflecteurs en coin (§4.6), là où `residual_crosstalk` ré-estime
-sur les données corrigées — voir l'avertissement en tête de `metrics.py`.
+La fenêtre glissante 5×5 du protocole de Babu coûte environ 12× le mode `full`
+en temps de calcul. Tout se règle dans le bloc `baselines:` de
+[configs/data_uavsar.yaml](configs/data_uavsar.yaml). Le modèle physique et la
+covariance sont **communs** à toutes les méthodes : une méthode nouvelle
+n'écrit que `estimate`, et s'inscrit au registre par `@register_estimator`.
 
-La fenêtre glissante coûte environ 12× le mode `full` en temps de calcul. Sur
-cette pile, elle déplace le crosstalk de -20,1 à -21,2 dB et `|alpha|` de 1,187 à
-1,226 ; cette hausse est un effet de Jensen — moyenner 63 504 estimations
-bruitées d'une quantité positive la surestime.
+### Trace sur un patch de contrôle
 
-Tout se règle dans le bloc `baselines:` de
-[configs/data_uavsar.yaml](configs/data_uavsar.yaml).
-
-### Architecture
-
-| module | rôle |
-|---|---|
-| `parameters.py` | le jeu immuable `theta = (u, v, w, z, alpha)` |
-| `exceptions.py` | `CrosstalkError` et ses deux sous-classes |
-| `physics.py` | `POL_ORDER`, la matrice de distorsion `D`, son inverse `Sigma`, leur application |
-| `covariance.py` | `C = <o o^H>`, plein patch ou fenêtre glissante |
-| `metrics.py` | erreurs sur `theta` (synthétique) et crosstalk résiduel (réel) |
-| `imbalance.py` | déséquilibre de canaux `(f, g, phi_t, phi_r)` de Babu §3.2, et sa correction diagonale |
-| `synthetic.py` | signal vrai conforme aux hypothèses de Quegan, pour les tests |
-| `estimators/` | ce qui distingue les méthodes : l'estimation de `theta`, et le registre |
-
-La frontière est stricte : le modèle physique et la covariance sont **communs**
-à toutes les méthodes ; une méthode nouvelle n'écrit que `estimate`.
-
-### Chaîne de traitement
-
-Les `.slc` sortent de l'instrument **déjà distordus** — `Cross Talk Removed = No`
-dans les `.ann`. Ils sont en revanche déjà étalonnés en gain et en phase par le
-processeur JPL — `Polarimetrically Calibrated = Yes`, sur les 20 `.ann` de la
-pile — ce que confirme la mesure du déséquilibre de canaux (voir « Résultats aux
-réflecteurs »). La chaîne ne fait donc qu'estimer puis corriger le crosstalk ; la
-distorsion n'est jamais appliquée aux données réelles.
-
-| # | opération | code | entrée → sortie |
-|---|---|---|---|
-| 1 | lire les 4 `.slc` | `torchcvnn.SLCDataset` | 4 fichiers 61 349 × 9 874 `complex64` |
-| 2 | empiler en ordre alphabétique | transform `PolSAR` | `o = (4, 256, 256)` |
-| 3 | normaliser | `GlobalScalarNormalize` | `o / 0.16444` |
-| 4 | **covariance**, fenêtre glissante 5×5 | `covariance.polarimetric_covariance` | `C = (252, 252, 4, 4)` `complex128` |
-| 5 | **formes fermées** par fenêtre, puis moyenne | `estimators.quegan.QueganEstimator._solve` | `theta = (u, v, w, z, alpha)` |
-| 6 | **correction** | `physics.apply_matrix(Sigma, o)` | `s_chapeau = (4, 256, 256)` |
-| 7 | ré-estimer sur `s_chapeau` | `estimate` | crosstalk résiduel |
-
-Tracé sur le patch de contrôle `(30000, 4500)` de l'acquisition du 11 février :
+Les étapes A10a à A10e de la carte du projet, sur le patch `(30000, 4500)` de
+l'acquisition du 11 février :
 
 ```
-ÉTAPE 1   HH 0.007157   HV 0.000731   VH 0.001004   VV 0.007269   (puissances moyennes)
-ÉTAPE 4   C de forme (252, 252, 4, 4) : 63 504 fenêtres 5×5, une matrice chacune
-          fenêtres retenues : 63 504 / 63 504
-ÉTAPE 5   moyenne des 63 504 theta
-          u =  0.024319 + 0.005222j    fuite HH -> VH
-          z =  0.046798 - 0.025522j    fuite HH -> HV
-          v = -0.072366 - 0.033255j    fuite VV -> VH
-          w = -0.013079 - 0.015735j    fuite VV -> HV
-          |alpha| = 1.290804           déséquilibre HV / VH
-          crosstalk = -21.98 dB
-ÉTAPE 7   résiduel = -32.59 dB         réduction 10.62 dB
+ENTRÉE   HH 0.007157   HV 0.000731   VH 0.001004   VV 0.007269   (puissances moyennes)
+A10a     C de forme (252, 252, 4, 4) : 63 504 fenêtres 5×5, une matrice chacune
+         fenêtres retenues : 63 504 / 63 504
+A10b-c   moyenne des 63 504 theta
+         u =  0.024319 + 0.005222j    fuite HH -> VH
+         z =  0.046798 - 0.025522j    fuite HH -> HV
+         v = -0.072366 - 0.033255j    fuite VV -> VH
+         w = -0.013079 - 0.015735j    fuite VV -> HV
+         |alpha| = 1.290804, arg(alpha) = -1.30°   déséquilibre HV / VH
+         crosstalk = -21.98 dB
+A10d-e   résiduel = -32.59 dB         réduction 10.62 dB
 ```
 
-Les étapes 4 à 7 tournent sur chacun des 4 540 patchs de la partition de test
-(908 emplacements au sol × 5 dates, le découpage groupant les dates d'un même
-emplacement), et `summarize` prend la médiane de chaque colonne.
-
-**Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape 4 réduit
+**Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape A10a réduit
 les 25 pixels × 4 canaux de chaque fenêtre à une matrice 4×4. Toute
 l'information y est : Quegan suppose que sur le signal **vrai**, les termes co-pol/cross-pol
 `<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
 Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** est donc du
 crosstalk — c'est exactement ce que lisent les formes fermées.
-
-**La normalisation ne change pas `theta`.** `GlobalScalarNormalize` divise par un
-scalaire réel unique. Sous une homothétie globale `g`, `D` devient `g·D`, et
-`(u, v, w, z)` sont des **rapports** de coefficients de `D`, donc invariants. Une
-normalisation *par canal* les changerait ; celle qui est configurée ne le fait
-pas — voir « Point d'attention : la normalisation » plus haut.
 
 **`apply_distortion` ne tourne jamais sur les données réelles.** Elle sert
 uniquement aux tests, pour fabriquer une observation à `theta` connu — le seul
@@ -344,9 +302,11 @@ ressortent alors comme `(z, w, v, u, 1/alpha)`, sans la moindre erreur levée.
   Polarimetric Distortion Analysis of UAVSAR PolSAR Data*, Earth and Space
   Science 9. Équations 8 à 18.
 
-**Fore est la référence du code**, parce que c'est le seul des deux qui forme un
-système fermé : `Sigma_eq15 @ D_eq13 = I` à `2.2e-16`, et ses équations 24-26
-retrouvent exactement le `theta` injecté par son équation 13.
+**Règle suivie** : le protocole et les équations de Babu, sauf là où elles sont
+incohérentes ou incomplètes, auquel cas celles de Fore. Fore est en effet le seul
+des deux articles qui forme un système fermé : `Sigma_eq15 @ D_eq13 = I` à
+`2.2e-16`, et ses équations 24-26 retrouvent exactement le `theta` injecté par
+son équation 13. C'est donc sur lui que les tests ancrent `D` et `Sigma`.
 
 Babu adopte l'ordre de canaux retenu ici, mais ne réindexe qu'une partie de ses
 équations, ce qui rend l'article internement incohérent :
@@ -401,9 +361,6 @@ moyenne complexe. La phase varie d'environ 23° d'une fenêtre 5×5 à l'autre, 
 bien que moyenner les complexes ferait s'annuler une partie du module : sur 40
 patchs, −5,3 % contre l'estimation plein patch, au lieu de +3,5 % pour la moyenne
 des modules.
-
-**Règle suivie** : Babu, sauf là où ses équations sont incohérentes ou
-incomplètes, auquel cas Fore.
 
 ⚠️ En comparant le code au papier, ne « corrigez » pas `C31` en `C21` : c'est la
 réindexation, et `tests/test_physics.py::test_d_est_la_matrice_de_fore_reindexee`
@@ -661,7 +618,7 @@ distance, contre une correction globale.
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 206 tests
+python -m pytest tests/ -q        # 216 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :

@@ -39,12 +39,12 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
 def inverse_distortion_matrix(params: CrosstalkParameters, tol: float = DEFAULT_TOL) -> np.ndarray:
     """
     Matrice de calibration Sigma, en ordre `POL_ORDER`.
-    Ses coefficients sont ceux de Fore équation 15 de, déjà réindexés de la même façon que ceux de distortion_matrix
+    Ses coefficients sont ceux de l'équation 15 de Fore, déjà réindexés de la même façon que ceux de distortion_matrix.
 
-    Forme analytique exacte de `D^-1`, et non une approximation au premier ordre : 
-        `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et
-        l'équation 15 de Fore porte la même faute de transcription que son équation 10 et n'inverse
-        ni l'une ni l'autre de ses matrices de distorsion.
+    Forme analytique exacte de `D^-1`, et non une approximation au premier ordre :
+        `D @ Sigma == I` à la précision machine. L'équation 12 de Babu et al.
+        porte la même faute de transcription que son équation 10 et n'inverse
+        ni l'une ni l'autre de ses matrices de distorsion ; celle de Fore est exacte.
 
     Args:
         params: le jeu `(u, v, w, z, alpha)`.
@@ -122,7 +122,7 @@ def apply_distortion(sVector_scattering: np.ndarray,params: CrosstalkParameters,
     Sert à simuler des observations à theta connu — c'est le seul moyen de disposer d'une vérité terrain, les données réelles n'en ayant pas.
 
     Args:
-        scattering: patch `(..., 4, H, W)` du signal vrai, ordre POL_ORDER
+        sVector_scattering: patch `(..., 4, H, W)` du signal vrai, ordre POL_ORDER.
         params: le jeu `(u, v, w, z, alpha)` à appliquer.
         channel_axis: axe des polarisations.
 

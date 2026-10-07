@@ -8,16 +8,18 @@ est connu parce qu'il a été appliqué : `parameter_errors` compare directement
 **Pas de vérité terrain** — le cas des données réelles : `residual_crosstalk`
 applique le protocole de Fore et al. (2015, §V), qui corrige les données puis
 ré-estime le crosstalk sur les données corrigées. C'est ainsi que Fore compare
-Quegan et Ainsworth (résiduels de -15 à -20 dB contre -30 dB) et que Babu et al.
-(2022, tableau 4) classent les trois méthodes.
+Quegan et Ainsworth (résiduels de -15 à -20 dB contre -30 dB). `reciprocity`
+l'accompagne d'un contrôle que l'estimateur n'optimise pas.
 
 .. warning::
    Le résiduel est **optimiste par construction** : c'est le même estimateur qui
-   juge son propre ajustement, sur le même patch. Mesuré sur la pile Rosamond,
-   il donne des réductions de 8 à 15 dB là où Babu et al. en rapportent 2,8 dB
-   aux réflecteurs en coin — la différence tient à la nature de la mesure, pas à
-   la qualité de la correction. Cette métrique sert à **comparer des méthodes
-   entre elles**, pas à annoncer une performance absolue.
+   juge son propre ajustement, sur le même patch. Il sert à **comparer des
+   méthodes entre elles**, pas à annoncer une performance absolue. Celle-ci se
+   mesure aux réflecteurs en coin (`corner_reflector_crosstalk`, utilisée par
+   `measure_reflectors.py`), où rien n'est jugé par l'estimateur. Sur la pile
+   Rosamond, cette mesure non circulaire donne elle aussi une forte réduction,
+   12,9 dB : l'écart avec les 2,8 dB de Babu et al. (table 4) ne tient donc pas
+   à la circularité du résiduel.
 """
 
 from __future__ import annotations

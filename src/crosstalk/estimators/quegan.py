@@ -84,7 +84,9 @@ class QueganEstimator(CrosstalkEstimator):
             #np.errstate(divide="ignore") permet de supprimer les avertissements de division par zéro / invalid="ignore" permet de supprimer les avertissements de calculs invalides, comme la division par zéro ou la racine carrée d'un nombre négatif
             
             # ---------------------------------Crosstalk--------------------------------------------------
-            delta = c11 * c44 - np.abs(c14) ** 2 #Dans le papier de Babu, ils ont une erreur de transcription, ils écrivent c11*c44 - c14*c41, mais c41 est le conjugué de c14, donc ça ne change pas le résultat final. Mais pour être cohérent avec l'article, on utilise c11*c44 - |c14|^2
+            # Babu éq. 14, Fore éq. 24. C étant hermitienne, |C14|^2 = C14 C41 : les
+            # deux écritures sont équivalentes, la forme en module garantit un Delta réel.
+            delta = c11 * c44 - np.abs(c14) ** 2
             rapport_delta = np.abs(delta) / np.abs(c11 * c44)
             u = (c44 * c31 - c41 * c34) / delta
             v = (c11 * c34 - c31 * c14) / delta
@@ -244,11 +246,10 @@ class QueganEstimator(CrosstalkEstimator):
                     {f"{nom} (ligne de distance {colonne})": val[:, colonne]
                      for nom, val in rapports.items()}
                 )
-            lignes.append(
-                CrosstalkParameters.from_vector(
-                    thetas[:, colonne][masque].mean(axis=0)
-                )
-            )
+            # Même règle que `estimate` : alpha en module moyen et phase de la
+            # moyenne complexe. La moyenne complexe directe sous-estimerait
+            # |alpha| de 8 % sur le patch de contrôle du README.
+            lignes.append(CrosstalkParameters.mean(thetas[:, colonne][masque]))
         return lignes
 
     def __repr__(self) -> str:

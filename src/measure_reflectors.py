@@ -262,9 +262,17 @@ def theta_de_la_bande(
             avant l'estimation ; `None` pour estimer sur les données brutes.
 
     Returns:
-        Le `theta` de la bande, ou `None` si aucune tranche n'est exploitable.
+        Le `theta` de la bande, ou `None` si aucune tranche n'est exploitable ou
+        si la bande déborde de l'image.
     """
     c0, c1 = colonne - DEMI_BANDE, colonne + DEMI_BANDE + 1
+    # Un indice négatif ne lève pas d'erreur en Python : il compte depuis la fin
+    # et lirait silencieusement une autre zone. Une bande tronquée, elle, ne
+    # serait plus la bande de Fore. Le réflecteur est donc écarté, sans
+    # interrompre la campagne.
+    if c0 < 0 or c1 > canaux["HH"].shape[1]:
+        logger.warning("colonne %d : la bande de ±%d colonnes déborde de l'image", colonne, DEMI_BANDE)
+        return None
     jeux: list[np.ndarray] = []
     for a0 in range(0, nombre_de_lignes, PAS_AZIMUT):
         a1 = min(a0 + PAS_AZIMUT, nombre_de_lignes)
