@@ -148,3 +148,32 @@ def test_le_decoupage_est_rendu_reproductible():
     premier = torch.randperm(50).tolist()
     set_seed(1670)
     assert torch.randperm(50).tolist() == premier
+
+
+# ------------------------------------------------------- chemins et configuration
+
+
+def test_sans_option_la_configuration_par_defaut_est_celle_du_depot():
+    assert rb.chemin_de_configuration(None) == RACINE / "configs" / "data_uavsar.yaml"
+
+
+def test_un_chemin_relatif_se_resout_depuis_la_racine_hors_du_depot(tmp_path, monkeypatch):
+    """Lancé depuis `src/` ou d'ailleurs, `--config configs/data_uavsar.yaml` doit aboutir."""
+    monkeypatch.chdir(tmp_path)
+    assert rb.chemin_de_configuration("configs/data_uavsar.yaml") == RACINE / "configs" / "data_uavsar.yaml"
+
+
+def test_un_chemin_relatif_present_dans_le_dossier_courant_est_prioritaire(tmp_path, monkeypatch):
+    (tmp_path / "ma_config.yaml").write_text("x: 1\n")
+    monkeypatch.chdir(tmp_path)
+    assert rb.chemin_de_configuration("ma_config.yaml") == Path("ma_config.yaml")
+
+
+@pytest.mark.parametrize("absolu", [False, True])
+def test_trainpath_est_ancre_a_la_racine_du_depot(tmp_path, monkeypatch, absolu):
+    cible = "/donnees/ailleurs" if absolu else "data/Rosamd_35012_04"
+    fichier = tmp_path / "c.yaml"
+    fichier.write_text(f"data:\n  dataset:\n    trainpath: {cible}\n")
+    monkeypatch.chdir(tmp_path)
+    attendu = cible if absolu else str(RACINE / cible)
+    assert rb.lire_configuration(fichier)["data"]["dataset"]["trainpath"] == attendu

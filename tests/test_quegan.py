@@ -196,6 +196,57 @@ def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
     assert erreur_relative(estime, vrai) < 1e-4
 
 
+@pytest.mark.parametrize("beta", [0.05, 0.134])
+def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
+    """Le biais de Quegan a une origine identifiée, pas seulement un ordre de grandeur.
+
+    Au premier ordre en crosstalk, avec `P_X = <|S_HV|^2>` la puissance croisée
+    vraie (README, « Le biais propre de Quegan ») ::
+
+        C31 = u C11 + v C41 + P_X (e^{i arg alpha} v* + |alpha| w*) + O(theta^3)
+        C34 = u C14 + v C44 + P_X (e^{i arg alpha} u* + |alpha| z*) + O(theta^3)
+        C21 = z C11 + w C41 + P_X (v*/|alpha| + e^{-i arg alpha} w*) + O(theta^3)
+        C24 = z C14 + w C44 + P_X (u*/|alpha| + e^{-i arg alpha} z*) + O(theta^3)
+
+    Les formes fermées résolvent ces systèmes 2x2 sans les termes en `P_X` : le
+    biais doit donc être la solution du même système appliquée à ces termes.
+    Covariance théorique, sans échantillonnage ; crosstalk à -39 dB pour rendre
+    le reste en `O(theta^3)` négligeable. Puissances co-polaires inégales et
+    `alpha` loin de 1 en module comme en phase, pour que chaque facteur compte.
+    `beta = 0.134` est la médiane mesurée sur la pile.
+    """
+    from src.crosstalk.physics import distortion_matrix
+    from src.crosstalk.synthetic import quegan_covariance
+
+    vrai = CrosstalkParameters.from_vector(
+        [*(1e-2 * DIRECTION), 1.25 * np.exp(-1j * np.deg2rad(23.0))]
+    )
+    u, v, w, z, alpha = vrai.to_vector()
+    sigma_hh, sigma_vv = 2.0, 3.0
+    p_x = beta * (sigma_hh + sigma_vv) / 2.0
+    matrice = distortion_matrix(vrai)
+    cov = (
+        matrice
+        @ quegan_covariance(sigma_hh, sigma_vv, 0.5 * np.exp(0.3j), p_x)
+        @ matrice.conj().T
+    )
+    biais = estimateur()._solve(cov)[0][:4] - vrai.to_vector()[:4]
+
+    phase, module = np.exp(1j * np.angle(alpha)), abs(alpha)
+    systeme = np.array([[cov[0, 0], cov[3, 0]], [cov[0, 3], cov[3, 3]]])
+    du, dv = np.linalg.solve(systeme, p_x * np.array([
+        phase * np.conj(v) + module * np.conj(w),
+        phase * np.conj(u) + module * np.conj(z),
+    ]))
+    dz, dw = np.linalg.solve(systeme, p_x * np.array([
+        np.conj(v) / module + np.conj(w) / phase,
+        np.conj(u) / module + np.conj(z) / phase,
+    ]))
+    predit = np.array([du, dv, dw, dz])
+
+    assert np.abs(biais - predit).max() < 1e-2 * np.abs(biais).max()
+
+
 # ==================================================================== invariances
 
 

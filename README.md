@@ -207,7 +207,8 @@ statistiques** contre lesquelles le CVNN sera comparé. Seule la méthode de
 Quegan est implémentée à ce jour.
 
 ```bash
-python src/run_baselines.py        # depuis la racine du dépôt
+python src/run_baselines.py                         # configuration par défaut
+python src/run_baselines.py --config autre.yaml     # ou une autre configuration
 ```
 
 ```
@@ -228,7 +229,10 @@ environ 6 min 30 s.
 
 La fenêtre glissante 5×5 du protocole de Babu coûte environ 12× le mode `full`
 en temps de calcul. Tout se règle dans le bloc `baselines:` de
-[configs/data_uavsar.yaml](configs/data_uavsar.yaml). Le modèle physique et la
+[configs/data_uavsar.yaml](configs/data_uavsar.yaml). Le script se lance depuis
+n'importe quel dossier : un `--config` relatif se résout depuis le dossier courant,
+ou à défaut depuis la racine du dépôt, et le `trainpath` du YAML toujours depuis
+la racine. Le modèle physique et la
 covariance sont **communs** à toutes les méthodes : une méthode nouvelle
 n'écrit que `estimate`, et s'inscrit au registre par `@register_estimator`.
 
@@ -255,14 +259,157 @@ A10d-e   résiduel = -32.59 dB         réduction 10.62 dB
 les 25 pixels × 4 canaux de chaque fenêtre à une matrice 4×4. Toute
 l'information y est : Quegan suppose que sur le signal **vrai**, les termes co-pol/cross-pol
 `<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
-Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** `s'` est donc du
-crosstalk — c'est exactement ce que lisent les formes fermées.
+Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** `s'` est donc dû
+au crosstalk — et c'est ce que lisent les formes fermées, mais au premier ordre
+et en négligeant la puissance croisée : voir « Le biais propre de Quegan ».
 
 **`apply_distortion` ne tourne jamais sur les données réelles.** Elle sert
 uniquement aux tests, pour fabriquer une observation à `theta` connu — le seul
 moyen de disposer d'une vérité terrain, puisque les `.slc` n'en ont pas. C'est
-ainsi qu'est mesuré le biais résiduel de 1 % du modèle, sans bruit et à un
-million d'échantillons : le terme `O(|theta|²)` que Quegan néglige.
+ainsi qu'est mesuré le biais propre de la méthode : 1 % sans bruit et à un
+million d'échantillons quand la puissance croisée est négligeable
+(`beta = 0,002`), mais de l'ordre de 30 % au `beta` médian de cette pile.
+
+### Le biais propre de Quegan
+
+Les formes fermées ne sont exactes qu'à puissance croisée nulle. La
+démonstration tient en quatre étapes ; `O` désigne le signal observé `s'`, `S`
+le signal vrai `s`.
+
+**1. Le modèle, ligne par ligne.** Les quatre lignes de `D`
+(`physics.distortion_matrix`) donnent, pour chaque pixel :
+
+```
+O_HH = S_HH      + (v/√α)·S_HV  + w√α·S_VH  + vw·S_VV
+O_HV = z·S_HH    + (1/√α)·S_HV  + wz√α·S_VH + w·S_VV
+O_VH = u·S_HH    + (uv/√α)·S_HV + √α·S_VH   + v·S_VV
+O_VV = uz·S_HH   + (u/√α)·S_HV  + z√α·S_VH  + S_VV
+```
+
+Quegan fait deux hypothèses sur le signal vrai (Fore, équation 17 ;
+`synthetic.quegan_covariance`) :
+
+```
+symétrie de réflexion :  <S_HH·S_X*> = <S_VV·S_X*> = 0
+réciprocité           :  S_HV = S_VH = S_X,  de puissance P_X = <|S_X|²>
+```
+
+La corrélation co-polaire `<S_HH·S_VV*>` reste libre.
+
+**2. Développer une corrélation.** `C31 = <O_VH·O_HH*>` est le produit de deux
+sommes de quatre termes, soit seize produits. Ceux qui associent un canal
+co-polaire à `S_X` sont nuls par symétrie de réflexion. Au premier ordre en
+crosstalk, il reste :
+
+| produit | valeur moyenne | ordre |
+|---|---|---|
+| `u·S_HH · S_HH*` | `u·σ_HH` | 1 |
+| `v·S_VV · S_HH*` | `v·<S_VV·S_HH*>` | 1 |
+| `√α·S_X · (v/√α·S_X)*` | `e^{i arg α}·v*·P_X` | 1 |
+| `√α·S_X · (w√α·S_X)*` | `\|α\|·w*·P_X` | 1 |
+| tous les autres | — | 3 |
+
+avec `√α / √α* = e^{i arg α}` et `√α · √α* = |α|` pour la racine principale,
+celle de `np.sqrt`. Remplacer ensuite `σ_HH` par `C11` et `<S_VV·S_HH*>` par
+`C41`, qui n'en diffèrent que de `O(θ²)`, coûte un terme en `θ·θ² = O(θ³)`. Le
+même calcul sur les trois autres corrélations co-pol/cross-pol donne :
+
+```
+C31 = u·C11 + v·C41 + e₁ + O(θ³)        e₁ = P_X·( e^{i arg α}·v* + |α|·w* )
+C34 = u·C14 + v·C44 + e₂ + O(θ³)        e₂ = P_X·( e^{i arg α}·u* + |α|·z* )
+C21 = z·C11 + w·C41 + e₃ + O(θ³)        e₃ = P_X·( v*/|α| + e^{−i arg α}·w* )
+C24 = z·C14 + w·C44 + e₄ + O(θ³)        e₄ = P_X·( u*/|α| + e^{−i arg α}·z* )
+```
+
+Physiquement, le signal croisé vrai `S_X` est présent dans VH, et il fuit aussi
+dans HH par `v` et `w` : HH et VH partagent une composante sans rapport avec
+`u`. C'est le terme `e₁`.
+
+**3. Ce que résout Quegan.** Supprimer `e₁` et `e₂` laisse un système 2×2 :
+
+```
+| C11  C41 | | u |   | C31 |
+| C14  C44 | | v | = | C34 |          Δ = C11·C44 − |C14|²
+```
+
+dont la solution par la règle de Cramer est :
+
+```
+u = (C44·C31 − C41·C34) / Δ          v = (C11·C34 − C14·C31) / Δ
+```
+
+C'est mot pour mot l'équation 13 de Babu et la ligne de
+`QueganEstimator._solve` ; `(z, w)` s'obtiennent de même à partir de `C21` et
+`C24`. Les formes fermées sont donc la solution **exacte** du système privé des
+termes en `P_X`, et non une approximation de plus.
+
+**4. Le biais.** Les corrélations observées contiennent `e₁` à `e₄`. Injectées
+dans les formes fermées, elles donnent, au premier ordre :
+
+```
+δu = û − u = (C44·e₁ − C41·e₂) / Δ          δv = v̂ − v = (C11·e₂ − C14·e₁) / Δ
+δz = ẑ − z = (C44·e₃ − C41·e₄) / Δ          δw = ŵ − w = (C11·e₄ − C14·e₃) / Δ
+```
+
+C'est ce que vérifie
+`test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees`, à 1 % près,
+sur la covariance théorique. L'ordre de grandeur s'en déduit, avec
+`ρ_HHVV = C14 / √(C11·C44)` :
+
+```
+e₁, e₂ ∝ P_X·θ ;   numérateur ∝ σ_co·P_X·θ ;   Δ = C11·C44·(1 − |ρ_HHVV|²) ∝ σ_co²
+⟹  δu ∝ (P_X / σ_co) · θ / (1 − |ρ_HHVV|²)
+```
+
+Le biais **relatif** `δu / θ` est donc proportionnel au rapport
+`beta = P_X / σ_co`, et indépendant du niveau de crosstalk
+(`test_le_biais_relatif_est_proportionnel_au_rapport_crosspol_copol`,
+`test_le_biais_relatif_ne_depend_pas_du_niveau_de_crosstalk`). C'est d'ailleurs
+la seule combinaison possible : `u` est sans dimension, et l'estimateur est
+invariant à une homothétie globale (`test_invariance_a_une_homothetie_reelle_globale`).
+
+Le coefficient de proportionnalité dépend en revanche de la direction de
+`theta`, de `alpha` et de la corrélation HH–VV, par le facteur
+`1 / (1 − |ρ_HHVV|²)` et par `C41` au numérateur. Mesuré comme le plus grand
+biais rapporté au plus grand terme de crosstalk, il va de 0,6 à 3,9 fois `beta`
+selon les configurations essayées, et vaut 2,3 pour le `theta` du patch de
+contrôle avec `|rho_HHVV| = 0,5`. Le reste en `O(θ³)`, soit `O(|θ|²)` en
+relatif, ne domine qu'à `beta` très faible — d'où le 1 % ci-dessus.
+
+**Sur la pile.** `beta`, mesuré sur 300 patchs 256×256 tirés au hasard (60 par
+date), vaut 0,134 en médiane — quartiles 0,081 et 0,184, 9e décile 0,219. C'est
+une borne haute : le bruit thermique gonfle la puissance croisée mesurée sans
+entrer dans le biais, puisqu'il n'est pas corrélé entre HH et VH. Biais exact sur
+la covariance théorique, avec le `theta` du patch de contrôle (−21,98 dB) :
+
+| `beta` | `\|rho_HHVV\| = 0,5` | toutes les corrélations HH–VV essayées |
+|---|---|---|
+| 0,081 (1er quartile) | −36,5 dB | −42,3 à −32,0 dB |
+| 0,134 (médiane) | **−32,2 dB**, 31 % du crosstalk | −37,9 à −27,6 dB |
+| 0,184 (3e quartile) | −29,4 dB | −35,1 à −24,9 dB |
+
+Les corrélations essayées vont de 0,3 à 0,7 en module, sous quatre phases ; la
+médiane de `|rho_HHVV|` sur la pile est 0,509. Le biais atteint donc le niveau
+de l'exigence système de −30 dB que cite Babu (§4.1).
+
+Le résiduel en porte la trace. Sur les mêmes 300 patchs, en fenêtre 5×5 :
+
+| `beta` du patch | patchs | résiduel médian |
+|---|---|---|
+| < 0,05 | 28 | −32,5 dB |
+| 0,05 – 0,1 | 79 | −32,3 dB |
+| 0,1 – 0,2 | 149 | −29,5 dB |
+| > 0,2 | 44 | −26,6 dB |
+
+Il croît avec `beta` (`rho_s = +0,53`), plus nettement encore avec
+`beta × |theta|` (`rho_s = +0,71`), et sa médiane de −30,3 dB tombe dans la plage
+prédite.
+
+Ce biais n'est pas une erreur d'implémentation : c'est l'approximation de la
+méthode, que partagent Babu (§3.3.1) et Fore. Le système d'Ainsworth (Babu,
+équations 25 à 27), non implémenté ici, contient au contraire ces termes : sa
+matrice `tau` porte les puissances croisées `C22`, `C23`, `C32`, `C33`, et la
+séparation en parties réelle et imaginaire y traite les conjugués.
 
 ### Convention d'ordre des canaux
 
@@ -425,7 +572,10 @@ plancher propre de la méthode plutôt que par ce que la correction a retiré.
 
 Deux mesures le montrent. Les modes `full` et `(5, 5)` diffèrent de 0,9 dB sur
 le crosstalk initial mais s'accordent à 0,1 dB sur le résiduel : les deux butent
-sur le même plancher. Et un seul indice faux dans les formes fermées laisse la
+sur le même plancher. Ce plancher s'explique par le biais propre de Quegan, qui croît avec
+le rapport `beta` des puissances croisée et co-polaire : −32,5 dB de résiduel
+médian sous `beta = 0,05`, −26,6 dB au-dessus de 0,2 (voir « Le biais propre de
+Quegan »). Et un seul indice faux dans les formes fermées laisse la
 campagne rendre `-20.10 dB`, identique à la décimale, sans rien signaler.
 
 **Elle ne permet pas non plus de comparer des méthodes entre elles.** Chaque
@@ -439,28 +589,64 @@ on connaît le vrai `theta` :
 | correction parfaite (vrai `theta`) | −23,9 dB, en apparence la pire | 1,000 |
 | Quegan | −47,8 dB | 1,000 |
 
-Le classement par résiduel est l'inverse de la réalité ; la réciprocité, elle,
-range correctement les méthodes. Le résiduel ne sert donc qu'à contrôler la
-cohérence interne d'une méthode. **La comparaison entre Quegan et le CVNN
-reposera sur les niveaux 2 et 3**, indépendants de toute méthode.
+Le classement par résiduel est l'inverse de la réalité ; dans cet exemple, la
+réciprocité range correctement les méthodes. Le résiduel ne sert donc qu'à
+contrôler la cohérence interne d'une méthode. **Les niveaux 2 et 3 sont
+nécessaires pour comparer Quegan et le CVNN, mais pas suffisants** : tous deux
+sont aveugles à `alpha` et à une direction de crosstalk, et leur indépendance
+dépend de la méthode jugée — voir « Ce que les niveaux 2 et 3 ne voient pas ».
 
-#### Niveau 2 — la réciprocité, indépendante et sans données extérieures
+#### Niveau 2 — la réciprocité, sans données extérieures
 
 Un radar monostatique émet et reçoit sur la même antenne : `S_HV = S_VH` est une
 propriété du **capteur**, pas du modèle de Quegan. Le crosstalk la viole, et
 `metrics.reciprocity` mesure la cohérence `|<HV VH*>| / sqrt(<|HV|²><|VH|²>)`,
 valant 1 pour une réciprocité parfaite.
 
-Elle est indépendante parce que `estimate` ne lit que des corrélations
-co-pol/cross-pol, jamais l'accord entre HV et VH. C'est le contrôle du §4.4 de
-Babu et al. (2022), dont les figures 7a et 8a tracent HV contre VH avant et
-après calibration.
+Ce qu'elle voit se lit sur les lignes HV et VH du modèle (« Le biais propre de
+Quegan », étape 1), en regroupant les termes en `S_X = S_HV = S_VH` :
+
+```
+O_HV = z·S_HH + w·S_VV + ((1 + αzw)/√α)·S_X
+O_VH = u·S_HH + v·S_VV + √α·(1 + uv/α)·S_X
+```
+
+Si `u = α·z` et `v = α·w`, la seconde ligne devient, pixel par pixel :
+
+```
+O_VH = α·z·S_HH + α·w·S_VV + √α·(1 + αzw)·S_X = α · O_HV
+```
+
+La cohérence vaut alors exactement 1, quel que soit le crosstalk :
+`|<O_HV·O_VH*>| = |α|·<|O_HV|²> = sqrt(<|O_HV|²>·<|O_VH|²>)`. Pour la même
+raison, elle ignore `alpha` lui-même : multiplier HV et VH par des constantes ne
+change pas une cohérence. La réciprocité ne voit donc que les écarts `u − α·z` et
+`v − α·w` (`test_la_reciprocite_est_aveugle_a_u_egal_alpha_z_et_v_egal_alpha_w`).
+
+Elle est indépendante de Quegan : ses formes fermées en `u, v, w, z` ne lisent
+que des corrélations co-pol/cross-pol, et si son estimation de `alpha` lit
+`C23 = <HV·VH*>`, la cohérence est insensible à `alpha`. Cette indépendance
+n'est pas acquise pour toute méthode — voir « Ce que les niveaux 2 et 3 ne voient
+pas ». C'est le contrôle du §4.4 de Babu et al. (2022), dont les figures 7a et
+8a tracent HV contre VH avant et après calibration.
 
 #### Niveau 3 — les réflecteurs en coin, la seule vérité terrain
 
 Un trièdre répond `S = sqrt(sigma) I` (Fore et al., 2015, équation 5) : ses
 canaux croisés sont **nuls par construction**. Tout ce qu'on y mesure est donc du
 crosstalk, sans hypothèse de modèle. C'est le §4.6 de Babu et sa figure 9.
+
+Au pic, `S_HH = S_VV` et `S_X = 0` : les lignes du modèle donnent exactement
+
+```
+O_HH = (1 + vw)·S_HH     O_HV = (z + w)·S_HH     O_VH = (u + v)·S_HH     O_VV = (1 + uz)·S_HH
+```
+
+si bien que `metrics.corner_reflector_crosstalk` mesure `max(|z + w|, |u + v|)`,
+au facteur `sqrt(|1 + vw|·|1 + uz|)` près
+(`test_la_fuite_mesuree_vaut_max_z_plus_w_et_u_plus_v`). Le trièdre ne voit que
+ces deux sommes : il est aveugle à `u = −v, z = −w`, et à `alpha`, qui ne
+multiplie que la composante croisée `S_X`, nulle ici.
 
 ```bash
 python src/measure_reflectors.py        # ~4 min, les 5 acquisitions
@@ -630,10 +816,55 @@ l'image entière (1,030) contredit le `alpha` de la bande (1,218) et l'aggrave
 (1,359). C'est un argument pour le modèle de Fore, qui estime `alpha` par ligne de
 distance, contre une correction globale.
 
+#### Ce que les niveaux 2 et 3 ne voient pas
+
+**Une direction commune et `alpha`.** La réciprocité voit `u − α·z` et `v − α·w`,
+le trièdre `u + v` et `z + w`. Annuler les quatre à la fois laisse une direction :
+
+```
+u = α·z,  v = α·w,  u = −v,  z = −w     ⟹     (u, v, w, z) = z·(α, −α, −1, 1)
+```
+
+Ni l'un ni l'autre ne voit non plus `alpha`. La même structure vaut, au premier
+ordre, pour l'erreur `θ̂ − θ` qui reste après correction. Mesuré sur un patch
+synthétique sans bruit (512×512, `beta = 0,15`, `alpha = 1,25·e^{−23°i}`,
+`|c| = 0,03`) :
+
+| erreur `θ̂ − θ` | `max \|θ̂ − θ\|` | `1 − réciprocité` | fuite au trièdre |
+|---|---|---|---|
+| `c·(α, −α, −1, 1)` | −28,5 dB | 1,3·10⁻⁷ | −80 dB |
+| `c·(1, 1, 1, 1)` | −30,5 dB | 1,8·10⁻³ | −23,4 dB |
+| `c·(1, 0, 0, 0)` | −30,5 dB | 2,4·10⁻³ | −31,4 dB |
+| `alpha` faux de 20 % | — | 0 | inchangée |
+
+Une méthode dont l'erreur porte sur cette direction ou sur `alpha` obtient donc,
+sur données réelles, la note d'une méthode parfaite.
+
+**Une réciprocité de faible résolution.** Même dans une direction visible, une
+erreur de −30 dB n'abaisse la cohérence que d'environ 2·10⁻³. Or, sur la pile,
+le bruit thermique la tient à 0,821 avant correction et 0,846 après : sur
+synthétique, avec le crosstalk de référence, un SNR cross-pol de 10 dB la
+plafonne à 0,897, et de 5 dB à 0,750. Départager deux méthodes à quelques dB
+l'une de l'autre demande des statistiques appariées, sur les mêmes patchs.
+
+**Une indépendance relative à la méthode.** La réciprocité ne juge pas Quegan
+avec ses propres critères, mais elle jugerait Ainsworth avec les siens. Chez
+Babu (équations 23 à 28), `A = (C31 + C21)/2` et `B = (C34 + C24)/2`, si bien
+que le second membre `X` est fait de `C31 − C21` et `C34 − C24` : le désaccord
+entre HV et VH dans leurs corrélations avec HH et VV. Il en irait de même d'un
+réseau entraîné avec une perte de réciprocité.
+
+**Ce qui fermerait l'angle mort.** Un dièdre à 0°, `S = diag(1, 0, 0, −1)`,
+répondrait `O_HV = (z − w)·S_HH` et `O_VH = (u − v)·S_HH`. Avec le trièdre, les
+quatre termes seraient séparés. Le réseau de Rosamond ne compte que des trièdres,
+et `alpha` ne s'y mesure que sur cibles distribuées, comme le font Quegan et
+l'équation 4 de Babu. La direction commune et `alpha` ne peuvent donc être jugés
+que sur données synthétiques, où `theta` est connu (`metrics.parameter_errors`).
+
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 216 tests
+python -m pytest tests/ -q        # 225 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :

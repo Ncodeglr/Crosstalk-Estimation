@@ -120,8 +120,9 @@ def test_reciprocite_parfaite_vaut_un():
 def test_le_crosstalk_degrade_la_reciprocite():
     """C'est ce qui rend la métrique utile : elle réagit à la distorsion.
 
-    Elle ne mesure pourtant rien que l'estimateur optimise — `estimate` ne lit
-    que des corrélations co-pol/cross-pol, jamais l'accord entre HV et VH.
+    Elle ne mesure pourtant rien que Quegan optimise : ses formes fermées en
+    `u, v, w, z` ne lisent que des corrélations co-pol/cross-pol, et si son
+    `alpha` lit `<HV VH*>`, la cohérence est insensible à `alpha`.
     """
     signal = reflection_symmetric_scattering(
         (256, 256), beta=0.05, rng=np.random.default_rng(0)
@@ -138,6 +139,27 @@ def test_la_correction_restaure_la_reciprocite():
     )
     observe = apply_distortion(signal, THETA)
     assert reciprocity(apply_correction(observe, THETA)) == pytest.approx(1.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("alpha", [1.0, 1.25 * np.exp(-1j * np.deg2rad(23.0))])
+def test_la_reciprocite_est_aveugle_a_u_egal_alpha_z_et_v_egal_alpha_w(alpha):
+    """Angle mort exact, et non approché (README, « Niveau 2 — la réciprocité »).
+
+    Avec `u = alpha z` et `v = alpha w`, les lignes HV et VH de D donnent
+    `O_VH = alpha O_HV` pixel par pixel : la cohérence vaut 1 alors que le
+    crosstalk est bien présent. Elle ignore aussi `alpha` lui-même. Le cas
+    `alpha` complexe distingue cette direction de `u = z, v = w`.
+    """
+    signal = reflection_symmetric_scattering(
+        (64, 64), beta=0.15, rng=np.random.default_rng(0)
+    )
+    z, w = 0.05 * np.exp(0.9j), 0.03 * np.exp(-1.7j)
+    aveugle = CrosstalkParameters(u=alpha * z, v=alpha * w, w=w, z=z, alpha=alpha)
+    assert aveugle.max_crosstalk_db() > -30.0
+    assert reciprocity(apply_distortion(signal, aveugle)) == pytest.approx(1.0, abs=1e-12)
+
+    seul = CrosstalkParameters(0.0, 0.0, 0.0, 0.0, alpha)
+    assert reciprocity(apply_distortion(signal, seul)) == pytest.approx(1.0, abs=1e-12)
 
 
 def test_canal_croise_eteint_rend_nan():
