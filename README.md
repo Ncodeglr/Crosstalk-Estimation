@@ -10,6 +10,112 @@ source .venv/bin/activate   # Windows : .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
+## Carte du projet : des `.slc` aux résultats
+
+Le projet a **deux points d'entrée**, qui partagent le paquet `src/crosstalk/` :
+
+- [src/run_baselines.py](src/run_baselines.py) applique Quegan patch par patch,
+  sur la partition de test. C'est la **baseline** que le CVNN devra battre.
+- [src/measure_reflectors.py](src/measure_reflectors.py) mesure la fuite aux
+  réflecteurs en coin. C'est la **validation par vérité terrain**, comme chez
+  Babu.
+
+```
+                    data/Rosamd_35012_04/  (20 .slc + 20 .ann + 1 .llh)
+                         │                                   │
+      ┌──────────────────┴──────────┐          ┌─────────────┴─────────────────┐
+      │ CHAÎNE A  run_baselines.py  │          │ CHAÎNE B  measure_reflectors  │
+      │ torchcvnn → cvnn → patchs   │          │ numpy.memmap direct, sans cvnn│
+      └──────────────┬──────────────┘          └─────────────┬─────────────────┘
+                     │        src/crosstalk/ (commun)        │
+                     └──► covariance → quegan → physics ◄────┘
+                                        │
+               résiduel + réciprocité (par patch)    fuite aux réflecteurs (vérité terrain)
+```
+
+Les fonctions sont citées par leur nom plutôt que par leur numéro de ligne, qui
+change à chaque modification du code.
+
+### Les entrées
+
+| fichier | contenu |
+|---|---|
+| `*_L090{HH,HV,VH,VV}_04_BC_s1_1x1.slc` | 5 dates × 4 polarisations = 20 fichiers de 61 349 lignes (azimut) × 9 874 colonnes (distance), en `complex64`, soit environ 4,8 Go chacun |
+| `*.ann` | dimensions, cap de l'avion (−10,03°), `Polarimetrically Calibrated = Yes`, `Cross Talk Removed = No` |
+| `*_2x8.llh` | latitude et longitude de chaque pixel de la grille 2×8 — chaîne B seulement |
+| `data/corner_reflectors/rosamond_<date>.csv` | catalogue JPL des réflecteurs — chaîne B seulement |
+| [configs/data_uavsar.yaml](configs/data_uavsar.yaml) | taille de patch, graine, ratios du découpage, normalisation, bloc `baselines:` |
+
+### Chaîne A — `python src/run_baselines.py`
+
+| # | étape | code | entrée → sortie |
+|---|---|---|---|
+| A1 | lire la configuration | `run_baselines.main` | YAML → `dict` |
+| A2 | instancier les méthodes | `run_baselines.build_estimators` → `estimators/registry.create_from_config` | `{name: quegan, window: [5, 5]}` → `QueganEstimator(window=(5, 5))`, que le décorateur `@register_estimator` a inscrit sous le nom `quegan` |
+| A3 | fixer le hasard, compléter la configuration | `run_baselines.build_dataloader` → `cvnn.utils.set_seed(38)`, puis `cvnn/data.validate_and_correct_config` | ajoute `type: polsar`, `has_labels: False`, `num_channels: 4`, lus dans `cvnn/dataset_registry.py` |
+| A4 | découvrir les fichiers | `cvnn/data._create_dataset` → `torchcvnn.SLCDataset` | groupe les `.slc` par date, lit les `.ann` ; grille de 239 × 38 = **9 082 patchs de 256 px par date**, 45 410 au total. Aucun pixel n'est encore lu |
+| A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 9 082 emplacements au sol, les 5 dates suivent leur emplacement → 36 330 / 4 540 / 4 540 patchs, sans fuite |
+| A6 | construire les transformations | `cvnn/transform_registry.build_transform_pipeline` | empilement du `dict` en ordre alphabétique (HH, HV, VH, VV) = `POL_ORDER`, tenseur, puis `GlobalScalarNormalize` qui divise par 0,16444 = √(2 × 0,013521) |
+| A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 284 lots |
+| A8 | lire les patchs | `run_baselines.iter_patches` | lot `(16, 4, 256, 256)` `complex64` → un patch numpy `(4, 256, 256)` à la fois |
+| A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
+| A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-e ci-dessous, et tracé sur un patch réel dans « Chaîne de traitement » plus bas |
+| A10a | covariance | `covariance.polarimetric_covariance` | 16 produits `O_i O_j*`, table de sommes cumulées → `C` de forme `(252, 252, 4, 4)` `complex128`, soit **63 504 fenêtres 5×5** |
+| A10b | formes fermées | `QueganEstimator._solve` | par fenêtre : `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; masque `valides` : rapports finis et au-dessus des seuils |
+| A10c | moyenne | `QueganEstimator.estimate` | moyenne des `theta` sur les fenêtres valides → un `CrosstalkParameters` par patch |
+| A10d | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · o` pour chaque pixel |
+| A10e | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
+| A11 | synthèse | `run_baselines.summarize` | médiane de chaque colonne sur les 4 540 lignes → tableau affiché. **Rien n'est écrit sur disque** |
+
+### Chaîne B — `python src/measure_reflectors.py [--desequilibre]`
+
+Ni cvnn ni normalisation : les `.slc` sont ouverts en `numpy.memmap` et lus aux
+seuls endroits utiles.
+
+| # | étape | code | ce qui se passe |
+|---|---|---|---|
+| B1 | pour chaque date | `main` → `mesure_une_acquisition` | ouvre 4 memmaps `(61 349, 9 874)` et le `.llh` |
+| B2 | **localiser les réflecteurs** | `localise_les_reflecteurs` | lit le catalogue (`lire_catalogue`) ; garde les réflecteurs orientés vers le radar (`oriente_vers_le_radar`, ±45° du cap) et les 8 de Babu (`est_retenu_par_babu`) ; les place par plus proche voisin dans le `.llh`, ×8 en azimut et ×2 en distance (`position_radar`) ; cherche le pic de `\|HH\|` à ±60 px (`affine_sur_le_pic`) ; contrôle la signature de trièdre (`est_un_triedre`) |
+| B3 | déséquilibre de canaux, avec `--desequilibre` seulement | `desequilibre_de_l_acquisition` → `crosstalk/imbalance.py` | `f` et `phi_t + phi_r` aux 8 pics ; `g` et `phi_t - phi_r` sur toute l'image, par tranches de 2 048 lignes → matrice diagonale `K` |
+| B4 | **`theta` de la bande** | `theta_de_la_bande` | colonnes `c ± 10` sur les 61 349 lignes, en tranches de 8 192 (`K` appliquée si présente) ; Quegan 5×5 par tranche, puis moyenne des `theta`. C'est ce qui rend la mesure non circulaire |
+| B5 | mesurer | `mesure_un_reflecteur` → `metrics.corner_reflector_crosstalk` | « avant » = `20 log10(max(\|HV\|, \|VH\|) / sqrt(\|HH\| \|VV\|))` au pic brut ; « après » = la même mesure sur `Sigma · (K ·) o` |
+| B6 | agréger | `agrege`, `resume` | tableau par date, moyenne (Babu) et médiane, puis l'ensemble des 40 mesures |
+
+### Ordre de lecture recommandé
+
+Des fondations vers les points d'entrée : chaque fichier ne dépend que de ceux
+qui le précèdent.
+
+| # | fichier | à vérifier en le lisant |
+|---|---|---|
+| 1 | [configs/data_uavsar.yaml](configs/data_uavsar.yaml) | `seed`, `patch_size`, ratios, `window: [5, 5]` |
+| 2 | [cvnn/src/cvnn/data.py](cvnn/src/cvnn/data.py) — `_create_dataset`, `_groupes_par_emplacement`, `get_dataloaders` | le découpage groupé par emplacement ; le test chargé sans mélange |
+| 3 | [cvnn/src/cvnn/transform_registry.py](cvnn/src/cvnn/transform_registry.py) — `GlobalScalarNormalize` | la normalisation est **un seul scalaire réel**, donc `theta` invariant |
+| 4 | [src/crosstalk/exceptions.py](src/crosstalk/exceptions.py) | les deux cas d'échec : D singulière, covariance mal conditionnée |
+| 5 | [src/crosstalk/parameters.py](src/crosstalk/parameters.py) | ordre `(u, v, w, z, alpha)`, conversions en dB |
+| 6 | [src/crosstalk/physics.py](src/crosstalk/physics.py) | `POL_ORDER`, D réindexée de Fore, `Sigma · D = I`, `apply_matrix` |
+| 7 | [src/crosstalk/covariance.py](src/crosstalk/covariance.py) | table de sommes cumulées, forme `(H − 4, W − 4, 4, 4)` |
+| 8 | [src/crosstalk/estimators/base.py](src/crosstalk/estimators/base.py), puis [registry.py](src/crosstalk/estimators/registry.py) | interface abstraite, enregistrement par décorateur |
+| 9 | [src/crosstalk/estimators/quegan.py](src/crosstalk/estimators/quegan.py) | formes fermées, seuils relatifs, `isfinite`, moyenne des `theta` |
+| 10 | [src/crosstalk/metrics.py](src/crosstalk/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas ; formule au réflecteur |
+| 11 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
+| 12 | [src/crosstalk/imbalance.py](src/crosstalk/imbalance.py) | modèle de Babu, équation 7 ; ambiguïté de `pi` sur les phases |
+| 13 | [src/measure_reflectors.py](src/measure_reflectors.py) | assemblage de la chaîne B ; la bande comme rempart contre la circularité |
+| 14 | [src/crosstalk/synthetic.py](src/crosstalk/synthetic.py) et [tests/](tests/) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
+
+**Quatre points à garder en tête en relisant.**
+
+- **L'ordre des canaux est implicite** : il naît en A6, de l'ordre alphabétique
+  du `dict` rendu par torchcvnn, et tout le reste en dépend. Un test verrouille
+  `POL_ORDER == sorted(POL_ORDER)`.
+- **La chaîne A ne sauvegarde rien** : [experiments/baselines.csv](experiments/baselines.csv)
+  date d'une version antérieure du code.
+- **Les deux chaînes n'ont pas la même normalisation**, sans effet : `theta` et la
+  fuite au réflecteur sont des rapports.
+- **La fenêtre 5×5 est fixée en dur dans la chaîne B** (`main` de
+  `measure_reflectors.py`), et non lue dans le YAML : `full` y rendrait la mesure
+  circulaire — voir « Le piège de circularité » plus bas.
+
 ## Pipeline de données
 
 Entièrement assuré par les deux frameworks existants, sans code spécifique au
