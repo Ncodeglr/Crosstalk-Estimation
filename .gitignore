@@ -5,7 +5,7 @@ __pycache__/
 *.py[cod]
 
 # Données et modèles (trop lourds pour Git)
-data/
+data/*
 !data/corner_reflectors/
 experiments/
 *.h5

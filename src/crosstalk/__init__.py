@@ -5,7 +5,7 @@ Le paquet sépare quatre responsabilités :
 - `parameters`  : le jeu `(u, v, w, z, alpha)` ;
 - `physics`     : l'ordre des polarisations, D, Sigma et leur application —
   commun à toutes les méthodes ;
-- `covariance`  : C = < o o^H >, l'entrée des méthodes statistiques ;
+- `covariance`  : C = < s' s'^H >, l'entrée des méthodes statistiques ;
 - `metrics`     : erreurs sur theta et crosstalk résiduel ;
 - `imbalance`   : déséquilibre de canaux et biais de phase, corrigés avant le
   crosstalk (Babu §3.2) ;

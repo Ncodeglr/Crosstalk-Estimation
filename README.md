@@ -50,10 +50,12 @@ change à chaque modification du code.
 | `data/corner_reflectors/rosamond_<date>.csv` | catalogue JPL des réflecteurs — chaîne B seulement |
 | [configs/data_uavsar.yaml](configs/data_uavsar.yaml) | taille de patch, graine, ratios du découpage, normalisation, bloc `baselines:` |
 
-Les `.slc` sont étalonnés en gain et en phase par JPL, mais **pas corrigés du
-crosstalk** — ce que confirme la mesure du déséquilibre de canaux (voir
-« Le déséquilibre de canaux »). La chaîne ne fait donc qu'estimer puis corriger
-le crosstalk ; la distorsion n'est jamais appliquée aux données réelles.
+**Notation.** Les `.slc` sont le **`s'` de Babu** (éq. 7 et 8), le `O` de Fore :
+étalonnés en gain et en phase par JPL, mais **pas corrigés du crosstalk** — ce
+que confirme la mesure du déséquilibre de canaux (voir « Le déséquilibre de
+canaux »). Le modèle s'écrit `s' = D s + n`, où `s` est le signal vrai : la
+chaîne estime `D` puis corrige, `s_chapeau = Sigma s'`. La distorsion n'est
+jamais appliquée aux données réelles.
 
 ### Chaîne A — `python src/run_baselines.py`
 
@@ -69,10 +71,10 @@ le crosstalk ; la distorsion n'est jamais appliquée aux données réelles.
 | A8 | lire les patchs | `run_baselines.iter_patches` | lot `(16, 4, 256, 256)` `complex64` → un patch numpy `(4, 256, 256)` à la fois |
 | A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-e ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
-| A10a | covariance | `covariance.polarimetric_covariance` | 16 produits `O_i O_j*`, table de sommes cumulées → `C` de forme `(252, 252, 4, 4)` `complex128`, soit **63 504 fenêtres 5×5** |
+| A10a | covariance | `covariance.polarimetric_covariance` | 16 produits `S'_i S'_j*`, table de sommes cumulées → `C` de forme `(252, 252, 4, 4)` `complex128`, soit **63 504 fenêtres 5×5** |
 | A10b | formes fermées | `QueganEstimator._solve` | par fenêtre : `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; masque `valides` : rapports finis et au-dessus des seuils |
 | A10c | moyenne | `QueganEstimator.estimate` | moyenne des `theta` sur les fenêtres valides → un `CrosstalkParameters` par patch |
-| A10d | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · o` pour chaque pixel |
+| A10d | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · s'` pour chaque pixel |
 | A10e | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
 | A11 | synthèse | `run_baselines.summarize` | médiane de chaque colonne sur les 4 540 lignes → tableau affiché. **Rien n'est écrit sur disque** |
 
@@ -87,7 +89,7 @@ seuls endroits utiles.
 | B2 | **localiser les réflecteurs** | `localise_les_reflecteurs` | lit le catalogue (`lire_catalogue`) ; garde les réflecteurs orientés vers le radar (`oriente_vers_le_radar`, ±45° du cap) et les 8 de Babu (`est_retenu_par_babu`) ; les place par plus proche voisin dans le `.llh`, ×8 en azimut et ×2 en distance (`position_radar`) ; cherche le pic de `\|HH\|` à ±60 px (`affine_sur_le_pic`) ; contrôle la signature de trièdre (`est_un_triedre`) |
 | B3 | déséquilibre de canaux, avec `--desequilibre` seulement | `desequilibre_de_l_acquisition` → `crosstalk/imbalance.py` | `f` et `phi_t + phi_r` aux 8 pics ; `g` et `phi_t - phi_r` sur toute l'image, par tranches de 2 048 lignes → matrice diagonale `K` |
 | B4 | **`theta` de la bande** | `theta_de_la_bande` | colonnes `c ± 10` sur les 61 349 lignes, en tranches de 8 192 (`K` appliquée si présente) ; Quegan 5×5 par tranche, puis moyenne des `theta`. C'est ce qui rend la mesure non circulaire |
-| B5 | mesurer | `mesure_un_reflecteur` → `metrics.corner_reflector_crosstalk` | « avant » = `20 log10(max(\|HV\|, \|VH\|) / sqrt(\|HH\| \|VV\|))` au pic brut ; « après » = la même mesure sur `Sigma · (K ·) o` |
+| B5 | mesurer | `mesure_un_reflecteur` → `metrics.corner_reflector_crosstalk` | « avant » = `20 log10(max(\|HV\|, \|VH\|) / sqrt(\|HH\| \|VV\|))` au pic brut ; « après » = la même mesure sur `Sigma · s'`, où `s'` est le pic brut — ou `K ·` pic brut avec `--desequilibre` |
 | B6 | agréger | `agrege`, `resume` | tableau par date, moyenne (Babu) et médiane, puis l'ensemble des 40 mesures |
 
 ### Ordre de lecture recommandé
@@ -180,7 +182,7 @@ Mesuré sur cette pile :
 Les canaux croisés remontent d'un facteur ~3. Ce n'est pas une perte
 d'information — une mise à l'échelle par canal est une matrice diagonale Λ fixe
 et inversible — mais elle change ce que le réseau estime : le modèle mesuré
-`s = D·s_vrai` devient `Λ·s = (Λ·D)·s_vrai`, et les paramètres de crosstalk,
+`s' = D·s` devient `Λ·s' = (Λ·D)·s`, et les paramètres de crosstalk,
 qui sont des **rapports** de coefficients de `D`, sont multipliés par σⱼ/σᵢ. Il
 faut alors appliquer Λ⁻¹ pour revenir à la grandeur physique.
 
@@ -253,7 +255,7 @@ A10d-e   résiduel = -32.59 dB         réduction 10.62 dB
 les 25 pixels × 4 canaux de chaque fenêtre à une matrice 4×4. Toute
 l'information y est : Quegan suppose que sur le signal **vrai**, les termes co-pol/cross-pol
 `<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
-Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** est donc du
+Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** `s'` est donc du
 crosstalk — c'est exactement ce que lisent les formes fermées.
 
 **`apply_distortion` ne tourne jamais sur les données réelles.** Elle sert
@@ -334,7 +336,7 @@ Le code retient la forme de Babu, verrouillée par l'identité
 
 | Fore, ordre `[HH, VH, HV, VV]` | code, ordre `[HH, HV, VH, VV]` |
 |---|---|
-| éq. 16 `C_ij = <O_i O_j*>` | identique |
+| éq. 16 `C_ij = <O_i O_j*>` | identique, notée `C_ij = <S'_i S'_j*>` |
 | éq. 17 `C_Q` (covariance vraie) | **identique** — le bloc `beta` est symétrique en 2↔3 |
 | éq. 13 `D`, éq. 15 `Sigma` | lignes **et** colonnes 2↔3 |
 | éq. 24 `Delta = C11 C44 - \|C14\|²` | identique |
@@ -426,8 +428,21 @@ le crosstalk initial mais s'accordent à 0,1 dB sur le résiduel : les deux bute
 sur le même plancher. Et un seul indice faux dans les formes fermées laisse la
 campagne rendre `-20.10 dB`, identique à la décimale, sans rien signaler.
 
-Cette métrique sert à **comparer des méthodes entre elles**, jamais à annoncer
-une performance absolue.
+**Elle ne permet pas non plus de comparer des méthodes entre elles.** Chaque
+méthode se jugeant elle-même, une méthode qui ne corrige rien se relit, ne trouve
+aucun crosstalk et obtient la note parfaite. Mesuré sur un patch synthétique dont
+on connaît le vrai `theta` :
+
+| méthode | résiduel auto-jugé | réciprocité après correction |
+|---|---|---|
+| aucune correction (`theta = 0`) | **−inf dB**, en apparence parfaite | 0,796 |
+| correction parfaite (vrai `theta`) | −23,9 dB, en apparence la pire | 1,000 |
+| Quegan | −47,8 dB | 1,000 |
+
+Le classement par résiduel est l'inverse de la réalité ; la réciprocité, elle,
+range correctement les méthodes. Le résiduel ne sert donc qu'à contrôler la
+cohérence interne d'une méthode. **La comparaison entre Quegan et le CVNN
+reposera sur les niveaux 2 et 3**, indépendants de toute méthode.
 
 #### Niveau 2 — la réciprocité, indépendante et sans données extérieures
 

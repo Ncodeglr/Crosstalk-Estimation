@@ -90,7 +90,7 @@ def test_reproductible_a_graine_egale():
 
 
 def test_la_phase_de_la_correlation_copolaire_est_respectee():
-    """Non-régression : la convention C_ij = <O_i O_j*> impose la conjugaison.
+    """Non-régression : la convention C_ij = <S'_i S'_j*> impose la conjugaison.
 
     Une corrélation co-polaire réelle ne distinguerait pas les deux conventions ;
     il faut une phase non nulle pour que l'erreur soit visible.

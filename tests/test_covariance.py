@@ -87,7 +87,7 @@ def test_dtype_d_entree_sans_effet_sur_le_resultat():
 
 
 def test_la_distorsion_transporte_la_covariance():
-    """C_O = D C_S D^H : le lien que les formes fermées inversent."""
+    """C_S' = D C_S D^H : le lien que les formes fermées inversent."""
     signal = patch_aleatoire((4, 64, 64), dtype=np.complex128)
     observe = apply_distortion(signal, THETA)
     matrice = distortion_matrix(THETA)

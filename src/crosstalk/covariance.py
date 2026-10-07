@@ -3,14 +3,15 @@
 Toutes les méthodes statistiques d'estimation du crosstalk partent de la même
 quantité (Babu et al., 2022 ; Fore et al., 2015, équation 16) ::
 
-    C_ij = < O_i O_j* >,        i, j dans 1..4, = [HH, HV, VH, VV]
+    C_ij = < S'_i S'_j* >,      i, j dans 1..4, = [HH, HV, VH, VV]
 
 où `<.>` est une moyenne spatiale locale. C est hermitienne et semi-définie
-positive. Elle est calculée sur `O`, le signal **observé**, et non sur le signal
-vrai `S` : c'est bien le crosstalk qui s'y trouve, et c'est de là que les formes
+positive. Elle est calculée sur `s'`, le signal **observé** — le S' de Babu
+(éq. 8), étalonné en gain et en phase mais pas en crosstalk — et non sur le
+signal vrai `s` : c'est bien le crosstalk qui s'y trouve, et c'est de là que les formes
 fermées l'extraient. Le lien avec le modèle direct est :
 
-    C_O = D C_S D^H          (sans bruit)
+    C_S' = D C_S D^H         (sans bruit)
 
 Géométrie des patchs. Les `.slc` UAVSAR stockent 61 349 lignes d'azimut de
 9 874 cases distance : dans un patch `(4, H, W)`, **l'axe -2 est l'azimut et
@@ -107,7 +108,7 @@ def polarimetric_covariance(patch: np.ndarray, window: WindowSpec = "full") -> n
     kh, kw = window
     _warn_if_too_few(kh * kw, f"fenêtre glissante {window}")
 
-    # (..., 4, 4, H, W) : les 16 produits O_i O_j* avant moyennage.
+    # (..., 4, 4, H, W) : les 16 produits S'_i S'_j* avant moyennage.
     produits = np.einsum("...ihw,...jhw->...ijhw", data, data.conj())
     # Table de sommes cumulées : la somme sur une fenêtre se lit en quatre accès,
     # quelle que soit sa taille. Le zéro-padding initial évite un cas particulier sur la première ligne et la première colonne.

@@ -5,21 +5,30 @@ Deux situations, deux familles de métriques.
 **Vérité terrain disponible** — uniquement sur données synthétiques, où `theta`
 est connu parce qu'il a été appliqué : `parameter_errors` compare directement.
 
-**Pas de vérité terrain** — le cas des données réelles : `residual_crosstalk`
-applique le protocole de Fore et al. (2015, §V), qui corrige les données puis
-ré-estime le crosstalk sur les données corrigées. C'est ainsi que Fore compare
-Quegan et Ainsworth (résiduels de -15 à -20 dB contre -30 dB). `reciprocity`
-l'accompagne d'un contrôle que l'estimateur n'optimise pas.
+**Pas de vérité terrain** — le cas des données réelles. Trois contrôles :
+
+- `residual_crosstalk` applique le protocole de Fore et al. (2015, §V) : il
+  corrige les données, puis ré-estime le crosstalk sur les données corrigées
+  **avec le même estimateur** ;
+- `reciprocity` mesure l'accord entre HV et VH, que l'estimateur n'optimise pas ;
+- `corner_reflector_crosstalk` mesure la fuite au pic d'un trièdre, dont les
+  canaux croisés sont nuls par construction (`measure_reflectors.py`).
 
 .. warning::
-   Le résiduel est **optimiste par construction** : c'est le même estimateur qui
-   juge son propre ajustement, sur le même patch. Il sert à **comparer des
-   méthodes entre elles**, pas à annoncer une performance absolue. Celle-ci se
-   mesure aux réflecteurs en coin (`corner_reflector_crosstalk`, utilisée par
-   `measure_reflectors.py`), où rien n'est jugé par l'estimateur. Sur la pile
-   Rosamond, cette mesure non circulaire donne elle aussi une forte réduction,
-   12,9 dB : l'écart avec les 2,8 dB de Babu et al. (table 4) ne tient donc pas
-   à la circularité du résiduel.
+   Le résiduel est **auto-jugé** : l'estimateur évalue sa propre correction. Il
+   ne permet **pas** de comparer des méthodes entre elles, et pas davantage
+   d'annoncer une performance absolue. Une méthode qui ne corrige rien
+   (`theta = 0`) se relit, ne trouve aucun crosstalk et obtient la note
+   parfaite ; une méthode qui connaîtrait le vrai `theta` se relirait avec ce
+   même `theta` et semblerait n'avoir rien réduit. Mesuré sur un patch
+   synthétique à `theta` connu : sans correction, -inf dB ; correction parfaite,
+   -23,9 dB ; Quegan, -47,8 dB — l'ordre inverse de la réalité.
+
+   Le résiduel ne sert donc qu'à contrôler la cohérence interne d'une méthode.
+   Comparer des méthodes demande des juges extérieurs à elles : la réciprocité
+   et les réflecteurs en coin. Ces derniers donnent aussi la performance
+   absolue — 12,9 dB de réduction sur la pile Rosamond, si bien que l'écart avec
+   les 2,8 dB de Babu et al. (table 4) ne tient pas à la circularité du résiduel.
 """
 
 from __future__ import annotations

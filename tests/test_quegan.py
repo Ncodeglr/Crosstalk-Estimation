@@ -24,7 +24,7 @@ def theta(epsilon: float = 0.1) -> CrosstalkParameters:
 
 
 def observe(params, shape=(1024, 1024), beta=0.05, graine=0, **kwargs):
-    """Observation synthétique sans bruit, en ordre modèle : `o = D s`."""
+    """Observation synthétique sans bruit, en ordre modèle : `s' = D s`."""
     signal = reflection_symmetric_scattering(
         shape, beta=beta, rng=np.random.default_rng(graine), **kwargs
     )
@@ -44,7 +44,7 @@ def erreur_relative(estime: CrosstalkParameters, vrai: CrosstalkParameters) -> f
 
 
 def test_bout_en_bout_couplage_faible():
-    """Le test central : `s` -> `o = D s` -> `theta` ré-estimé.
+    """Le test central : `s` -> `s' = D s` -> `theta` ré-estimé.
 
     Le couplage co-pol/cross-pol est réduit (`beta = 0.002`, soit -27 dB) pour
     que le biais structurel de la méthode, quantifié plus bas, reste sous le
@@ -180,7 +180,7 @@ def test_l_estimateur_de_alpha_resout_l_identite_attendue():
 
 
 def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
-    """Sans aucun échantillonnage : C_O = D C_Q D^H construite analytiquement.
+    """Sans aucun échantillonnage : C_S' = D C_Q D^H construite analytiquement.
 
     Isole le biais de **modèle** du bruit d'estimation. À couplage co-pol /
     cross-pol négligeable (`beta` très petit) et crosstalk très faible, les

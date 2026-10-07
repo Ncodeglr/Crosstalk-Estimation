@@ -94,7 +94,7 @@ def apply_matrix(matrix: np.ndarray, data: np.ndarray, channel_axis: int) -> np.
         data: les données polarimétriques, de forme quelconque pourvu que
             `channel_axis` porte les 4 polarisations en ordre `POL_ORDER`.
             Dans ce projet c'est soit le signal vrai `s`, synthétique, que
-            l'on distord, soit le patch observé `o` du dataloader, `complex64`
+            l'on distord, soit le patch observé `s'` du dataloader, `complex64`
             et de forme `(4, H, W)` ou `(lot, 4, H, W)`, que l'on corrige.
         
         channel_axis: position de l'axe des polarisations, `-3` pour un patch.
@@ -118,7 +118,7 @@ def apply_matrix(matrix: np.ndarray, data: np.ndarray, channel_axis: int) -> np.
 
 def apply_distortion(sVector_scattering: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
     """
-    Applique le modèle direct sans bruit : `o = D s`.
+    Applique le modèle direct sans bruit : `s' = D s`.
     Sert à simuler des observations à theta connu — c'est le seul moyen de disposer d'une vérité terrain, les données réelles n'en ayant pas.
 
     Args:
@@ -133,7 +133,7 @@ def apply_distortion(sVector_scattering: np.ndarray,params: CrosstalkParameters,
 
 def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,tol: float = DEFAULT_TOL,) -> np.ndarray:
     """
-    Corrige un patch observé : s_corrigé = Sigma @ o (Fore équation 14).
+    Corrige un patch observé : s_corrigé = Sigma @ s' (Fore équation 14).
 
     Le bruit n'étant pas connu, il n'est pas retranché et se trouve amplifié par Sigma. 
     La correction est donc exacte sur données sans bruit uniquement.

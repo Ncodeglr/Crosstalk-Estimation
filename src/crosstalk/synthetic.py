@@ -103,7 +103,7 @@ def reflection_symmetric_scattering(
         return (rng.normal(size=shape) + 1j * rng.normal(size=shape)) / np.sqrt(2.0)
 
     # Bloc co-polaire : (HH, VV) corrélés par rho_copol. La conjugaison est
-    # imposée par la convention C_ij = <O_i O_j*> : pour obtenir
+    # imposée par la convention C_ij = <S'_i S'_j*> : pour obtenir
     # <S_HH S_VV*> = rho_copol, il faut construire VV avec conj(rho_copol).
     hh = circulaire()
     vv = np.conj(rho_copol) * hh + np.sqrt(1.0 - abs(rho_copol) ** 2) * circulaire()

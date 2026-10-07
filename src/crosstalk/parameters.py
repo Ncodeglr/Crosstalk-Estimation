@@ -1,6 +1,6 @@
 """
 Les cinq paramètres de distorsion polarimétrique.theta = (u, v, w, z, alpha)
-Ce sont les seules inconnues du modèle direct `o = D s + n` une fois les données étalonnées en gain absolu et en
+Ce sont les seules inconnues du modèle direct `s' = D s + n` (le S' de Babu, éq. 8) une fois les données étalonnées en gain absolu et en
 déséquilibre co-polaire (`A = 1`, `k = 1/sqrt(alpha) Fore et al., 2015, équations 11 à 13.
 """
 

@@ -47,7 +47,7 @@ class CrosstalkEstimator(ABC):
 
     def correct(self, patch: np.ndarray, params: CrosstalkParameters | None = None) -> np.ndarray:
         """
-        Corrige un patch du crosstalk : `s_chapeau = Sigma o`.
+        Corrige un patch du crosstalk : `s_chapeau = Sigma s'`.
         Returns: Le patch corrigé, **dans l'ordre d'entrée** et de même dtype.
         """
         if params is None:
