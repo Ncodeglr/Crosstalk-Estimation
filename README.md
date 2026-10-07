@@ -386,9 +386,24 @@ Le code retient la forme de Babu, verrouillée par l'identité
 | éq. 26 `alpha_1 = (C22 - u C12 - v C42)/X` | `alpha_1 = (C33 - u C13 - v C43)/X` |
 | éq. 26 `alpha_2 = X*/(C33 - z* C31 - w* C34)` | `alpha_2 = X*/(C22 - z* C21 - w* C24)` |
 
-Deux écarts délibérés à son équation 25 : le `4|alpha_2|²` ci-dessus, et
-l'absence du facteur de phase `alpha_1/|alpha_1|` — `alpha` est rendu réel
-positif, comme à l'équation 15 de Babu.
+Un écart délibéré à son équation 25 : le `4|alpha_2|²` ci-dessus. Son facteur
+de phase `alpha_1/|alpha_1|` est en revanche **appliqué**, alors que l'équation 15
+de Babu l'omet et rend un `alpha` réel. Sans lui, la correction laisserait un
+déphasage `arg(alpha)` entre HV et VH — jusqu'à environ −20° le 20 mai, d'après
+le `phi_t - phi_r` mesuré. Ce choix ne change aucun chiffre comparable à Babu :
+la phase n'agit que par `diag(1, e^{-i phi/2}, e^{+i phi/2}, 1)`, et la fuite aux
+réflecteurs, la réciprocité et le résiduel ne lisent que des modules
+(`test_la_phase_de_alpha_ne_change_aucune_metrique_comparable_a_babu`).
+
+En fenêtre glissante, le module et la phase de `alpha` se moyennent séparément :
+moyenne des modules, comme chez Babu dont le `alpha` est réel, et phase de la
+moyenne complexe. La phase varie d'environ 23° d'une fenêtre 5×5 à l'autre, si
+bien que moyenner les complexes ferait s'annuler une partie du module : sur 40
+patchs, −5,3 % contre l'estimation plein patch, au lieu de +3,5 % pour la moyenne
+des modules.
+
+**Règle suivie** : Babu, sauf là où ses équations sont incohérentes ou
+incomplètes, auquel cas Fore.
 
 ⚠️ En comparant le code au papier, ne « corrigez » pas `C31` en `C21` : c'est la
 réindexation, et `tests/test_physics.py::test_d_est_la_matrice_de_fore_reindexee`

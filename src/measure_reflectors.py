@@ -252,8 +252,9 @@ def theta_de_la_bande(
       elle n'apparaît que sur une scène portant des cibles ponctuelles.
 
     La bande est traitée par tranches d'azimut pour borner la mémoire, et les
-    `theta` des tranches sont moyennés. Les tranches étant de même hauteur, cela
-    équivaut à la moyenne globale, à la dernière tranche près.
+    `theta` des tranches sont moyennés par `CrosstalkParameters.mean`, selon la
+    même règle que les fenêtres d'un patch. Les tranches étant de même hauteur,
+    cela équivaut à la moyenne globale, à la dernière tranche près.
 
     Args:
         correction: matrice diagonale du déséquilibre de canaux
@@ -276,7 +277,7 @@ def theta_de_la_bande(
             logger.debug("tranche %d-%d, colonne %d : %s", a0, a1, colonne, erreur)
     if not jeux:
         return None
-    return CrosstalkParameters.from_vector(np.mean(jeux, axis=0))
+    return CrosstalkParameters.mean(np.array(jeux))
 
 
 def mesure_un_reflecteur(

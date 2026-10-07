@@ -50,15 +50,6 @@ def test_reference_nulle_donne_une_erreur_relative_infinie():
     assert erreurs["abs_error_u"] == pytest.approx(abs(THETA.u))
 
 
-def test_la_phase_de_alpha_n_est_pas_rapportee():
-    """`alpha` estimé est réel par convention : son écart de phase ne mesure rien.
-
-    Le jeu de référence porte pourtant une phase de 27°. Si la clé revenait un
-    jour, elle vaudrait -27° quelle que soit la qualité de l'estimation.
-    """
-    assert "alpha_error_deg" not in parameter_errors(THETA, THETA)
-
-
 def test_ecart_de_module_de_alpha_en_db():
     estime = CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 2.0)
     vrai = CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.0)
@@ -219,3 +210,33 @@ def test_la_correction_fait_chuter_la_fuite_au_reflecteur():
     )
     assert avant > -25.0, "le cas de test doit présenter une fuite mesurable"
     assert apres < -250.0, f"fuite résiduelle {apres:.1f} dB, attendue négligeable"
+
+
+def test_la_phase_de_alpha_ne_change_aucune_metrique_comparable_a_babu():
+    """Corriger avec `alpha` complexe (Fore, éq. 25) ou réel (Babu, éq. 15).
+
+    Les deux corrections ne diffèrent que par `diag(1, e^{-i phi/2}, e^{+i phi/2}, 1)` :
+    une rotation de phase de HV et VH, sans effet sur le retrait du crosstalk.
+    Fuite au réflecteur, réciprocité et modules du résiduel doivent donc être
+    identiques — ce qui garantit que passer à la phase de Fore n'a pas déplacé
+    l'écart avec Babu.
+    """
+    sans_phase = CrosstalkParameters(THETA.u, THETA.v, THETA.w, THETA.z, abs(THETA.alpha))
+    observe = apply_distortion(
+        reflection_symmetric_scattering((64, 64), rng=np.random.default_rng(5)), THETA
+    )
+    avec, sans = apply_correction(observe, THETA), apply_correction(observe, sans_phase)
+
+    assert reciprocity(avec) == pytest.approx(reciprocity(sans), rel=1e-12)
+    estimateur = QueganEstimator()
+    assert estimateur.estimate(avec).crosstalk_db() == pytest.approx(
+        estimateur.estimate(sans).crosstalk_db(), abs=1e-9
+    )
+
+    triedre = distortion_matrix(THETA) @ np.array([40.0, 0.3 + 0.2j, 0.1 - 0.3j, 38.0])
+    assert corner_reflector_crosstalk(
+        *apply_correction(triedre, THETA, channel_axis=0)
+    ) == pytest.approx(
+        corner_reflector_crosstalk(*apply_correction(triedre, sans_phase, channel_axis=0)),
+        abs=1e-9,
+    )

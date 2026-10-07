@@ -50,10 +50,9 @@ def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParamete
         - alpha_error_db : écart des modules de alpha, en dB.
 
     Note:
-        L'écart des phases de alpha n'est pas rendu. Les formes fermées du
-        projet suivent l'équation 15 de Babu, qui s'arrête au module : 
-            un alpha estimé est réel positif, donc un tel écart vaudrait
-            toujours l'opposé de la phase de référence. Il aurait l'apparence d'une mesure sans en être une.
+        L'écart des phases de alpha n'est pas rendu. Il ne mesurait rien tant
+        que alpha était estimé réel (Babu, éq. 15) ; depuis que sa phase l'est
+        aussi (Fore, éq. 25), il aurait un sens, mais n'a pas été ajouté.
     """
     resultats: dict[str, float] = {}
     relatives: list[float] = []
@@ -170,9 +169,10 @@ class ResidualReport:
     def as_row(self) -> dict[str, float]:
         """Vue plate, prête pour un CSV.
 
-        La phase de `alpha` n'y figure pas : les formes fermées suivent
-        l'équation 15 de Babu et al. (2022), qui s'arrête au module, et la
-        colonne vaudrait zéro sur toutes les lignes.
+        La phase de `alpha` n'y figure pas. Elle est estimée (Fore, éq. 25),
+        mais aucune métrique comparable à Babu ne la lit : la fuite aux
+        réflecteurs, la réciprocité et le résiduel ne portent que sur des
+        modules.
         """
         return {
             "initial_db": self.initial_db,

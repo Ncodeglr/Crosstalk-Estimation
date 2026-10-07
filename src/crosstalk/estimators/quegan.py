@@ -91,7 +91,7 @@ class QueganEstimator(CrosstalkEstimator):
             z = (c44 * c21 - c41 * c24) / delta
             w = (c11 * c24 - c21 * c14) / delta
 
-            # --------------------------Déséquilibre croisé - (Équations 15 à 18)--------------------------
+            # ------------------- Déséquilibre croisé - (Babu, équations 15 à 18 ; Fore, équations 25-26) -------------------
             x = c23 - z * c13 - w * c43
             rapport_x = np.abs(x) / np.sqrt(np.abs(c22 * c33))
             alpha1 = (c33 - u * c13 - v * c43) / x
@@ -100,10 +100,17 @@ class QueganEstimator(CrosstalkEstimator):
             rapport_denom2 = np.abs(denominateur_2) / np.abs(c22)
             alpha2 = np.conj(x) / denominateur_2
 
+            # Le module suit Babu éq. 15 (`4|alpha2|^2` sous la racine, là où le
+            # texte de Fore porte la faute `4 + |alpha2|^2`). La phase suit Fore
+            # éq. 25, qui multiplie par `alpha1 / |alpha1|` : Babu omet ce facteur
+            # et rend un alpha réel, ce qui laisserait après correction un
+            # déphasage `arg(alpha)` entre HV et VH. `exp(i angle)` plutôt
+            # qu'une division : `angle(0)` vaut 0, sans produire de `nan`.
             produit = np.abs(alpha1 * alpha2)
-            alpha = ((
+            module = (
                 produit - 1.0 + np.sqrt((produit - 1.0) ** 2 + 4.0 * np.abs(alpha2) ** 2)
-            ) / (2.0 * np.abs(alpha2))).astype(np.complex128)
+            ) / (2.0 * np.abs(alpha2))
+            alpha = module * np.exp(1j * np.angle(alpha1))
 
         rapports = {
             "Delta / (C11 C44)": rapport_delta,
@@ -163,11 +170,18 @@ class QueganEstimator(CrosstalkEstimator):
         La moyenne des (u, v, w, z) est prise sur les nombres complexes, ce qui
         est nettement le bon choix : mesuré sur 150 patchs de la pile Rosamond
         contre l'estimation plein patch, moyenner les complexes donne -1,1 dB
-        de biais, moyenner les modules +6,6 dB. `alpha` étant réel positif,
-        sa moyenne est arithmétique ; à 25 échantillons par fenêtre elle
-        surestime `|alpha|` de **2,4 %** environ par rapport au plein patch
-        (même mesure, 150 patchs 64x64), l'inégalité de Jensen jouant sur une
-        quantité positive bruitée. Le mode "full" n'en souffre pas.
+        de biais, moyenner les modules +6,6 dB.
+
+        `alpha` ne se moyenne pas ainsi (`CrosstalkParameters.mean`). Sa phase varie d'environ 23° d'une
+        fenêtre 5x5 à l'autre, si bien que la moyenne complexe fait s'annuler une
+        partie du module. Mesuré sur 40 patchs 256x256 contre l'estimation plein
+        patch (`|alpha|` = 1,205) : le module de la moyenne complexe le sous-estime
+        de 5,3 %, la moyenne des modules le surestime de 3,5 % (inégalité de
+        Jensen sur une quantité positive bruitée). On retient donc la **moyenne
+        des modules**, qui est aussi celle de Babu puisque son `alpha` est réel,
+        et la **phase de la moyenne complexe**, que Fore ajoute (éq. 25). Le
+        module rendu est ainsi inchangé par l'ajout de la phase. Le mode "full"
+        n'est concerné par aucun de ces biais.
 
         Note:
             Cette moyenne porte sur toutes les fenêtres du patch, distance comprise. 
@@ -195,7 +209,7 @@ class QueganEstimator(CrosstalkEstimator):
                 valides.size - retenues,
                 valides.size,
             )
-        return CrosstalkParameters.from_vector(thetas[valides].mean(axis=0))
+        return CrosstalkParameters.mean(thetas[valides])
 
     def estimate_range_lines(self, patch: np.ndarray) -> list[CrosstalkParameters]:
         """

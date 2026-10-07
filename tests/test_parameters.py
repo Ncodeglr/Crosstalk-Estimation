@@ -75,3 +75,22 @@ def test_un_terme_nul_rend_moins_l_infini_sans_avertissement():
     assert all(valeur == -np.inf for valeur in valeurs.values())
     assert neutre.max_crosstalk_db() == -np.inf
     assert neutre.alpha_db() == pytest.approx(0.0)
+
+
+def test_moyenne_complexe_pour_u_v_w_z_module_et_phase_separes_pour_alpha():
+    jeux = np.array([
+        [0.1, 0.2j, -0.1, 0.05, 1.2 * np.exp(1j * np.deg2rad(40.0))],
+        [0.3, 0.0, 0.1, -0.05, 1.2 * np.exp(-1j * np.deg2rad(20.0))],
+    ])
+    moyenne = CrosstalkParameters.mean(jeux)
+    assert moyenne.to_vector()[:4] == pytest.approx(jeux[:, :4].mean(axis=0))
+    # Les deux alpha ont le même module : la moyenne des modules le conserve,
+    # quand la moyenne complexe le réduirait à 1,2 cos(30°) = 1,039.
+    assert abs(moyenne.alpha) == pytest.approx(1.2)
+    assert np.degrees(np.angle(moyenne.alpha)) == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize("forme", [(0, 5), (3, 4), (5,)])
+def test_moyenne_refuse_une_mauvaise_forme(forme):
+    with pytest.raises(ValueError):
+        CrosstalkParameters.mean(np.ones(forme, dtype=complex))

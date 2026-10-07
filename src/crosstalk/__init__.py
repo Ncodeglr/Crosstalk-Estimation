@@ -16,9 +16,12 @@ Référence d'implémentation : Babu, A., Kumar, S., & Agrawal, S. (2022).
 Polarimetric calibration and spatio-temporal polarimetric distortion analysis
 of UAVSAR PolSAR data. *Earth and Space Science*, 9(4), e2020EA001629.
 L'ordre des polarisations suit ses équations 8 et 9, les formes fermées de
-Quegan son équation 13. La matrice de distorsion, son inverse et `alpha` sont
-en revanche ceux de Fore, réindexés dans cet ordre : les équations 10, 12 et
-15 à 18 de Babu sont erronées (voir `physics.py` et le README).
+Quegan son équation 13, et le module de `alpha` son équation 15. La matrice de
+distorsion, son inverse, la réindexation de `alpha` et sa phase viennent en
+revanche de Fore, réindexés dans cet ordre : les équations 10, 12 et 16 à 18 de
+Babu sont erronées, et son équation 15 omet la phase (voir `physics.py` et le
+README). Règle suivie : Babu, sauf là où ses équations sont incohérentes ou
+incomplètes, auquel cas Fore.
 
 Référence secondaire, citée là où elle est la source d'un fait que Babu ne
 formule pas : Fore, A. G., Chapman, B. D., Hawkins, B. P., Hensley, S.,

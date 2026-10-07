@@ -55,24 +55,40 @@ def test_bout_en_bout_couplage_faible():
     assert erreur_relative(estime, vrai) < 0.03
 
 
-def test_alpha_est_retrouve_en_module():
-    """Seul le module est estimé : l'équation 15 de Babu s'y arrête.
+def test_alpha_est_retrouve_en_module_et_en_phase():
+    """Le module suit Babu éq. 15, la phase Fore éq. 25 (`alpha1 / |alpha1|`).
 
-    Le jeu de référence porte pourtant une phase de 27°. Elle n'est pas
-    retrouvée, et ce n'est pas un défaut mais le choix de convention du projet —
-    `test_alpha_est_reel_positif` verrouille l'autre moitié du contrat.
+    Le jeu de référence porte une phase de 27°. Sans le facteur de Fore,
+    l'estimation rendrait 0°, comme l'équation 15 de Babu prise à la lettre.
     """
     estime = estimateur().estimate(observe(theta(0.1), beta=0.002))
     assert abs(estime.alpha) == pytest.approx(abs(ALPHA), rel=0.02)
+    assert np.degrees(np.angle(estime.alpha)) == pytest.approx(27.0, abs=1.0)
 
 
-def test_alpha_est_reel_positif():
-    """Babu et al. (2022, éq. 15) s'arrête au module ; Fore et al. le complète
-    par le facteur de phase `alpha1 / |alpha1|`, que ce projet n'applique pas.
+def test_en_fenetre_glissante_alpha_moyenne_module_et_phase_separement():
+    """Module : moyenne des modules (Babu). Phase : celle de la moyenne complexe (Fore).
+
+    Moyenner directement les `alpha` complexes, dont la phase varie d'une fenêtre
+    5x5 à l'autre, ferait s'annuler une partie du module (-5,3 % mesuré sur la
+    pile) ; la règle retenue laisse le module identique à celui d'un `alpha` réel.
     """
-    estime = estimateur().estimate(observe(theta(0.1), beta=0.002))
-    assert estime.alpha.imag == 0.0
-    assert estime.alpha.real > 0.0
+    # Deux moitiés aux phases de alpha opposées (+27° et -27°) : sur un signal
+    # synthétique exactement réciproque, toutes les fenêtres d'une moitié
+    # rendent le même alpha, et c'est l'assemblage qui crée la dispersion.
+    gauche = theta(0.1)
+    droite = CrosstalkParameters(gauche.u, gauche.v, gauche.w, gauche.z, np.conj(gauche.alpha))
+    patch = np.concatenate(
+        [observe(gauche, shape=(64, 32), beta=0.002), observe(droite, shape=(64, 32), beta=0.002)],
+        axis=-1,
+    )
+    est = QueganEstimator(window=BABU_WINDOW)
+    thetas, valides, _ = est._solve(polarimetric_covariance(patch, BABU_WINDOW))
+    alphas = thetas[..., 4][valides]
+    estime = est.estimate(patch).alpha
+    assert abs(estime) == pytest.approx(np.mean(np.abs(alphas)), rel=1e-12)
+    assert np.angle(estime) == pytest.approx(np.angle(np.mean(alphas)), abs=1e-12)
+    assert abs(estime) > abs(np.mean(alphas))
 
 
 def test_le_biais_relatif_est_proportionnel_au_rapport_crosspol_copol():
