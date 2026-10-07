@@ -94,3 +94,5 @@ class CrosstalkParameters:
             f"|alpha|={self.alpha_db():+.2f} dB, "
             f"arg(alpha)={self.alpha_phase_deg():+.1f}°)"
         )
+
+    

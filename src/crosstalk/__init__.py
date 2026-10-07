@@ -7,6 +7,8 @@ Le paquet sépare quatre responsabilités :
   commun à toutes les méthodes ;
 - `covariance`  : C = < o o^H >, l'entrée des méthodes statistiques ;
 - `metrics`     : erreurs sur theta et crosstalk résiduel ;
+- `imbalance`   : déséquilibre de canaux et biais de phase, corrigés avant le
+  crosstalk (Babu §3.2) ;
 - `estimators`  : ce qui distingue les méthodes, c'est-à-dire l'estimation de
   `theta` et elle seule, plus le registre qui les rend adressables par nom.
 
@@ -38,6 +40,12 @@ from .estimators import (
     create_from_config,
     register_estimator,
 )
+from .imbalance import (
+    ChannelImbalance,
+    crosspol_imbalance,
+    estimate_copol,
+    estimate_crosspol,
+)
 from .metrics import (
     ResidualReport,
     corner_reflector_crosstalk,
@@ -64,6 +72,10 @@ __all__ = [
     "IllConditionedCovarianceError",
     "CrosstalkEstimator",
     "CrosstalkParameters",
+    "ChannelImbalance",
+    "crosspol_imbalance",
+    "estimate_copol",
+    "estimate_crosspol",
     "ResidualReport",
     "corner_reflector_crosstalk",
     "parameter_errors",

@@ -16,10 +16,18 @@ Trois jeux de données se rencontrent ici :
   grille 2x8 et sert à inverser les coordonnées géographiques en coordonnées
   radar ;
 - les `.slc` eux-mêmes, lus par `numpy.memmap` autour de chaque réflecteur.
+
+Avec `--desequilibre`, le déséquilibre de canaux et les biais de phase sont
+estimés puis corrigés **avant** le crosstalk, dans l'ordre de Babu et al.
+(2022, §3.2 puis §3.3) : `f` et `phi_t + phi_r` sur les pics des trièdres,
+`g` et `phi_t - phi_r` sur toute l'image. La colonne « avant » reste mesurée
+sur les données brutes, comme la colonne *Uncalibrated* de la Table 4 de Babu ;
+la colonne « après » porte alors les deux corrections enchaînées.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import logging
 import re
@@ -35,9 +43,14 @@ sys.path.insert(0, str(RACINE))
 from src.crosstalk.estimators import create_from_config  # noqa: E402
 from src.crosstalk.estimators.base import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
+from src.crosstalk.imbalance import (  # noqa: E402
+    ChannelImbalance,
+    crosspol_imbalance,
+    estimate_copol,
+)
 from src.crosstalk.metrics import corner_reflector_crosstalk  # noqa: E402
 from src.crosstalk.parameters import CrosstalkParameters  # noqa: E402
-from src.crosstalk.physics import POL_ORDER, inverse_distortion_matrix  # noqa: E402
+from src.crosstalk.physics import POL_ORDER, apply_matrix, inverse_distortion_matrix  # noqa: E402
 
 logger = logging.getLogger("measure_reflectors")
 
@@ -60,11 +73,25 @@ DEMI_BANDE: int = 10
 #: environ 50 Mo par tranche, au lieu de plusieurs gigaoctets d'un coup.
 PAS_AZIMUT: int = 8192
 
+#: Hauteur des tranches pour l'estimation de `g` sur l'image entière. Une tranche
+#: couvre alors toute la largeur de la fauchée, 9 874 colonnes : 2 048 lignes
+#: font environ 160 Mo par canal, quand 8 192 en feraient 650.
+PAS_AZIMUT_IMAGE: int = 2048
+
 #: Un trièdre a `|S_VV / S_HH| = 1` et une phase co-polaire nulle. Au-delà de
 #: ces bornes, la cible n'est pas un trièdre — réflecteur masqué, déplacé, ou
 #: cible parasite tombée dans la fenêtre de recherche.
 RATIO_COPOL: tuple[float, float] = (0.7, 1.4)
 PHASE_COPOL_DEG: float = 30.0
+
+#: Côté des trièdres retenus, en mètres. Babu et al. (2022, §2) n'utilisent que
+#: les réflecteurs de « 2,4 m », ceux de 4,8 m étant dimensionnés pour la bande P.
+#: Le catalogue JPL donne 2,4384 m, soit exactement 8 pieds.
+COTE_BABU_M: float = 2.4384
+
+#: Écart toléré sur le côté. Le catalogue ne porte que deux tailles, 2,4384 m et
+#: 4,8 m : toute tolérance entre quelques millimètres et 2 m les sépare.
+TOLERANCE_COTE_M: float = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +150,11 @@ def lire_annotation(chemin: Path) -> dict[str, float]:
             raise ValueError(f"clé introuvable dans {chemin.name} : {nom}")
         valeurs[nom] = float(trouve.group(1))
     return valeurs
+
+
+def est_de_la_taille_babu(reflecteur: Reflecteur) -> bool:
+    """Le réflecteur est-il un trièdre de 2,4 m, le seul que retient Babu ?"""
+    return abs(reflecteur.cote - COTE_BABU_M) <= TOLERANCE_COTE_M
 
 
 # ------------------------------------------------------------- géolocalisation
@@ -198,6 +230,7 @@ def theta_de_la_bande(
     colonne: int,
     nombre_de_lignes: int,
     estimateur: CrosstalkEstimator,
+    correction: np.ndarray | None = None,
 ) -> CrosstalkParameters | None:
     """Estime `theta` sur la bande de distance, et **jamais** sur le réflecteur seul.
 
@@ -221,6 +254,11 @@ def theta_de_la_bande(
     `theta` des tranches sont moyennés. Les tranches étant de même hauteur, cela
     équivaut à la moyenne globale, à la dernière tranche près.
 
+    Args:
+        correction: matrice diagonale du déséquilibre de canaux
+            (`ChannelImbalance.correction_matrix`), appliquée à chaque tranche
+            avant l'estimation ; `None` pour estimer sur les données brutes.
+
     Returns:
         Le `theta` de la bande, ou `None` si aucune tranche n'est exploitable.
     """
@@ -229,6 +267,8 @@ def theta_de_la_bande(
     for a0 in range(0, nombre_de_lignes, PAS_AZIMUT):
         a1 = min(a0 + PAS_AZIMUT, nombre_de_lignes)
         tranche = np.stack([np.asarray(canaux[pol][a0:a1, c0:c1]) for pol in POL_ORDER])
+        if correction is not None:
+            tranche = apply_matrix(correction, tranche, channel_axis=0)
         try:
             jeux.append(estimateur.estimate(tranche).to_vector())
         except CrosstalkError as erreur:
@@ -244,19 +284,25 @@ def mesure_un_reflecteur(
     colonne: int,
     estimateur: CrosstalkEstimator,
     nombre_de_lignes: int,
+    correction: np.ndarray | None = None,
 ) -> dict[str, float] | None:
     """Fuite co-pol vers cross-pol au réflecteur, avant et après correction.
 
+    La signature de trièdre a déjà été contrôlée par `localise_les_reflecteurs`.
+
+    Args:
+        correction: matrice du déséquilibre de canaux, appliquée avant `Sigma`
+            au réflecteur comme à la bande ; `None` pour la chaîne sans §3.2.
+            La mesure « avant » se fait toujours sur les valeurs brutes.
+
     Returns:
-        Les deux mesures et leur différence, ou `None` si la signature n'est pas
-        celle d'un trièdre ou si l'estimation échoue.
+        Les deux mesures, leur différence et le `|alpha|` de la bande, ou `None`
+        si l'estimation échoue.
     """
     valeurs = np.array([canaux[pol][ligne, colonne] for pol in POL_ORDER])
-    if not est_un_triedre(valeurs[0], valeurs[3]):
-        return None
     avant = corner_reflector_crosstalk(*valeurs)
 
-    theta = theta_de_la_bande(canaux, colonne, nombre_de_lignes, estimateur)
+    theta = theta_de_la_bande(canaux, colonne, nombre_de_lignes, estimateur, correction)
     if theta is None:
         return None
     try:
@@ -265,10 +311,80 @@ def mesure_un_reflecteur(
         logger.debug("réflecteur (%d, %d) : %s", ligne, colonne, erreur)
         return None
 
+    if correction is not None:
+        valeurs = correction @ valeurs
     apres = corner_reflector_crosstalk(*(sigma @ valeurs))
     if not (np.isfinite(avant) and np.isfinite(apres)):
         return None
-    return {"avant_db": avant, "apres_db": apres, "reduction_db": avant - apres}
+    return {"avant_db": avant, "apres_db": apres, "reduction_db": avant - apres,
+            "alpha_abs": abs(theta.alpha)}
+
+
+def localise_les_reflecteurs(
+    catalogue: Path,
+    canaux: dict[str, np.memmap],
+    annotation: dict[str, float],
+    latitudes: np.ndarray,
+    longitudes: np.ndarray,
+) -> list[tuple[Reflecteur, int, int]]:
+    """Trièdres de 2,4 m orientés vers le radar, avec la position de leur pic.
+
+    Séparée de la mesure parce que `f` s'estime sur ces pics : il faut les
+    connaître tous avant de corriger quoi que ce soit. Seuls les pics à
+    signature de trièdre sont rendus, pour que ni `f` ni la mesure ne portent
+    sur une cible parasite.
+
+    Returns:
+        Une liste de `(reflecteur, ligne, colonne)`, en pixels 1x1.
+    """
+    trouves: list[tuple[Reflecteur, int, int]] = []
+    for reflecteur in lire_catalogue(catalogue):
+        if not oriente_vers_le_radar(reflecteur, annotation["cap"]):
+            continue
+        if not est_de_la_taille_babu(reflecteur):
+            continue
+        approche = position_radar(reflecteur, latitudes, longitudes)
+        if approche is None:
+            continue
+        ligne, colonne = affine_sur_le_pic(canaux, *approche)
+        if not est_un_triedre(canaux["HH"][ligne, colonne], canaux["VV"][ligne, colonne]):
+            logger.info("réflecteur %s écarté (signature)", reflecteur.ident)
+            continue
+        trouves.append((reflecteur, ligne, colonne))
+    return trouves
+
+
+def desequilibre_de_l_acquisition(
+    canaux: dict[str, np.memmap],
+    pics: list[tuple[Reflecteur, int, int]],
+    nombre_de_lignes: int,
+) -> ChannelImbalance:
+    """Babu §3.2 sur une acquisition : `f` aux pics, `g` sur l'image entière.
+
+    Les moyennes `<|O_hv|^2>`, `<|O_vh|^2>` et `<O_hv O_vh*>` sont accumulées
+    par tranches d'azimut, puis passées à `crosspol_imbalance` : l'image fait
+    environ 4,8 Go par canal et ne tient pas en mémoire d'un bloc. C'est le choix
+    de Fore et al. (2015, §IV-B), qui moyenne sur l'image entière ; Babu parle
+    de cibles homogènes sans préciser lesquelles.
+    """
+    hh = np.array([canaux["HH"][ligne, colonne] for _, ligne, colonne in pics])
+    vv = np.array([canaux["VV"][ligne, colonne] for _, ligne, colonne in pics])
+    f, phi_somme = estimate_copol(hh, vv)
+
+    somme_hv = somme_vh = 0.0
+    correlation = 0j
+    for a0 in range(0, nombre_de_lignes, PAS_AZIMUT_IMAGE):
+        a1 = min(a0 + PAS_AZIMUT_IMAGE, nombre_de_lignes)
+        hv = np.asarray(canaux["HV"][a0:a1])
+        vh = np.asarray(canaux["VH"][a0:a1])
+        somme_hv += float(np.sum(np.abs(hv) ** 2, dtype=np.float64))
+        somme_vh += float(np.sum(np.abs(vh) ** 2, dtype=np.float64))
+        correlation += complex(np.sum(hv * np.conj(vh), dtype=np.complex128))
+    nombre = canaux["HV"].size
+    g, phi_difference = crosspol_imbalance(
+        somme_hv / nombre, somme_vh / nombre, correlation / nombre
+    )
+    return ChannelImbalance.from_estimates(f, phi_somme, g, phi_difference)
 
 
 def mesure_une_acquisition(
@@ -276,8 +392,14 @@ def mesure_une_acquisition(
     catalogue: Path,
     racine_donnees: Path,
     estimateur: CrosstalkEstimator,
-) -> list[dict[str, float | str]]:
-    """Parcourt les réflecteurs orientés vers le radar pour une acquisition."""
+    desequilibre: bool = False,
+) -> tuple[list[dict[str, float | str]], ChannelImbalance | None]:
+    """Mesure les trièdres de 2,4 m orientés vers le radar pour une acquisition.
+
+    Returns:
+        Une ligne par réflecteur mesuré, et le déséquilibre estimé si
+        `desequilibre` est vrai, `None` sinon.
+    """
     annotation = lire_annotation(racine_donnees / f"{prefixe}_L090HH_04_BC.ann")
     formes = (int(annotation["lignes"]), int(annotation["colonnes"]))
     canaux = {
@@ -293,21 +415,21 @@ def mesure_une_acquisition(
     )
     latitudes, longitudes = np.asarray(llh[:, :, 0]), np.asarray(llh[:, :, 1])
 
+    pics = localise_les_reflecteurs(catalogue, canaux, annotation, latitudes, longitudes)
+    jeu = desequilibre_de_l_acquisition(canaux, pics, formes[0]) if desequilibre and pics else None
+    correction = None if jeu is None else jeu.correction_matrix()
+
     lignes: list[dict[str, float | str]] = []
-    for reflecteur in lire_catalogue(catalogue):
-        if not oriente_vers_le_radar(reflecteur, annotation["cap"]):
-            continue
-        approche = position_radar(reflecteur, latitudes, longitudes)
-        if approche is None:
-            continue
-        ligne, colonne = affine_sur_le_pic(canaux, *approche)
-        mesure = mesure_un_reflecteur(canaux, ligne, colonne, estimateur, formes[0])
+    for reflecteur, ligne, colonne in pics:
+        mesure = mesure_un_reflecteur(
+            canaux, ligne, colonne, estimateur, formes[0], correction
+        )
         if mesure is None:
-            logger.info("réflecteur %s écarté (signature ou estimation)", reflecteur.ident)
+            logger.info("réflecteur %s écarté (estimation)", reflecteur.ident)
             continue
         lignes.append({"ident": reflecteur.ident, "cote": reflecteur.cote,
                        "ligne": ligne, "colonne": colonne, **mesure})
-    return lignes
+    return lignes, jeu
 
 
 # ------------------------------------------------------------------- sorties
@@ -316,29 +438,47 @@ def mesure_une_acquisition(
 def resume(lignes: list[dict[str, float | str]], titre: str) -> str:
     """Tableau par réflecteur, à la manière de la figure 9 de Babu et al."""
     entete = (f"{'CR':>4} {'côté m':>7} {'ligne':>7} {'colonne':>8} "
-              f"{'avant dB':>10} {'après dB':>10} {'réduction dB':>13}")
+              f"{'avant dB':>10} {'après dB':>10} {'réduction dB':>13} {'|alpha|':>8}")
     sorties = [titre, entete, "-" * len(entete)]
     for ligne in sorted(lignes, key=lambda l: str(l["ident"])):
         sorties.append(
             f"{ligne['ident']:>4} {ligne['cote']:>7.2f} {ligne['ligne']:>7} "
             f"{ligne['colonne']:>8} {ligne['avant_db']:>10.2f} "
-            f"{ligne['apres_db']:>10.2f} {ligne['reduction_db']:>13.2f}"
+            f"{ligne['apres_db']:>10.2f} {ligne['reduction_db']:>13.2f} "
+            f"{ligne['alpha_abs']:>8.3f}"
         )
     if lignes:
         avant = np.median([l["avant_db"] for l in lignes])
         apres = np.median([l["apres_db"] for l in lignes])
+        alpha = np.median([l["alpha_abs"] for l in lignes])
         sorties.append("-" * len(entete))
         sorties.append(f"{'médiane':>4} {'':>7} {'':>7} {'':>8} "
-                       f"{avant:>10.2f} {apres:>10.2f} {avant - apres:>13.2f}"
-                       f"   ({len(lignes)} réflecteurs)")
+                       f"{avant:>10.2f} {apres:>10.2f} {avant - apres:>13.2f} "
+                       f"{alpha:>8.3f}   ({len(lignes)} réflecteurs)")
     return "\n".join(sorties)
 
 
 # ----------------------------------------------------------------------- CLI
 
 
-def main() -> int:
+def resume_desequilibre(jeu: ChannelImbalance) -> str:
+    """Les quatre paramètres de Babu §3.2, avec l'écart à l'idéal de sa Table 3."""
+    return (
+        f"  déséquilibre (Babu §3.2) : f = {jeu.f:.4f} (écart {jeu.f - 1:+.4f})   "
+        f"g = {jeu.g:.4f} (écart {jeu.g - 1:+.4f})\n"
+        f"  phases : phi_t + phi_r = {np.degrees(jeu.phi_t + jeu.phi_r):+.2f} deg   "
+        f"phi_t - phi_r = {np.degrees(jeu.phi_t - jeu.phi_r):+.2f} deg"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
     """Mesure les cinq acquisitions et affiche un tableau par date."""
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser.add_argument(
+        "--desequilibre", action="store_true",
+        help="corriger le déséquilibre de canaux avant le crosstalk (Babu §3.2)",
+    )
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
     # Une bande de 8192 lignes porte 139 196 fenêtres 5x5 ; en écarter 150 pour
     # mauvais conditionnement est le régime normal, et `estimate` le signale à
@@ -360,10 +500,12 @@ def main() -> int:
     }
     toutes: list[dict[str, float | str]] = []
     for prefixe, catalogue in dates.items():
-        lignes = mesure_une_acquisition(
-            prefixe, catalogues / catalogue, donnees, estimateur
+        lignes, jeu = mesure_une_acquisition(
+            prefixe, catalogues / catalogue, donnees, estimateur, args.desequilibre
         )
         print("\n" + resume(lignes, f"=== {prefixe} ==="))
+        if jeu is not None:
+            print(resume_desequilibre(jeu))
         toutes.extend(lignes)
 
     if toutes:
