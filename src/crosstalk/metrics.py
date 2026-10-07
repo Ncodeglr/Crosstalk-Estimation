@@ -10,7 +10,7 @@ est connu parce qu'il a été appliqué : `parameter_errors` compare directement
 - `residual_crosstalk` applique le protocole de Fore et al. (2015, §V) : il
   corrige les données, puis ré-estime le crosstalk sur les données corrigées
   **avec le même estimateur** ;
-- `reciprocity` mesure l'accord entre HV et VH, que l'estimateur n'optimise pas ;
+- `reciprocity` mesure l'accord entre HV et VH, que Quegan n'optimise pas ;
 - `corner_reflector_crosstalk` mesure la fuite au pic d'un trièdre, dont les
   canaux croisés sont nuls par construction (`measure_reflectors.py`).
 
@@ -29,6 +29,12 @@ est connu parce qu'il a été appliqué : `parameter_errors` compare directement
    et les réflecteurs en coin. Ces derniers donnent aussi la performance
    absolue — 12,9 dB de réduction sur la pile Rosamond, si bien que l'écart avec
    les 2,8 dB de Babu et al. (table 4) ne tient pas à la circularité du résiduel.
+
+   Ces deux juges sont nécessaires, mais pas suffisants : aucun ne voit
+   `alpha`, ni la direction `(u, v, w, z) = z (alpha, -alpha, -1, 1)`, et la
+   réciprocité n'est pas indépendante d'une méthode qui lit le désaccord entre
+   HV et VH, comme Ainsworth. Voir le README, « Ce que les niveaux 2 et 3 ne
+   voient pas ».
 """
 
 from __future__ import annotations
@@ -87,11 +93,17 @@ def reciprocity(patch: np.ndarray) -> float:
     """
     Cohérence entre les canaux croisés : `|<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)`.
 
-    Validation indépendante de l'estimateur, contrairement au résiduel. 
-    Un radar monostatique émet et reçoit sur la même antenne, donc la réciprocité S_HV = S_VH est une propriété du capteur et non du modèle de Quegan. 
-    Le crosstalk la viole, une correction qui la rétablit démontre quelque chose que l'estimateur n'a pas optimisé.
+    Validation indépendante de Quegan, contrairement au résiduel.
+    Un radar monostatique émet et reçoit sur la même antenne, donc la réciprocité S_HV = S_VH est une propriété du capteur et non du modèle de Quegan.
+    Le crosstalk la viole, une correction qui la rétablit démontre quelque chose que Quegan n'a pas optimisé.
 
     C'est le contrôle du §4.4 de Babu, dont les figures 7a et 8a tracent HV contre VH avant et après calibration : un nuage dispersé devient une droite.
+
+    Angle mort : si `u = alpha z` et `v = alpha w`, les lignes HV et VH de D
+    donnent `O_VH = alpha O_HV` pixel par pixel, et la cohérence vaut exactement
+    1 quel que soit le crosstalk. Elle ignore aussi `alpha` lui-même. Elle ne
+    voit donc que `u - alpha z` et `v - alpha w`. Elle n'est pas indépendante
+    d'Ainsworth, dont le second membre est fait de `C31 - C21` et `C34 - C24`.
 
     Args : patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
 
@@ -123,6 +135,8 @@ def corner_reflector_crosstalk(hh: complex, hv: complex, vh: complex, vv: comple
     donc `max(|z + w|, |u + v|)`. Ce n'est **pas** le `max 20 log10 |u,v,w,z|`
     de `CrosstalkParameters.max_crosstalk_db`, qui porte sur les paramètres
     isolés — les deux peuvent différer par compensation entre termes.
+    Le trièdre est donc aveugle à `u = -v, z = -w`, et à `alpha`, qui ne
+    multiplie que la composante croisée du signal vrai, nulle ici.
 
     Args: hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur, en ordre `physics.POL_ORDER`.
 
