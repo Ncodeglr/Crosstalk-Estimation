@@ -12,10 +12,13 @@ Le paquet sépare quatre responsabilités :
 - `estimators`  : ce qui distingue les méthodes, c'est-à-dire l'estimation de
   `theta` et elle seule, plus le registre qui les rend adressables par nom.
 
-Référence d'implémentation : Babu, A., & Kumar, S. (2022). Evaluation of
-Quad-Polarimetric UAVSAR Calibration. *Advances in Space Research*. L'ordre des
-polarisations, la matrice de distorsion et les formes fermées suivent ses
-équations 8 à 18.
+Référence d'implémentation : Babu, A., Kumar, S., & Agrawal, S. (2022).
+Polarimetric calibration and spatio-temporal polarimetric distortion analysis
+of UAVSAR PolSAR data. *Earth and Space Science*, 9(4), e2020EA001629.
+L'ordre des polarisations suit ses équations 8 et 9, les formes fermées de
+Quegan son équation 13. La matrice de distorsion, son inverse et `alpha` sont
+en revanche ceux de Fore, réindexés dans cet ordre : les équations 10, 12 et
+15 à 18 de Babu sont erronées (voir `physics.py` et le README).
 
 Référence secondaire, citée là où elle est la source d'un fait que Babu ne
 formule pas : Fore, A. G., Chapman, B. D., Hawkins, B. P., Hensley, S.,

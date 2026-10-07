@@ -12,8 +12,9 @@ data:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
     # 256 px : ~428 m en distance (1,67 m/px) x ~152 m en azimut (0,6 m/px).
-    # Grille de 958 x 154 patchs par acquisition, 737 660 patchs pour les 5
-    # dates ; la partition de test en représente donc ~73 800.
+    # Grille de 239 x 38 = 9 082 patchs par acquisition, 45 410 pour les 5 dates.
+    # Le découpage groupe les 5 dates d'un même emplacement (cvnn/data.py) : la
+    # partition de test compte 4 540 patchs, soit 908 emplacements x 5 dates.
     patch_size: 256
     patch_stride: 256
 
@@ -42,8 +43,10 @@ data:
     - name: global_scalar_normalize
     # Queue de dynamique : |z| max ~ 500 sigma (réflecteurs ponctuels). Un clamp sur l'amplitude conserve la phase mais reste non linéaire ; à n'activer
     # qu'en ablation, en gardant à l'esprit qu'il biaise les baselines statistiques (les cibles brillantes dominent C et violent déjà
-   
-    # Pas de flip azimut : le crosstalk ne dépend pas de l'azimut, cette augmentation n'apporte aucune information (cf. modèle, §baselines).
+    # l'hypothèse de symétrie de réflexion).
+
+    # Pas de flip azimut : le crosstalk instrumental ne dépend que de la distance (Fore et al., 2015, §V-B), l'augmentation n'apporte donc
+    # rien sur l'instrument. Les *estimations* varient pourtant avec l'azimut (rho_s = -0,19 sur 500 patchs) : c'est un effet de scène.
     # Pas de flip range : il inverserait la dépendance en distance du crosstalk.
 
 model:

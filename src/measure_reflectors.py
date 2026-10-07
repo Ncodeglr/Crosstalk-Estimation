@@ -84,14 +84,15 @@ PAS_AZIMUT_IMAGE: int = 2048
 RATIO_COPOL: tuple[float, float] = (0.7, 1.4)
 PHASE_COPOL_DEG: float = 30.0
 
-#: Côté des trièdres retenus, en mètres. Babu et al. (2022, §2) n'utilisent que
-#: les réflecteurs de « 2,4 m », ceux de 4,8 m étant dimensionnés pour la bande P.
-#: Le catalogue JPL donne 2,4384 m, soit exactement 8 pieds.
-COTE_BABU_M: float = 2.4384
-
-#: Écart toléré sur le côté. Le catalogue ne porte que deux tailles, 2,4384 m et
-#: 4,8 m : toute tolérance entre quelques millimètres et 2 m les sépare.
-TOLERANCE_COTE_M: float = 0.05
+#: Identifiants des réflecteurs retenus par Babu et al. (2022), tels que les liste
+#: sa *Data Availability Statement*. Ce sont tous des trièdres de 2,4384 m
+#: (8 pieds), la seule taille qu'il utilise (§2). Les CR 16 et 19, de même taille
+#: et qui répondent aussi, sont exclus sans justification dans l'article. Son
+#: §4.6 parle par ailleurs de « six » réflecteurs : l'article se contredit, on
+#: suit la liste explicite.
+REFLECTEURS_BABU: frozenset[str] = frozenset(
+    {"13", "14", "15", "17", "18", "20", "21", "22"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,9 +153,9 @@ def lire_annotation(chemin: Path) -> dict[str, float]:
     return valeurs
 
 
-def est_de_la_taille_babu(reflecteur: Reflecteur) -> bool:
-    """Le réflecteur est-il un trièdre de 2,4 m, le seul que retient Babu ?"""
-    return abs(reflecteur.cote - COTE_BABU_M) <= TOLERANCE_COTE_M
+def est_retenu_par_babu(reflecteur: Reflecteur) -> bool:
+    """Le réflecteur fait-il partie des huit que mesure Babu ?"""
+    return reflecteur.ident in REFLECTEURS_BABU
 
 
 # ------------------------------------------------------------- géolocalisation
@@ -327,7 +328,7 @@ def localise_les_reflecteurs(
     latitudes: np.ndarray,
     longitudes: np.ndarray,
 ) -> list[tuple[Reflecteur, int, int]]:
-    """Trièdres de 2,4 m orientés vers le radar, avec la position de leur pic.
+    """Réflecteurs de Babu orientés vers le radar, avec la position de leur pic.
 
     Séparée de la mesure parce que `f` s'estime sur ces pics : il faut les
     connaître tous avant de corriger quoi que ce soit. Seuls les pics à
@@ -341,7 +342,7 @@ def localise_les_reflecteurs(
     for reflecteur in lire_catalogue(catalogue):
         if not oriente_vers_le_radar(reflecteur, annotation["cap"]):
             continue
-        if not est_de_la_taille_babu(reflecteur):
+        if not est_retenu_par_babu(reflecteur):
             continue
         approche = position_radar(reflecteur, latitudes, longitudes)
         if approche is None:
@@ -394,7 +395,7 @@ def mesure_une_acquisition(
     estimateur: CrosstalkEstimator,
     desequilibre: bool = False,
 ) -> tuple[list[dict[str, float | str]], ChannelImbalance | None]:
-    """Mesure les trièdres de 2,4 m orientés vers le radar pour une acquisition.
+    """Mesure les réflecteurs de Babu orientés vers le radar pour une acquisition.
 
     Returns:
         Une ligne par réflecteur mesuré, et le déséquilibre estimé si
@@ -435,6 +436,20 @@ def mesure_une_acquisition(
 # ------------------------------------------------------------------- sorties
 
 
+def agrege(lignes: list[dict[str, float | str]], fonction) -> tuple[float, float, float]:
+    """`(avant, après, |alpha|)` agrégés sur les réflecteurs par `fonction`.
+
+    Babu et al. (2022, §4.6) rapportent une *average crosstalk* par date, sans
+    préciser si la moyenne porte sur les valeurs en dB ou sur les puissances.
+    On moyenne les dB, la lecture la plus directe d'une moyenne annoncée en dB et
+    cohérente avec ses minimum et maximum, eux aussi donnés en dB.
+    """
+    return tuple(
+        float(fonction([l[cle] for l in lignes]))
+        for cle in ("avant_db", "apres_db", "alpha_abs")
+    )
+
+
 def resume(lignes: list[dict[str, float | str]], titre: str) -> str:
     """Tableau par réflecteur, à la manière de la figure 9 de Babu et al."""
     entete = (f"{'CR':>4} {'côté m':>7} {'ligne':>7} {'colonne':>8} "
@@ -448,13 +463,15 @@ def resume(lignes: list[dict[str, float | str]], titre: str) -> str:
             f"{ligne['alpha_abs']:>8.3f}"
         )
     if lignes:
-        avant = np.median([l["avant_db"] for l in lignes])
-        apres = np.median([l["apres_db"] for l in lignes])
-        alpha = np.median([l["alpha_abs"] for l in lignes])
         sorties.append("-" * len(entete))
-        sorties.append(f"{'médiane':>4} {'':>7} {'':>7} {'':>8} "
-                       f"{avant:>10.2f} {apres:>10.2f} {avant - apres:>13.2f} "
-                       f"{alpha:>8.3f}   ({len(lignes)} réflecteurs)")
+        # La moyenne est l'agrégat de Babu ; la médiane, robuste à un réflecteur
+        # atypique comme le CR 15, sert de contrôle.
+        for nom, fonction in (("moyenne", np.mean), ("médiane", np.median)):
+            avant, apres, alpha = agrege(lignes, fonction)
+            sorties.append(f"{nom:>20} {'':>8} "
+                           f"{avant:>10.2f} {apres:>10.2f} {avant - apres:>13.2f} "
+                           f"{alpha:>8.3f}")
+        sorties.append(f"({len(lignes)} réflecteurs)")
     return "\n".join(sorties)
 
 
@@ -509,12 +526,11 @@ def main(argv: list[str] | None = None) -> int:
         toutes.extend(lignes)
 
     if toutes:
-        avant = np.median([l["avant_db"] for l in toutes])
-        apres = np.median([l["apres_db"] for l in toutes])
         print(f"\n=== Les cinq acquisitions, {len(toutes)} mesures ===")
-        print(f"  fuite médiane avant correction : {avant:.2f} dB")
-        print(f"  fuite médiane après correction : {apres:.2f} dB")
-        print(f"  réduction                      : {avant - apres:.2f} dB")
+        print(f"  {'':>9} {'avant dB':>9} {'après dB':>9} {'réduction dB':>13}")
+        for nom, fonction in (("moyenne", np.mean), ("médiane", np.median)):
+            avant, apres, _ = agrege(toutes, fonction)
+            print(f"  {nom:>9} {avant:>9.2f} {apres:>9.2f} {avant - apres:>13.2f}")
     return 0
 
 

@@ -98,17 +98,18 @@ python src/run_baselines.py        # depuis la racine du dépôt
 ```
          méthode  patchs  échecs  initial dB  résiduel dB  réduction dB  |alpha|  récip. avant  récip. après
 ------------------------------------------------------------------------------------------------------------
-          quegan    4541       0       -21.1        -30.6           9.5    1.225         0.831         0.853
+          quegan    4540       0       -21.1        -30.7           9.6    1.226         0.821         0.846
 ```
 
 Les deux dernières colonnes sont la validation indépendante décrite plus bas :
-la réduction de 9,5 dB est jugée par l'estimateur lui-même, la réciprocité ne
+la réduction de 9,6 dB est jugée par l'estimateur lui-même, la réciprocité ne
 l'est pas.
 
 Chaque colonne est la **médiane** sur les patchs, un `theta` étant estimé par
 patch. Ces valeurs dépendent de `seed:`, qui fixe le découpage train / valid /
-test : changer la graine change les patchs évalués, pas la méthode. Durée :
-6 min 33 s.
+test : changer la graine change les patchs évalués, pas la méthode. Sortie
+ci-dessus : `seed: 38`, découpage groupé par emplacement au sol. Durée :
+environ 6 min 30 s.
 
 À titre de repère, Babu et al. (2022, table 4) annoncent **-22,49 dB** non
 calibré. Son résiduel après Quegan, **-25,33 dB**, n'est pas comparable au nôtre :
@@ -132,6 +133,7 @@ Tout se règle dans le bloc `baselines:` de
 | `physics.py` | `POL_ORDER`, la matrice de distorsion `D`, son inverse `Sigma`, leur application |
 | `covariance.py` | `C = <o o^H>`, plein patch ou fenêtre glissante |
 | `metrics.py` | erreurs sur `theta` (synthétique) et crosstalk résiduel (réel) |
+| `imbalance.py` | déséquilibre de canaux `(f, g, phi_t, phi_r)` de Babu §3.2, et sa correction diagonale |
 | `synthetic.py` | signal vrai conforme aux hypothèses de Quegan, pour les tests |
 | `estimators/` | ce qui distingue les méthodes : l'estimation de `theta`, et le registre |
 
@@ -141,8 +143,11 @@ La frontière est stricte : le modèle physique et la covariance sont **communs*
 ### Chaîne de traitement
 
 Les `.slc` sortent de l'instrument **déjà distordus** — `Cross Talk Removed = No`
-dans les `.ann`. La chaîne ne fait donc qu'estimer puis corriger ; la distorsion
-n'est jamais appliquée aux données réelles.
+dans les `.ann`. Ils sont en revanche déjà étalonnés en gain et en phase par le
+processeur JPL — `Polarimetrically Calibrated = Yes`, sur les 20 `.ann` de la
+pile — ce que confirme la mesure du déséquilibre de canaux (voir « Résultats aux
+réflecteurs »). La chaîne ne fait donc qu'estimer puis corriger le crosstalk ; la
+distorsion n'est jamais appliquée aux données réelles.
 
 | # | opération | code | entrée → sortie |
 |---|---|---|---|
@@ -170,8 +175,9 @@ Tracé sur le patch de contrôle `(30000, 4500)` de l'acquisition du 11 février
 ÉTAPE 7   résiduel = -32.59 dB         réduction 10.62 dB
 ```
 
-Les étapes 4 à 7 tournent sur chacun des 4541 patchs de la partition de test, et
-`summarize` prend la médiane de chaque colonne.
+Les étapes 4 à 7 tournent sur chacun des 4 540 patchs de la partition de test
+(908 emplacements au sol × 5 dates, le découpage groupant les dates d'un même
+emplacement), et `summarize` prend la médiane de chaque colonne.
 
 **Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape 4 réduit
 les 25 pixels × 4 canaux de chaque fenêtre à une matrice 4×4. Toute
@@ -284,7 +290,7 @@ la verrouille.
 
 ### Ce qui n'est pas implémenté
 
-Le paquet suit **Babu et al. (2022), §3.3.1** — le Quegan de base. Trois écarts
+Le paquet suit **Babu et al. (2022), §3.3.1** — le Quegan de base. Quatre écarts
 subsistent, chacun assumé pour une raison précise.
 
 **Le moyennage par ligne de distance.** Babu moyenne les `theta` le long d'une
@@ -311,6 +317,13 @@ co-pol/cross-pol — or son équation 17 laisse le terme HH–VV explicitement
 
 **Ainsworth et al. (2006)**, méthode itérative décrite en annexe A-A de Fore et
 au §3.3.3 de Babu. Non implémentée.
+
+**L'étalonnage radiométrique absolu (Babu §3.1).** Le gain `A` n'est pas estimé :
+le crosstalk aux réflecteurs est un rapport de canaux et les seuils de Quegan sont
+relatifs, si bien qu'un gain global s'annule partout. L'estimer demanderait la
+SER théorique de chaque réflecteur (son équation 2) pour un effet nul. Le
+déséquilibre de canaux de son §3.2, lui, est implémenté (`imbalance.py`) et
+disponible par `measure_reflectors.py --desequilibre`.
 
 ### Validation : trois niveaux de preuve
 
@@ -385,8 +398,18 @@ Un contrôle de signature écarte ensuite ce qui n'est pas un trièdre :
 non réflectrices de la zone présentent `|VV/HH| ~ 0,2` et des phases de 150°.
 
 Quinze réflecteurs répondent — dix de 2,44 m et cinq de 4,80 m — aux mêmes
-positions au pixel près sur les cinq dates. Les huit que Babu utilise (13, 14,
-15, 17, 18, 20, 21, 22) sont tous dans le lot.
+positions au pixel près sur les cinq dates. **La mesure ne retient que les huit
+que Babu liste dans sa *Data Availability Statement*** : 13, 14, 15, 17, 18, 20,
+21 et 22, tous des trièdres de 2,4384 m (8 pieds), la seule taille qu'il utilise
+(§2). Les CR 16 et 19, de même taille et qui répondent aussi, sont exclus comme
+chez lui, bien que l'article ne justifie pas ce choix. Son §4.6 parle par
+ailleurs de « six » réflecteurs : l'article se contredit, on suit la liste
+explicite (`REFLECTEURS_BABU`).
+
+**Agrégation.** Babu rapporte une *average crosstalk* par date (§4.6), sans
+préciser si la moyenne porte sur les dB ou sur les puissances. Le script moyenne
+les dB, lecture la plus directe d'une moyenne annoncée en dB, et affiche la
+médiane en contrôle : elle est robuste au CR 15, systématiquement plus fort.
 
 #### Le piège de circularité, et comment il est évité
 
@@ -418,48 +441,106 @@ près et sans biais systématique.
 
 #### Résultats aux réflecteurs
 
-Quinze trièdres par acquisition, soixante-quinze mesures. Fuite co-pol vers
-cross-pol, médiane par date :
+Les huit réflecteurs de Babu, cinq dates, quarante mesures. Fuite co-pol vers
+cross-pol, **moyenne** par date comme chez Babu (§4.6) :
 
 | date | n | avant | après | réduction | Babu, avant | Babu, après\* |
 |---|---|---|---|---|---|---|
-| 11 février | 15 | −24,80 dB | −36,07 dB | 11,28 dB | −21,62 dB | −32,89 dB |
-| 20 mai | 15 | −24,58 dB | **−30,99 dB** | 6,40 dB | **−19,94 dB** | **−27,51 dB** |
-| 10 juin | 15 | −24,33 dB | −37,75 dB | 13,42 dB | −20,82 dB | −30,47 dB |
-| 16 août | 15 | −24,36 dB | −36,00 dB | 11,64 dB | −21,70 dB | −30,85 dB |
-| 20 septembre | 15 | −24,59 dB | −33,60 dB | 9,01 dB | −21,88 dB | −30,29 dB |
-| **ensemble** | **75** | **−24,46 dB** | **−35,55 dB** | **11,08 dB** | −21,19 dB | −30,31 dB |
+| 11 février | 8 | −24,27 dB | −36,93 dB | 12,67 dB | −21,62 dB | −32,89 dB |
+| 20 mai | 8 | −23,84 dB | **−33,18 dB** | 9,34 dB | **> −20 dB**† | **−27,51 dB** |
+| 10 juin | 8 | −23,78 dB | −40,07 dB | 16,28 dB | −20,82 dB | −30,47 dB |
+| 16 août | 8 | −23,61 dB | −38,63 dB | 15,01 dB | −21,70 dB | −30,85 dB |
+| 20 septembre | 8 | −24,27 dB | −35,30 dB | 11,03 dB | −21,88 dB | −30,29 dB |
+| **ensemble** | **40** | **−23,95 dB** | **−36,82 dB** | **12,87 dB** | — | −30,40 dB |
 
-\* colonne « Babu, après » = son **improved** Quegan (figure 9). Son Quegan
-simple est à −25,33 dB (table 4).
+En médiane, contrôle robuste au CR 15 : −24,07 → −36,33 dB, soit 12,26 dB.
 
-**Ce qui concorde.** Le 20 mai ressort comme la pire date des deux côtés —
-après correction, −30,99 dB ici contre −27,51 dB chez lui, dans les deux cas le
-maximum de la série. La corrélation de rang entre les deux colonnes « après »
-vaut `rho_s = +0,70`, et celle de Pearson `+0,74` sur cinq points.
+\* colonne « Babu, après » = son **improved** Quegan (§4.6, figure 9). Son
+Quegan simple, le seul comparable à ce projet, n'est donné que par la table 4 :
+−22,49 → −25,33 dB, soit 2,84 dB.
 
-**Ce qui diffère, et reste inexpliqué.** La correction obtenue est
-systématiquement meilleure que son Quegan simple (−35,55 contre −25,33 dB) et
-reste 3,5 dB en dessous de son improved Quegan. Trois pistes, non tranchées :
+† Le texte ne donne pour le 20 mai que « greater than −20 dB » ; la moyenne
+d'ensemble de la colonne « Babu, avant » n'est donc pas calculable.
+
+**Ce qui concorde.** Le 20 mai ressort comme la pire date des deux côtés après
+correction : −33,18 dB ici, −27,51 dB chez lui. La corrélation de rang entre les
+deux colonnes « après » vaut `rho_s = +0,60` (Pearson `+0,58`), sur cinq points
+seulement : ce n'est pas significatif, c'est une tendance.
+
+**Ce qui diffère.** Le Quegan simple de ce projet réduit la fuite de 12,87 dB,
+contre 2,84 dB pour celui de Babu, et dépasse même son improved Quegan (−36,82
+contre −30,40 dB en moyenne). Trois causes candidates ont été testées et
+écartées :
+
+| hypothèse | test | effet sur la réduction |
+|---|---|---|
+| taille des réflecteurs (Babu n'utilise que les 2,4 m) | retirer les trièdres de 4,8 m | 11,08 → 11,58 dB (médiane) |
+| sélection des réflecteurs (ses 8 identifiants) | retirer les CR 16 et 19 | 11,58 → 12,26 dB (médiane) |
+| ordre des corrections (son §3.2 avant le §3.3) | `--desequilibre` | 12,87 → 12,79 dB (moyenne) |
+
+Chacune laisse l'écart intact ou l'**élargit**. Restent deux pistes, invérifiables
+sans son code, qui n'est pas public :
 
 1. **Son `alpha` est peut-être faux.** Ses équations 16 à 18 sont celles de Fore
    **non réindexées** — sur un cas de référence, elles donnent `|alpha| = 1,0908`
-   au lieu de `1,2990`. Un `alpha` erroné dégrade directement la correction, et
-   c'est précisément ce qui sépare son Quegan de son improved Quegan.
-2. **L'étalonnage amont.** Il applique son équation 7 — gain absolu, déséquilibre
-   de canal, biais de phase — avant la correction de crosstalk ; ce projet part
-   du produit JPL tel quel.
-3. **Sa définition de la fuite au réflecteur**, que l'article ne précise pas.
-   Celle d'ici est `max(|HV|, |VH|) / sqrt(|HH| |VV|)` au pixel de pic.
+   au lieu de `1,2990`. Un `alpha` erroné dégrade directement la correction.
+2. **Sa mesure n'est pas définie.** L'article ne donne aucune formule de la fuite
+   au réflecteur ; celle d'ici est `max(|HV|, |VH|) / sqrt(|HH| |VV|)` au pixel de
+   pic. La table 4 n'est en outre rattachée à aucune date : son « après »
+   amélioré (−30,85 dB) est celui du 16 août au §4.6, mais son « avant »
+   (−22,49 dB) ne correspond à aucune des cinq dates.
 
-Le « avant », lui, est quasi constant d'une date à l'autre — 0,47 dB d'étendue,
-contre 1,94 dB chez Babu — ce qui est cohérent avec un crosstalk instrumental
-stable, mais n'explique pas pourquoi sa mesure varie davantage.
+Le « avant », lui, est quasi constant d'une date à l'autre — 0,66 dB d'étendue,
+contre 1,06 dB chez Babu sur les quatre dates chiffrées — ce qui est cohérent avec
+un crosstalk instrumental stable.
+
+#### Le déséquilibre de canaux (Babu §3.2)
+
+```bash
+python src/measure_reflectors.py --desequilibre     # ~6 min
+```
+
+Avant le crosstalk, le script estime alors `f` et `phi_t + phi_r` aux pics des
+réflecteurs (Babu, équations 3 et 5), `g` et `phi_t - phi_r` sur l'image entière
+(équations 4 et 6), puis applique la correction diagonale de son équation 7 à la
+bande comme au réflecteur. La colonne « avant » reste mesurée sur les données
+brutes, comme la colonne *Uncalibrated* de sa table 4.
+
+| date | f | g | phi_t + phi_r | phi_t − phi_r | \|alpha\| sans → avec |
+|---|---|---|---|---|---|
+| 11 février | 1,011 | 0,923 | −1,6° | −3,6° | 1,241 → 0,981 |
+| 20 mai | 1,015 | 0,930 | **−16,3°** | −19,6° | 1,256 → 1,011 |
+| 10 juin | 1,002 | 0,909 | +0,2° | −1,9° | 1,220 → 0,908 |
+| 16 août | 1,010 | 0,920 | +0,8° | −0,1° | 1,172 → 0,905 |
+| 20 septembre | 0,999 | 1,030 | −1,6° | −1,3° | 1,218 → **1,359** |
+
+**L'ordre des corrections ne change rien** : 12,87 → 12,79 dB en moyenne, 12,26 dB
+en médiane dans les deux cas. Trois raisons :
+
+- `f` vaut 1 à 1,5 % près, ce qu'on attend d'un produit déjà étalonné par JPL ;
+  il s'annule de toute façon dans la mesure au réflecteur ;
+- `g` et `phi_t - phi_r` sont absorbés par le `alpha` de Quegan (Fore, figure 7) :
+  sur les deux premières dates, `|alpha|` retombe de 1,25 à 1,0 environ une fois
+  `g` corrigé en amont — le déséquilibre change seulement de place ;
+- même le biais de phase de −16,3° du 20 mai laisse sa réduction inchangée.
+
+**Babu n'est pas reproduit sur `f`.** Il annonce un écart de 0,394 au déséquilibre
+co-polaire (table 3), contre 0,015 au plus ici, sur la même pile JPL. Les écarts
+sur `g` (0,03 à 0,09 contre 0,128) et sur la phase (environ −2° contre −1,14°,
+hors 20 mai) sont du même ordre que les siens.
+
+**Un `g` global ne suffit pas.** Le `|alpha|` local dépend de la colonne de
+distance — le 20 septembre, il passe de 1,40 à 1,10 entre les colonnes 4369 et
+2345, le 11 février de 1,31 à 1,21 —, sans que le sens soit le même à toutes les
+dates : le 16 août, il croît légèrement de 1,17 à 1,20. Ce jour-là, le `g` de
+l'image entière (1,030) contredit le `alpha` de la bande (1,218) et l'aggrave
+(1,359). C'est un argument pour le modèle de Fore, qui estime `alpha` par ligne de
+distance, contre une correction globale.
 
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 175 tests
+python -m pytest tests/ -q        # 206 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :
@@ -470,6 +551,11 @@ Trois niveaux, du plus faible au plus fort :
    échapperait au niveau 1 ;
 3. **invariants de convention** — `POL_ORDER == sorted(POL_ORDER)`, cohérence
    des indices `IDX_*` de `synthetic.py` avec `POL_ORDER`.
+
+Plusieurs conventions sont en outre verrouillées par **sabotage** : on introduit
+volontairement l'erreur, on vérifie qu'un test échoue, puis on restaure. Par
+exemple, intervertir `phi_t` et `phi_r` dans `ChannelImbalance.correction_matrix`
+fait échouer 3 des 19 tests de `test_imbalance.py`.
 
 Si des échecs ne correspondent pas au code que vous lisez, purgez le bytecode :
 
