@@ -1,15 +1,21 @@
 """Tests des fonctions pures du script d'orchestration.
 
-Le parcours du dataloader n'est pas testé ici : il demande les 92 Go de la pile
-UAVSAR. C'est précisément pourquoi `evaluate_patches` ne connaît ni fichiers ni
-dataloader et se teste sur des patchs synthétiques.
+Le parcours de la vraie pile n'est pas testé ici : il demande les 92 Go de la
+pile UAVSAR. C'est précisément pourquoi `evaluate_patches` ne connaît ni
+fichiers ni dataloader et se teste sur des patchs synthétiques. Le passage des
+index aux positions se teste, lui, sur une pile factice qui imite les attributs
+de `SLCDataset` et de `SLCFile`.
 """
 
+import csv
 import importlib.util
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import torch
 import yaml
 
 from src.crosstalk.parameters import CrosstalkParameters
@@ -23,6 +29,9 @@ def charge_script():
     chemin = RACINE / "src" / "run_baselines.py"
     spec = importlib.util.spec_from_file_location("run_baselines", chemin)
     module = importlib.util.module_from_spec(spec)
+    # Inscrit avant exécution, comme le prévoit la recette d'importlib :
+    # `@dataclass` y cherche le module pour résoudre les annotations différées.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -30,6 +39,12 @@ def charge_script():
 rb = charge_script()
 
 THETA = CrosstalkParameters(0.08 + 0.05j, -0.06 + 0.09j, 0.10 - 0.03j, -0.04 - 0.07j, 1.03)
+
+
+def positionne(patchs):
+    """Associe à chaque patch une position distincte, comme le fait `iter_patches`."""
+    for rang, patch in enumerate(patchs):
+        yield rb.PositionPatch("synthetique", 0, 256 * rang), patch
 
 
 def patchs_synthetiques(nombre=3, taille=(128, 128)):
@@ -87,11 +102,18 @@ def test_methode_inconnue_refusee():
 
 
 def test_une_ligne_par_patch_et_par_methode():
-    lignes = rb.evaluate_patches(patchs_synthetiques(3), estimateurs())
+    lignes = rb.evaluate_patches(positionne(patchs_synthetiques(3)), estimateurs())
     assert len(lignes) == 3
     assert all(ligne["name"] == "quegan" for ligne in lignes)
     assert all(ligne["status"] == "ok" for ligne in lignes)
     assert all(ligne["reduction_db"] > 0 for ligne in lignes)
+
+
+def test_chaque_ligne_porte_la_position_de_son_patch():
+    lignes = rb.evaluate_patches(positionne(patchs_synthetiques(3)), estimateurs())
+    assert [(l["acquisition"], l["ligne"], l["colonne"]) for l in lignes] == [
+        ("synthetique", 0, 0), ("synthetique", 0, 256), ("synthetique", 0, 512),
+    ]
 
 
 def test_un_patch_degenere_est_consigne_sans_interrompre():
@@ -99,38 +121,134 @@ def test_un_patch_degenere_est_consigne_sans_interrompre():
         np.ones((4, 32, 32), dtype=np.complex64),        # dégénéré
         next(iter(patchs_synthetiques(1, (64, 64)))),    # exploitable
     ]
-    lignes = rb.evaluate_patches(patchs, estimateurs())
+    lignes = rb.evaluate_patches(positionne(patchs), estimateurs())
     assert [ligne["status"] for ligne in lignes] == ["ill_conditioned", "ok"]
     assert "initial_db" not in lignes[0]
+    assert lignes[0]["colonne"] == 0, "un patch en échec garde sa position"
 
 
-def test_une_ligne_ne_porte_que_ce_qui_est_affiche():
-    """Aucun champ calculé puis jeté : la ligne et le tableau coïncident."""
-    ligne = rb.evaluate_patches(patchs_synthetiques(1), estimateurs())[0]
-    assert set(ligne) == {
-        "name",
-        "status",
-        "initial_db",
-        "residual_db",
-        "reduction_db",
-        "alpha_abs",
-        "reciprocity_before",
-        "reciprocity_after",
-    }
+def test_la_ligne_et_le_fichier_coincident():
+    """Aucun champ calculé puis jeté : tout ce que porte une ligne est écrit."""
+    ligne = rb.evaluate_patches(positionne(patchs_synthetiques(1)), estimateurs())[0]
+    assert set(ligne) == set(rb.COLONNES)
 
 
 # ------------------------------------------------------------------ sorties
 
 
 def test_synthese_liste_les_methodes():
-    lignes = rb.evaluate_patches(patchs_synthetiques(2), estimateurs())
+    lignes = rb.evaluate_patches(positionne(patchs_synthetiques(2)), estimateurs())
     texte = rb.summarize(lignes)
     assert "quegan" in texte and "réduction dB" in texte
 
 
 def test_synthese_signale_une_methode_entierement_en_echec():
-    lignes = rb.evaluate_patches([np.ones((4, 16, 16), dtype=np.complex64)], estimateurs())
+    lignes = rb.evaluate_patches(positionne([np.ones((4, 16, 16), dtype=np.complex64)]), estimateurs())
     assert "1       1" in rb.summarize(lignes)
+
+
+def test_le_fichier_se_relit_a_l_identique(tmp_path):
+    patchs = [np.ones((4, 16, 16), dtype=np.complex64), next(iter(patchs_synthetiques(1)))]
+    lignes = rb.evaluate_patches(positionne(patchs), estimateurs())
+    chemin = tmp_path / "sous_dossier" / "baselines.csv"
+    rb.ecrire_resultats(lignes, chemin)
+
+    with chemin.open(encoding="utf-8", newline="") as fichier:
+        lecteur = csv.DictReader(fichier)
+        assert tuple(lecteur.fieldnames) == rb.COLONNES
+        echec, ok = list(lecteur)
+
+    assert echec["status"] == "ill_conditioned"
+    assert echec["initial_db"] == "" and echec["u_re"] == ""
+    assert (ok["acquisition"], int(ok["ligne"]), int(ok["colonne"])) == ("synthetique", 0, 256)
+    for nom in ("u", "v", "w", "z", "alpha"):
+        attendu = complex(lignes[1][f"{nom}_re"], lignes[1][f"{nom}_im"])
+        assert complex(float(ok[f"{nom}_re"]), float(ok[f"{nom}_im"])) == attendu
+
+
+def test_un_champ_hors_des_colonnes_fait_echouer_l_ecriture(tmp_path):
+    with pytest.raises(ValueError):
+        rb.ecrire_resultats([{"name": "quegan", "status": "ok", "inconnu": 1.0}], tmp_path / "x.csv")
+
+
+# --------------------------------------------------- positions dans la pile
+
+
+class PileFactice(torch.utils.data.Dataset):
+    """Imite les attributs de `SLCDataset` et de `SLCFile` que lit le script.
+
+    Deux acquisitions, rangées comme le ferait `glob` : la plus récente
+    d'abord. Grille de 2 x 3 patchs ; chaque patch porte son index global.
+    """
+
+    def __init__(self):
+        self.patch_counts = {"B_160610": 6, "A_160211": 6}
+        fichier = SimpleNamespace(nsamples_per_cols=3, patch_stride=(256, 256))
+        self.slc_polarizations = {cle: {"HH": fichier, "VV": fichier} for cle in self.patch_counts}
+
+    def __len__(self):
+        return 12
+
+    def __getitem__(self, index):
+        return np.full((4, 2, 2), index, dtype=np.complex64)
+
+
+@pytest.mark.parametrize(
+    "index, attendu",
+    [
+        (0, ("B_160610", 0, 0)),
+        (2, ("B_160610", 0, 512)),
+        (3, ("B_160610", 256, 0)),
+        (6, ("A_160211", 0, 0)),
+        (11, ("A_160211", 256, 512)),
+    ],
+)
+def test_position_du_patch(index, attendu):
+    comptes = PileFactice().patch_counts
+    assert rb.position_du_patch(index, comptes, 3, (256, 256)) == rb.PositionPatch(*attendu)
+
+
+def test_un_index_hors_de_la_pile_est_refuse():
+    with pytest.raises(IndexError):
+        rb.position_du_patch(12, PileFactice().patch_counts, 3, (256, 256))
+
+
+def test_chaque_patch_recoit_la_position_de_son_index():
+    """Le passage `Subset.indices` -> position, à travers un vrai `DataLoader` en lots."""
+    sous_ensemble = torch.utils.data.Subset(PileFactice(), [7, 0, 11, 4])
+    chargeur = torch.utils.data.DataLoader(sous_ensemble, batch_size=3, shuffle=False)
+    couples = list(rb.iter_patches(chargeur))
+
+    assert [int(patch[0, 0, 0].real) for _, patch in couples] == [7, 0, 11, 4]
+    assert [position for position, _ in couples] == [
+        rb.PositionPatch("A_160211", 0, 256),
+        rb.PositionPatch("B_160610", 0, 0),
+        rb.PositionPatch("A_160211", 256, 512),
+        rb.PositionPatch("B_160610", 256, 256),
+    ]
+
+
+def test_un_chargeur_melange_est_refuse():
+    sous_ensemble = torch.utils.data.Subset(PileFactice(), [7, 0, 11, 4])
+    chargeur = torch.utils.data.DataLoader(sous_ensemble, batch_size=3, shuffle=True)
+    with pytest.raises(ValueError, match="mélangé"):
+        next(rb.iter_patches(chargeur))
+
+
+def test_un_chargeur_qui_perd_des_patchs_est_refuse():
+    """`drop_last` écarte le dernier lot incomplet : trois patchs pour quatre positions."""
+    sous_ensemble = torch.utils.data.Subset(PileFactice(), [7, 0, 11, 4])
+    chargeur = torch.utils.data.DataLoader(sous_ensemble, batch_size=3, shuffle=False, drop_last=True)
+    with pytest.raises(ValueError):
+        list(rb.iter_patches(chargeur))
+
+
+def test_des_grilles_differentes_sont_refusees():
+    pile = PileFactice()
+    pile.slc_polarizations["A_160211"]["VV"] = SimpleNamespace(nsamples_per_cols=4, patch_stride=(256, 256))
+    chargeur = torch.utils.data.DataLoader(torch.utils.data.Subset(pile, [0]), shuffle=False)
+    with pytest.raises(ValueError, match="grilles"):
+        rb.positions_de_test(chargeur)
 
 
 def test_le_decoupage_est_rendu_reproductible():

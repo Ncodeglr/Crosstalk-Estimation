@@ -41,7 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 import numpy as np
-from .parameters import CROSSTALK_NAMES, CrosstalkParameters
+from .parameters import CROSSTALK_NAMES, PARAMETER_NAMES, CrosstalkParameters
 from .physics import POL_ORDER
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -194,12 +194,14 @@ class ResidualReport:
     def as_row(self) -> dict[str, float]:
         """Vue plate, prête pour un CSV.
 
-        La phase de `alpha` n'y figure pas. Elle est estimée (Fore, éq. 25),
-        mais aucune métrique comparable à Babu ne la lit : la fuite aux
-        réflecteurs, la réciprocité et le résiduel ne portent que sur des
-        modules.
+        Outre les grandeurs résumées, elle porte les composantes du jeu
+        initial — `u_re`, `u_im`, ..., `alpha_re`, `alpha_im`, un CSV ne
+        connaissant pas les complexes. Elles servent à la cohérence en azimut,
+        qui compare paramètre par paramètre les `theta` d'une même colonne de
+        distance : le seul juge sur données réelles qui voie `alpha` (README,
+        « Ce que les niveaux 2 et 3 ne voient pas »).
         """
-        return {
+        ligne = {
             "initial_db": self.initial_db,
             "residual_db": self.residual_db,
             "reduction_db": self.reduction_db,
@@ -207,6 +209,10 @@ class ResidualReport:
             "reciprocity_before": self.reciprocity_before,
             "reciprocity_after": self.reciprocity_after,
         }
+        for nom, valeur in zip(PARAMETER_NAMES, self.initial.to_vector()):
+            ligne[f"{nom}_re"] = float(valeur.real)
+            ligne[f"{nom}_im"] = float(valeur.imag)
+        return ligne
 
 
 def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> ResidualReport:

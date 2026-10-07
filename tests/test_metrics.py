@@ -83,8 +83,18 @@ def test_rapport_vue_plate():
         "alpha_abs",
         "reciprocity_before",
         "reciprocity_after",
+        "u_re", "u_im", "v_re", "v_im", "w_re", "w_im", "z_re", "z_im",
+        "alpha_re", "alpha_im",
     }
     assert ligne["alpha_abs"] == pytest.approx(1.2)
+
+
+def test_la_vue_plate_porte_le_jeu_initial_en_parties_reelle_et_imaginaire():
+    """Pour la cohérence en azimut : chaque paramètre, `alpha` et sa phase compris."""
+    rapport = ResidualReport(initial=THETA, residual=CrosstalkParameters(0, 0, 0, 0, 1.0))
+    ligne = rapport.as_row()
+    for nom in ("u", "v", "w", "z", "alpha"):
+        assert complex(ligne[f"{nom}_re"], ligne[f"{nom}_im"]) == getattr(THETA, nom)
 
 
 def test_residuel_sur_donnees_synthetiques():

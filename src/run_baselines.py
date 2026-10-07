@@ -2,14 +2,17 @@
 """
 Évalue les baselines statistiques de crosstalk sur la pile UAVSAR.
 Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estimé, crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,pas propagé en exception.
+Les lignes sont écrites à chaque lancement dans `experiments/baselines.csv`, avec la position du patch dans la pile.
 """
 
 from __future__ import annotations
 import argparse
+import csv
 import logging
 import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 import yaml
@@ -28,6 +31,38 @@ logger = logging.getLogger("run_baselines")
 #: Configuration lue quand `--config` n'est pas donné.
 CONFIG_PAR_DEFAUT: Path = RACINE / "configs" / "data_uavsar.yaml"
 
+#: Fichier de résultats, réécrit à chaque lancement. `experiments/` est ignoré par git.
+SORTIE: Path = RACINE / "experiments" / "baselines.csv"
+
+#: Colonnes du fichier, dans l'ordre. Une ligne qui porterait un autre champ fait
+#: échouer l'écriture : rien n'est calculé puis jeté.
+COLONNES: tuple[str, ...] = (
+    "acquisition", "ligne", "colonne", "name", "status",
+    "initial_db", "residual_db", "reduction_db", "alpha_abs",
+    "reciprocity_before", "reciprocity_after",
+    "u_re", "u_im", "v_re", "v_im", "w_re", "w_im", "z_re", "z_im",
+    "alpha_re", "alpha_im",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PositionPatch:
+    """Emplacement d'un patch dans la pile.
+
+    Attributes:
+        acquisition: clé torchcvnn de l'acquisition, p. ex.
+            `Rosamd_35012_16002_001_160211_L_090_04_BC`. On garde la clé et non
+            un rang : `SLCDataset` range les acquisitions dans l'ordre de
+            `glob`, pas dans l'ordre chronologique.
+        ligne: coin haut-gauche, en pixels 1x1 le long de l'azimut.
+        colonne: coin haut-gauche, en pixels 1x1 le long de la distance — la
+            « ligne de distance » de Babu et de Fore.
+    """
+
+    acquisition: str
+    ligne: int
+    colonne: int
+
 
 #Méthodes
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
@@ -44,34 +79,36 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
 
 
 #Évaluation
-def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
+def evaluate_patches(patches: Iterable[tuple[PositionPatch, np.ndarray]],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
     """Applique chaque méthode à chaque patch et rend les lignes de résultat.
 
     Cœur pur de l'évaluation : il ne connaît ni fichiers ni dataloader, ce qui
     le rend testable sur des patchs synthétiques.
 
     Args:
-        patches: itérable de patchs `(4, H, W)` complexes, dans l'ordre du pipeline.
+        patches: itérable de couples `(position, patch)`, le patch `(4, H, W)`
+            complexe dans l'ordre du pipeline.
         estimators: méthodes à appliquer, indexées par leur nom.
 
     Returns:
-        Une ligne par couple patch/méthode. Un patch sur lequel une méthode
-        échoue donne une ligne de statut `ill_conditioned`, sans interrompre le parcours.
+        Une ligne par couple patch/méthode, qui commence par la position du
+        patch. Un patch sur lequel une méthode échoue donne une ligne de statut
+        `ill_conditioned`, sans interrompre le parcours.
     """
     lignes: list[dict[str, Any]] = []
-    for index, patch in enumerate(patches):
+    for position, patch in patches:
         for nom, estimateur in estimators.items():
-            ligne: dict[str, Any] = {"name": nom, "status": "ok"}
+            ligne: dict[str, Any] = {**asdict(position), "name": nom, "status": "ok"}
             try:
                 rapport = residual_crosstalk(patch, estimateur)
             except CrosstalkError as erreur:
                 ligne["status"] = "ill_conditioned"
-                logger.debug("patch %d, %s : %s", index, nom, erreur)
+                logger.debug("patch %s, %s : %s", position, nom, erreur)
             else:
                 ligne.update(rapport.as_row())
             lignes.append(ligne)
-    #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': 20.0, 'residual_db': -30.0, 'reduction_db': 50.0, 'alpha_abs': 1.0, 'reciprocity_before': 0.83, 'reciprocity_after': 0.86}
-    #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
+    #lignes[i] = {'acquisition': 'Rosamd_..._160211_L_090_04_BC', 'ligne': 30208, 'colonne': 4608, 'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'alpha_im': -0.03}
+    #lignes[i+1] = {'acquisition': ..., 'ligne': ..., 'colonne': ..., 'name': 'quegan', 'status': 'ill_conditioned'}
     return lignes
 
 
@@ -106,6 +143,20 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
             f"{mediane['reciprocity_before']:>13.3f} {mediane['reciprocity_after']:>13.3f}"
         )
     return "\n".join(sorties)
+
+
+def ecrire_resultats(lignes: Sequence[dict[str, Any]], chemin: Path) -> None:
+    """Écrit les lignes en CSV, colonnes dans l'ordre de `COLONNES`, en écrasant le fichier.
+
+    Une ligne `ill_conditioned` laisse ses cellules de mesure vides. Un champ
+    absent de `COLONNES` lève `ValueError` : le fichier porte tout ce que les
+    lignes contiennent.
+    """
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    with chemin.open("w", encoding="utf-8", newline="") as fichier:
+        ecrivain = csv.DictWriter(fichier, fieldnames=COLONNES, restval="")
+        ecrivain.writeheader()
+        ecrivain.writerows(lignes)
 
 
 #Configuration
@@ -153,17 +204,76 @@ def build_dataloader(config: dict[str, Any]):
     return test_loader #Retourne un DataLoader 
 
 
-def iter_patches(loader) -> Iterator[np.ndarray]:
+def position_du_patch(index: int, comptes: Mapping[str, int], par_ligne: int, pas: tuple[int, int]) -> PositionPatch:
+    """Index global de `SLCDataset` -> position du patch dans la pile.
+
+    Refait le calcul de `SLCDataset.__getitem__` — retrancher les comptes des
+    acquisitions, dans l'ordre de `comptes` — puis celui de `SLCFile.__getitem__`
+    — ligne et colonne de la grille, multipliées par le pas.
+
+    Args:
+        index: index global, tel que le portent `Subset.indices`.
+        comptes: `SLCDataset.patch_counts`, nombre de patchs par acquisition.
+        par_ligne: `SLCFile.nsamples_per_cols`, patchs par ligne de la grille.
+        pas: `SLCFile.patch_stride`, pas de la grille en pixels (azimut, distance).
+
+    Raises:
+        IndexError: si l'index dépasse la pile.
     """
-    Déplie les lots en patchs `(4, H, W)` numpy, dans l'ordre du pipeline.
+    reste = index
+    for acquisition, compte in comptes.items():
+        if reste < compte:
+            return PositionPatch(acquisition, (reste // par_ligne) * pas[0], (reste % par_ligne) * pas[1])
+        reste -= compte
+    raise IndexError(f"index {index} hors de la pile ({sum(comptes.values())} patchs)")
+
+
+def positions_de_test(loader) -> list[PositionPatch]:
+    """Positions des patchs que sert `loader`, dans son ordre.
+
+    Le chargeur de test de `cvnn` enveloppe un `SLCDataset` dans un `Subset` :
+    `.indices` donne l'index global de chaque patch. Ce `SLCDataset` est une
+    instance distincte de celle du découpage ; on lit donc les comptes et la
+    grille sur celle-ci, la seule qui serve réellement les patchs.
+
+    Raises:
+        ValueError: si les fichiers de la pile n'ont pas tous la même grille.
+    """
+    sous_ensemble = loader.dataset
+    pile = sous_ensemble.dataset
+    grilles = {
+        (fichier.nsamples_per_cols, tuple(fichier.patch_stride))
+        for polarisations in pile.slc_polarizations.values()
+        for fichier in polarisations.values()
+    }
+    if len(grilles) != 1:
+        raise ValueError(f"grilles de patchs différentes selon les fichiers : {sorted(grilles)}")
+    (par_ligne, pas), = grilles
+    return [position_du_patch(index, pile.patch_counts, par_ligne, pas) for index in sous_ensemble.indices]
+
+
+def iter_patches(loader) -> Iterator[tuple[PositionPatch, np.ndarray]]:
+    """
+    Déplie les lots en couples `(position, patch)`, le patch `(4, H, W)` numpy, dans l'ordre du pipeline.
     Générateur, et non liste : les patchs sont lus sur disque puis abandonnés au fil de l'eau.
+
+    Les positions suivent l'ordre de `Subset.indices`, que seul un chargeur non
+    mélangé respecte : un chargeur mélangé est refusé. Le `zip` strict lève une
+    erreur si patchs et positions ne sont pas en même nombre.
     """
-    for lot in loader:
-        # UavsarSLC n'a pas d'étiquettes : `lot` est un Tensor, pas un (x, y).
-        # La branche `else` s'applique donc, et `tenseur` vaut le lot entier, de forme (batch_size, 4, patch_size, patch_size).
-        tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot
-        for patch in tenseur.detach().cpu().numpy():
-            yield patch  # produit un patch de forme (4, patch_size, patch_size)
+    from torch.utils.data import SequentialSampler
+
+    if not isinstance(loader.sampler, SequentialSampler):
+        raise ValueError("chargeur mélangé : les patchs ne suivraient plus l'ordre de leurs positions")
+
+    def patchs() -> Iterator[np.ndarray]:
+        for lot in loader:
+            # UavsarSLC n'a pas d'étiquettes : `lot` est un Tensor, pas un (x, y).
+            # La branche `else` s'applique donc, et `tenseur` vaut le lot entier, de forme (batch_size, 4, patch_size, patch_size).
+            tenseur = lot[0] if isinstance(lot, (list, tuple)) else lot
+            yield from tenseur.detach().cpu().numpy()  # un patch de forme (4, patch_size, patch_size) à la fois
+
+    yield from zip(positions_de_test(loader), patchs(), strict=True)
 
 
 
@@ -191,7 +301,9 @@ def main(argv: list[str] | None = None) -> int:
     loader = build_dataloader(config)
     lignes = evaluate_patches(iter_patches(loader), estimateurs)
 
+    ecrire_resultats(lignes, SORTIE)
     print(summarize(lignes))
+    logger.info("résultats par patch écrits dans %s", SORTIE)
     return 0
 
 

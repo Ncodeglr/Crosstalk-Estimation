@@ -68,15 +68,15 @@ jamais appliquée aux données réelles.
 | A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 9 082 emplacements au sol, les 5 dates suivent leur emplacement → 36 330 / 4 540 / 4 540 patchs, sans fuite |
 | A6 | construire les transformations | `cvnn/transform_registry.build_transform_pipeline` | empilement du `dict` en ordre alphabétique (HH, HV, VH, VV) = `POL_ORDER`, tenseur, puis `GlobalScalarNormalize` qui divise par 0,16444 = √(2 × 0,013521) |
 | A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 284 lots |
-| A8 | lire les patchs | `run_baselines.iter_patches` | lot `(16, 4, 256, 256)` `complex64` → un patch numpy `(4, 256, 256)` à la fois |
-| A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
+| A8 | lire les patchs | `run_baselines.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 256, 256)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
+| A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode, qui commence par la position du patch ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-e ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
 | A10a | covariance | `covariance.polarimetric_covariance` | 16 produits `S'_i S'_j*`, table de sommes cumulées → `C` de forme `(252, 252, 4, 4)` `complex128`, soit **63 504 fenêtres 5×5** |
 | A10b | formes fermées | `QueganEstimator._solve` | par fenêtre : `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; masque `valides` : rapports finis et au-dessus des seuils |
 | A10c | moyenne | `QueganEstimator.estimate` | moyenne des `theta` sur les fenêtres valides → un `CrosstalkParameters` par patch |
 | A10d | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · s'` pour chaque pixel |
 | A10e | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
-| A11 | synthèse | `run_baselines.summarize` | médiane de chaque colonne sur les 4 540 lignes → tableau affiché. **Rien n'est écrit sur disque** |
+| A11 | synthèse et sauvegarde | `run_baselines.ecrire_resultats`, `run_baselines.summarize` | les 4 540 lignes → `experiments/baselines.csv`, réécrit à chaque lancement ; leur médiane → tableau affiché |
 
 ### Chaîne B — `python src/measure_reflectors.py [--desequilibre]`
 
@@ -119,8 +119,9 @@ qui le précèdent.
 - **L'ordre des canaux est implicite** : il naît en A6, de l'ordre alphabétique
   du `dict` rendu par torchcvnn, et tout le reste en dépend. Un test verrouille
   `POL_ORDER == sorted(POL_ORDER)`.
-- **La chaîne A ne sauvegarde rien** : [experiments/baselines.csv](experiments/baselines.csv)
-  date d'une version antérieure du code.
+- **Les acquisitions ne sont pas dans l'ordre chronologique** : `SLCDataset` les range
+  dans l'ordre de `glob` — 160610, 160211, 160920, 160520, 160816 sur cette machine.
+  `experiments/baselines.csv` les désigne donc par leur clé, jamais par un rang.
 - **Les deux chaînes n'ont pas la même normalisation**, sans effet : `theta` et la
   fuite au réflecteur sont des rapports.
 - **La fenêtre 5×5 est fixée en dur dans la chaîne B** (`main` de
@@ -226,6 +227,24 @@ patch. Ces valeurs dépendent de `seed:`, qui fixe le découpage train / valid /
 test : changer la graine change les patchs évalués, pas la méthode. Sortie
 ci-dessus : `seed: 38`, découpage groupé par emplacement au sol. Durée :
 environ 6 min 30 s.
+
+Le détail est écrit à chaque lancement dans `experiments/baselines.csv`, en
+écrasant le précédent ; le dossier est ignoré par git. Une ligne par patch et par
+méthode :
+
+| colonnes | contenu |
+|---|---|
+| `acquisition`, `ligne`, `colonne` | clé torchcvnn de l'acquisition, coin haut-gauche du patch en pixels 1×1 (azimut, distance) |
+| `name`, `status` | la méthode, `ok` ou `ill_conditioned` |
+| `initial_db` … `reciprocity_after` | les six grandeurs du tableau ci-dessus |
+| `u_re`, `u_im`, …, `alpha_re`, `alpha_im` | le `theta` initial, en parties réelle et imaginaire |
+
+La position sert de clé pour comparer deux méthodes patch à patch, sur les mêmes
+patchs. Le `theta` complet sert à la cohérence en azimut : le crosstalk ne
+dépendant que de la distance, les `theta` d'une même colonne et d'une même date
+ne devraient différer que par l'erreur d'estimation — `alpha` compris, que ni la
+réciprocité ni les réflecteurs ne voient. Une ligne `ill_conditioned` laisse ses
+cellules de mesure vides.
 
 La fenêtre glissante 5×5 du protocole de Babu coûte environ 12× le mode `full`
 en temps de calcul. Tout se règle dans le bloc `baselines:` de
@@ -864,7 +883,7 @@ que sur données synthétiques, où `theta` est connu (`metrics.parameter_errors
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 225 tests
+python -m pytest tests/ -q        # 239 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :
