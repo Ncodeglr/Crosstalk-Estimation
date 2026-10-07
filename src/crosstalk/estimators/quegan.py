@@ -1,5 +1,18 @@
 """
 Méthode de Quegan : estimation du crosstalk en forme fermée.
+
+Domaine de validité. Les formes fermées (Babu, éq. 13 ; Fore, éq. 24) sont la
+solution exacte, par la règle de Cramer, de deux systèmes 2x2 obtenus en
+développant la covariance observée au premier ordre en crosstalk — **privés**
+du terme en puissance croisée vraie `P_X = <|S_HV|^2>` ::
+
+    C31 = u C11 + v C41 + P_X (e^{i arg alpha} v* + |alpha| w*) + O(theta^3)
+
+La méthode n'est donc exacte qu'à `P_X` nul. Son biais relatif est
+proportionnel à `beta = P_X / sigma_copol` et indépendant du niveau de
+crosstalk ; le coefficient dépend de la direction de `theta`, de `alpha` et de
+la corrélation HH-VV. Sur la pile Rosamond (`beta` médian 0,134), il est de
+l'ordre de 30 % du crosstalk. Voir le README, « Le biais propre de Quegan ».
 """
 
 from __future__ import annotations

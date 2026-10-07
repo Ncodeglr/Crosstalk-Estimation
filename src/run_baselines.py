@@ -5,6 +5,7 @@ Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estim
 """
 
 from __future__ import annotations
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -23,6 +24,9 @@ from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
 from src.crosstalk.metrics import residual_crosstalk  # noqa: E402
 
 logger = logging.getLogger("run_baselines")
+
+#: Configuration lue quand `--config` n'est pas donné.
+CONFIG_PAR_DEFAUT: Path = RACINE / "configs" / "data_uavsar.yaml"
 
 
 #Méthodes
@@ -104,6 +108,36 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     return "\n".join(sorties)
 
 
+#Configuration
+def chemin_de_configuration(argument: str | None) -> Path:
+    """Résout `--config` : absolu, relatif au dossier courant, ou à défaut à la racine.
+
+    Le repli sur la racine du dépôt permet de lancer le script depuis n'importe
+    quel dossier — `src/` compris — avec le chemin tel qu'il figure dans le README.
+    """
+    if argument is None:
+        return CONFIG_PAR_DEFAUT
+    chemin = Path(argument)
+    if chemin.is_absolute() or chemin.exists():
+        return chemin
+    return RACINE / chemin
+
+
+def lire_configuration(chemin: Path) -> dict[str, Any]:
+    """Lit le YAML et ancre le chemin des données à la racine du dépôt.
+
+    `trainpath` est écrit relatif (`data/Rosamd_35012_04`) pour que la
+    configuration reste valable d'une machine à l'autre. Sans cet ancrage, `cvnn`
+    le résoudrait depuis le dossier courant et ne trouverait pas les `.slc` dès que
+    le script est lancé ailleurs qu'à la racine.
+    """
+    config = yaml.safe_load(chemin.read_text(encoding="utf-8"))
+    dataset = config["data"]["dataset"]
+    if not Path(dataset["trainpath"]).is_absolute():
+        dataset["trainpath"] = str(RACINE / dataset["trainpath"])
+    return config
+
+
 #Données
 def build_dataloader(config: dict[str, Any]):
     """
@@ -134,8 +168,14 @@ def iter_patches(loader) -> Iterator[np.ndarray]:
 
 
 #CLI
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Déroule la campagne : configuration, données, estimation, sorties."""
+    parser = argparse.ArgumentParser(description="Baselines statistiques de crosstalk sur la partition de test.")
+    parser.add_argument(
+        "--config", default=None,
+        help=f"configuration YAML (défaut : {CONFIG_PAR_DEFAUT.relative_to(RACINE)})",
+    )
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -143,7 +183,7 @@ def main() -> int:
     #2026-09-23 10:01:26,381 - src.crosstalk.estimators.quegan - WARNING - 2520 fenêtres sur 63504 écartées
     #└──── %(asctime)s ────┘   └────────── %(name)s ─────────┘   └ %(levelname)s ┘   └──── %(message)s ────┘
 
-    config = yaml.safe_load(Path("configs/data_uavsar.yaml").read_text(encoding="utf-8"))
+    config = lire_configuration(chemin_de_configuration(args.config))
     baselines = config.get("baselines") or {}
     estimateurs = build_estimators(baselines["estimators"])
     logger.info("méthodes évaluées : %s", list(estimateurs))
