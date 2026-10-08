@@ -9,9 +9,7 @@ T = TypeVar("T", bound=type[CrosstalkEstimator])
 def register_estimator(cls: T) -> T:
     """
     Décorateur : enregistre une classe sous son attribut `name`.
-
     Args: cls: sous-classe concrète de `CrosstalkEstimator`.
-
     Returns: La classe, inchangée.
 
     Raises:
@@ -56,6 +54,9 @@ def create_estimator(name: str, **params: Any) -> CrosstalkEstimator:
 
 
 def create_from_config(config: Mapping[str, Any]) -> CrosstalkEstimator:
+    """
+    À partir du nom, on crée un estimateur avec ses paramètres.
+    """
     if "name" not in config:
         raise KeyError(f"configuration sans clé 'name' : {dict(config)!r}")
     params = config.get("params") or {}

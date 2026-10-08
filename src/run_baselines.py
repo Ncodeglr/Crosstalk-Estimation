@@ -67,7 +67,7 @@ class PositionPatch:
 #Méthodes
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
     """
-    Instancie les méthodes déclarées dans `baselines.estimators`, indexées par leur nom.
+    Instancie les méthodes déclarées dans baselines.estimators, indexées par leur nom.
     """
     methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
@@ -289,10 +289,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        #2026-09-23 10:01:26,381 - run_baselines - INFO - méthodes évaluées : ['quegan']
     )
-    #2026-09-23 10:01:26,381 - run_baselines - INFO - méthodes évaluées : ['quegan']
-    #└──── %(asctime)s ────┘   └─ %(name)s ─┘   └%(levelname)s┘   └──────── %(message)s ───────┘
-
+   
     config = lire_configuration(chemin_de_configuration(args.config))
     baselines = config.get("baselines") or {}
     estimateurs = build_estimators(baselines["estimators"])

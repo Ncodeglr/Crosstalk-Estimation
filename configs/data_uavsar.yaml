@@ -58,7 +58,6 @@ model:
 
 # --- Baselines statistiques ---
 baselines:
-
   estimators:
     - name: quegan
 

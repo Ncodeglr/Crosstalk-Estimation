@@ -60,6 +60,10 @@ jamais appliquée aux données réelles.
 
 ### Chaîne A — `python src/run_baselines.py`
 
+Le guide d'audit [docs/audit_chaine_A.md](docs/audit_chaine_A.md) détaille
+chaque étape sur les plans informatique et mathématique, avec les tests qui la
+verrouillent.
+
 | # | étape | code | entrée → sortie |
 |---|---|---|---|
 | A1 | lire la configuration | `run_baselines.main` | YAML → `dict` |
