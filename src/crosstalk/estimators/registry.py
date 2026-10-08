@@ -38,7 +38,8 @@ def available_estimators() -> list[str]:
 
 
 def create_estimator(name: str, **params: Any) -> CrosstalkEstimator:
-    """Instancie un estimateur par son nom enregistré.
+    """
+    Instancie un estimateur par son nom enregistré.
 
     Args:
         name: nom enregistré.

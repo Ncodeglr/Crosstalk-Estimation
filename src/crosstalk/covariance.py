@@ -38,17 +38,12 @@ def _check_patch(patch: np.ndarray) -> None:
 
 
 def polarimetric_covariance(patch: np.ndarray) -> np.ndarray:
-    """Covariance polarimétrique du signal observé, moyennée sur tout le patch.
+    """
+    Covariance polarimétrique du signal observé, moyennée sur tout le patch.
 
-    Args:
-        patch: `(..., 4, H, W)` complexe. Les dimensions de tête éventuelles (lot) sont conservées.
-
-    Returns:
-        `(..., 4, 4)` complex128 : `(1/N) somme_n k_n k_n^H`, où `k_n` est le
-        vecteur des 4 canaux du pixel `n` et `N = H W`.
-
-    Raises:
-        ValueError: forme de patch invalide.
+    Args: patch(..., 4, H, W) complexe. Les dimensions de tête éventuelles (lot) sont conservées.
+    Returns: (..., 4, 4) complex128 : (1/N) somme_n k_n k_n^H, où k_n est le vecteur des 4 canaux du pixel n et N = H W.
+    Raises: ValueError: forme de patch invalide.
     """
     _check_patch(patch)
     height, width = patch.shape[-2:]

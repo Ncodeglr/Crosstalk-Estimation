@@ -11,8 +11,8 @@ du terme en puissance croisée vraie `P_X = <|S_HV|^2>` ::
 La méthode n'est donc exacte qu'à `P_X` nul. Son biais relatif est
 proportionnel à `beta = P_X / sigma_copol` et indépendant du niveau de
 crosstalk ; le coefficient dépend de la direction de `theta`, de `alpha` et de
-la corrélation HH-VV. Sur la pile Rosamond (`beta` médian 0,118), il est de
-l'ordre du tiers du crosstalk. Voir le README, « Le biais propre de Quegan ».
+la corrélation HH-VV. Sur la pile Rosamond (`beta` médian 0,119), il est de
+l'ordre de 30 % du crosstalk. Voir le README, « Le biais propre de Quegan ».
 """
 
 from __future__ import annotations

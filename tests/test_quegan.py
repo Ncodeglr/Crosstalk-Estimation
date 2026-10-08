@@ -165,7 +165,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     Covariance théorique, sans échantillonnage ; crosstalk à -39 dB pour rendre
     le reste en `O(theta^3)` négligeable. Puissances co-polaires inégales et
     `alpha` loin de 1 en module comme en phase, pour que chaque facteur compte.
-    `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,118).
+    `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,119).
     """
     from src.crosstalk.physics import distortion_matrix
     from src.crosstalk.synthetic import quegan_covariance

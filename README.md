@@ -65,18 +65,18 @@ jamais appliquée aux données réelles.
 | A1 | lire la configuration | `run_baselines.main` | YAML → `dict` |
 | A2 | instancier les méthodes | `run_baselines.build_estimators` → `estimators/registry.create_from_config` | `{name: quegan}` → `QueganEstimator()`, que le décorateur `@register_estimator` a inscrit sous le nom `quegan` |
 | A3 | fixer le hasard, compléter la configuration | `run_baselines.build_dataloader` → `cvnn.utils.set_seed(38)`, puis `cvnn/data.validate_and_correct_config` | ajoute `type: polsar`, `has_labels: False`, `num_channels: 4`, lus dans `cvnn/dataset_registry.py` |
-| A4 | découvrir les fichiers | `cvnn/data._create_dataset` → `torchcvnn.SLCDataset` | groupe les `.slc` par date, lit les `.ann` ; grille de 239 × 38 = **9 082 patchs de 256 px par date**, 45 410 au total. Aucun pixel n'est encore lu |
-| A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 9 082 emplacements au sol, les 5 dates suivent leur emplacement → 36 330 / 4 540 / 4 540 patchs, sans fuite |
+| A4 | découvrir les fichiers | `cvnn/data._create_dataset` → `torchcvnn.SLCDataset` | groupe les `.slc` par date, lit les `.ann` ; grille de 958 × 154 = **147 532 patchs de 64 px par date**, 737 660 au total. Aucun pixel n'est encore lu |
+| A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 147 532 emplacements au sol, les 5 dates suivent leur emplacement → 590 130 / 73 765 / 73 765 patchs, sans fuite |
 | A6 | construire les transformations | `cvnn/transform_registry.build_transform_pipeline` | empilement du `dict` en ordre alphabétique (HH, HV, VH, VV) = `POL_ORDER`, tenseur, puis `GlobalScalarNormalize` qui divise par 0,16444 = √(2 × 0,013521) |
-| A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 284 lots |
-| A8 | lire les patchs | `run_baselines.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 256, 256)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
+| A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 4 611 lots |
+| A8 | lire les patchs | `run_baselines.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 64, 64)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
 | A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode, qui commence par la position du patch ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-d ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
-| A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **65 536 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
+| A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **4 096 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
 | A10b | formes fermées | `QueganEstimator._solve`, `QueganEstimator.estimate` | `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; les trois rapports de conditionnement doivent être finis et au-dessus des seuils, sinon `IllConditionedCovarianceError` → un `CrosstalkParameters` par patch |
 | A10c | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · s'` pour chaque pixel |
 | A10d | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
-| A11 | synthèse et sauvegarde | `run_baselines.ecrire_resultats`, `run_baselines.summarize` | les 4 540 lignes → `experiments/baselines.csv`, réécrit à chaque lancement ; leur médiane → tableau affiché |
+| A11 | synthèse et sauvegarde | `run_baselines.ecrire_resultats`, `run_baselines.summarize` | les 73 765 lignes → `experiments/baselines.csv`, réécrit à chaque lancement ; leur médiane → tableau affiché |
 
 ### Chaîne B — `python src/measure_reflectors.py`
 
@@ -214,18 +214,18 @@ python src/run_baselines.py --config autre.yaml     # ou une autre configuration
 ```
          méthode  patchs  échecs  initial dB  résiduel dB  réduction dB  |alpha|  récip. avant  récip. après
 ------------------------------------------------------------------------------------------------------------
-          quegan    4540       0       -20.3        -30.8          10.3    1.187         0.821         0.839
+          quegan   73765       0       -20.3        -30.2           9.7    1.180         0.767         0.788
 ```
 
 Les deux dernières colonnes sont la validation indépendante décrite plus bas :
-la réduction de 10,3 dB est jugée par l'estimateur lui-même, la réciprocité ne
+la réduction de 9,7 dB est jugée par l'estimateur lui-même, la réciprocité ne
 l'est pas.
 
 Chaque colonne est la **médiane** sur les patchs, un `theta` étant estimé par
 patch. Ces valeurs dépendent de `seed:`, qui fixe le découpage train / valid /
 test : changer la graine change les patchs évalués, pas la méthode. Sortie
-ci-dessus : `seed: 38`, découpage groupé par emplacement au sol. Durée :
-environ 1 min 15 s.
+ci-dessus : `seed: 38`, patchs de 64 px, découpage groupé par emplacement au
+sol. Durée : environ 4 min.
 
 Le détail est écrit à chaque lancement dans `experiments/baselines.csv`, en
 écrasant le précédent ; le dossier est ignoré par git. Une ligne par patch et par
@@ -254,26 +254,56 @@ la racine. Le modèle physique et la
 covariance sont **communs** à toutes les méthodes : une méthode nouvelle
 n'écrit que `estimate`, et s'inscrit au registre par `@register_estimator`.
 
+### Taille des patchs
+
+Les patchs font **64 px**, soit environ 107 m en distance sur 38 m en azimut :
+c'est la taille par défaut des configurations PolSAR de `cvnn`, et elle donne au
+CVNN 16 fois plus de patchs qu'une taille de 256. Quegan et le CVNN devant voir
+les mêmes patchs, `patch_size` ne se règle qu'à un endroit, dans
+[configs/data_uavsar.yaml](configs/data_uavsar.yaml).
+
+Quegan n'y perd presque rien. Sur données synthétiques au `theta` du patch de
+contrôle et au `beta` médian de la pile, son biais propre ne dépend pas de la
+taille, et le bruit d'estimation décroît en `1/√N` :
+
+| taille | pixels | biais | bruit d'estimation |
+|---|---|---|---|
+| 32 | 1 024 | 27 % | 32 % |
+| 64 | 4 096 | 28 % | 14 % |
+| 128 | 16 384 | 26 % | 8 % |
+| 256 | 65 536 | 27 % | 4 % |
+
+Les pixels voisins d'un SLC étant corrélés, le bruit réel est environ 1,5 fois
+plus fort : à 64 px, du même ordre que le biais. Tous deux restent petits devant
+la variation due à la scène : à distance fixée,
+le long de l'azimut, les `theta` estimés s'écartent d'environ 100 % de leur
+valeur centrale à toutes les tailles — 92 à 133 % à 64 px, 67 à 96 % à 256 px,
+sur trois bandes du 11 février. C'est la dépendance de Quegan au type de cible
+que décrit Fore (figure 8). Entre 64 et 256 px, le crosstalk médian de ces
+bandes ne bouge pas de plus de 0,6 dB ; seul `|alpha|` gagne nettement aux
+grands patchs, avec une dispersion 1,4 à 2,3 fois plus faible à 256 px. À 32 px,
+le bruit gonfle `max |theta|` et biaise le crosstalk de 1 à 1,5 dB.
+
 ### Trace sur un patch de contrôle
 
-Les étapes A10a à A10d de la carte du projet, sur le patch `(30000, 4500)` de
-l'acquisition du 11 février :
+Les étapes A10a à A10d de la carte du projet, sur le patch de 64 px
+`(29952, 4480)` de l'acquisition du 11 février :
 
 ```
-ENTRÉE   HH 0.007157   HV 0.000731   VH 0.001004   VV 0.007269   (puissances moyennes)
-A10a     une seule C (4, 4), moyennée sur les 65 536 pixels du patch
-A10b     u =  0.053956 - 0.038570j    fuite HH -> VH     -23.57 dB
-         z =  0.064295 - 0.066135j    fuite HH -> HV     -20.70 dB
-         v = -0.098416 - 0.009808j    fuite VV -> VH     -20.10 dB
-         w = -0.032636 + 0.008085j    fuite VV -> HV     -29.47 dB
-         |alpha| = 1.208398, arg(alpha) = +0.69°   déséquilibre HV / VH
-         crosstalk = -20.10 dB
-A10c-d   résiduel = -30.71 dB         réduction 10.62 dB
-         réciprocité 0.833 -> 0.845
+ENTRÉE   HH 0.004552   HV 0.000326   VH 0.000446   VV 0.006038   (puissances moyennes)
+A10a     une seule C (4, 4), moyennée sur les 4 096 pixels du patch
+A10b     u =  0.040016 + 0.011326j    fuite HH -> VH     -27.62 dB
+         z =  0.040783 - 0.017958j    fuite HH -> HV     -27.02 dB
+         v = -0.084577 - 0.045846j    fuite VV -> VH     -20.34 dB
+         w = -0.013846 - 0.024726j    fuite VV -> HV     -30.95 dB
+         |alpha| = 1.238727, arg(alpha) = +2.55°   déséquilibre HV / VH
+         crosstalk = -20.34 dB
+A10c-d   résiduel = -31.42 dB         réduction 11.08 dB
+         réciprocité 0.611 -> 0.634
 ```
 
 **Le crosstalk se lit dans la covariance, pas dans les pixels.** L'étape A10a réduit
-les 65 536 pixels × 4 canaux du patch à une matrice 4×4. Toute
+les 4 096 pixels × 4 canaux du patch à une matrice 4×4. Toute
 l'information y est : Quegan suppose que sur le signal **vrai**, les termes co-pol/cross-pol
 `<HH·VH*>` et `<VV·HV*>` sont **nuls** par symétrie de réflexion (équation 17 de
 Fore). Tout ce qu'on mesure à ces positions sur le signal **observé** `s'` est donc dû
@@ -285,7 +315,7 @@ uniquement aux tests, pour fabriquer une observation à `theta` connu — le seu
 moyen de disposer d'une vérité terrain, puisque les `.slc` n'en ont pas. C'est
 ainsi qu'est mesuré le biais propre de la méthode : 1 % sans bruit et à un
 million d'échantillons quand la puissance croisée est négligeable
-(`beta = 0,002`), mais de l'ordre de 35 % au `beta` médian de cette pile.
+(`beta = 0,002`), mais de l'ordre de 30 % au `beta` médian de cette pile.
 
 ### Le biais propre de Quegan
 
@@ -389,38 +419,38 @@ Le coefficient de proportionnalité dépend en revanche de la direction de
 `theta`, de `alpha` et de la corrélation HH–VV, par le facteur
 `1 / (1 − |ρ_HHVV|²)` et par `C41` au numérateur. Mesuré comme le plus grand
 biais rapporté au plus grand terme de crosstalk, il va de 0,6 à 3,9 fois `beta`
-selon les configurations essayées, et vaut 3,2 pour le `theta` du patch de
+selon les configurations essayées, et vaut 2,3 pour le `theta` du patch de
 contrôle avec `|rho_HHVV| = 0,5`. Le reste en `O(θ³)`, soit `O(|θ|²)` en
 relatif, ne domine qu'à `beta` très faible — d'où le 1 % ci-dessus.
 
 **Sur la pile.** `beta = (C22 + C33) / (C11 + C44)`, mesuré sur 300 patchs
-256×256 de la grille tirés au hasard (60 par date), vaut 0,118 en médiane —
-quartiles 0,075 et 0,171, 9e décile 0,209. C'est une borne haute : le bruit
+64×64 de la grille tirés au hasard (60 par date), vaut 0,119 en médiane —
+quartiles 0,069 et 0,178, 9e décile 0,224. C'est une borne haute : le bruit
 thermique gonfle la puissance croisée mesurée sans entrer dans le biais, puisqu'il
 n'est pas corrélé entre HH et VH. Biais exact sur la covariance théorique, avec
-le `theta` du patch de contrôle (−20,10 dB) et des puissances co-polaires égales :
+le `theta` du patch de contrôle (−20,34 dB) et des puissances co-polaires égales :
 
 | `beta` | `\|rho_HHVV\| = 0,5` | toutes les corrélations HH–VV essayées |
 |---|---|---|
-| 0,075 (1er quartile) | −32,5 dB | −38,0 à −28,3 dB |
-| 0,118 (médiane) | **−28,6 dB**, 37 % du crosstalk | −34,2 à −24,5 dB |
-| 0,171 (3e quartile) | −25,5 dB | −31,0 à −21,3 dB |
+| 0,069 (1er quartile) | −36,5 dB | −41,8 à −32,4 dB |
+| 0,119 (médiane) | **−31,7 dB**, 27 % du crosstalk | −37,0 à −27,6 dB |
+| 0,178 (3e quartile) | −28,2 dB | −33,5 à −24,1 dB |
 
 Les corrélations essayées vont de 0,3 à 0,7 en module, sous quatre phases ; la
-médiane de `|rho_HHVV|` sur la pile est 0,518. Le biais atteint donc le niveau
+médiane de `|rho_HHVV|` sur la pile est 0,563. Le biais atteint donc le niveau
 de l'exigence système de −30 dB que cite Babu (§4.1).
 
 Le résiduel en porte la trace. Sur les mêmes 300 patchs :
 
 | `beta` du patch | patchs | résiduel médian |
 |---|---|---|
-| < 0,05 | 32 | −33,8 dB |
-| 0,05 – 0,1 | 89 | −32,5 dB |
-| 0,1 – 0,2 | 139 | −30,0 dB |
-| > 0,2 | 40 | −25,0 dB |
+| < 0,05 | 55 | −32,6 dB |
+| 0,05 – 0,1 | 70 | −32,7 dB |
+| 0,1 – 0,2 | 127 | −29,9 dB |
+| > 0,2 | 48 | −24,5 dB |
 
-Il croît avec `beta` (`rho_s = +0,46`), plus nettement encore avec
-`beta × |theta|` (`rho_s = +0,69`), et sa médiane de −30,9 dB tombe dans la plage
+Il croît avec `beta` (`rho_s = +0,45`), plus nettement encore avec
+`beta × |theta|` (`rho_s = +0,65`), et sa médiane de −30,1 dB tombe dans la plage
 prédite.
 
 Ce biais n'est pas une erreur d'implémentation : c'est l'approximation de la
@@ -540,9 +570,9 @@ plus simple et parce que le CVNN à venir produira lui aussi un jeu par patch.
 
 Les deux moyennages ne sont pas équivalents : moyenner `C` pondère chaque pixel
 par sa puissance, moyenner les `theta` donne le même poids à chaque fenêtre.
-Mesuré avant le retrait du mode 5×5 : sur la chaîne A, 0,8 dB d'écart sur le
-crosstalk initial médian (−20,3 dB ici, −21,1 dB en 5×5) et 0,1 dB sur le
-résiduel (−30,8 contre −30,7 dB) ; aux réflecteurs, 0,5 dB sur la fuite moyenne
+Mesuré avant le retrait du mode 5×5, sur la chaîne A en patchs de 256 px :
+0,8 dB d'écart sur le crosstalk initial médian (−20,3 dB contre −21,1 dB en 5×5)
+et 0,1 dB sur le résiduel (−30,8 contre −30,7 dB) ; aux réflecteurs, 0,5 dB sur la fuite moyenne
 après correction (−36,32 contre −36,82 dB).
 
 **Le masque de corrélation — délibérément absent.** Le Quegan de Babu §3.3.1
@@ -589,13 +619,13 @@ croissante, dont deux sont indépendants de l'estimateur.
 La réduction obtenue est donc optimiste par construction, et dominée par le
 plancher propre de la méthode plutôt que par ce que la correction a retiré.
 
-Deux mesures le montrent. Les deux moyennages essayés — une covariance par
-patch, et les fenêtres 5×5 de Babu avant leur retrait — diffèrent de 0,8 dB sur
-le crosstalk initial médian, mais s'accordent à 0,1 dB sur le résiduel : les deux
-butent sur le même plancher. Ce plancher s'explique par le biais propre de
-Quegan, qui croît avec le rapport `beta` des puissances croisée et co-polaire :
-−33,8 dB de résiduel médian sous `beta = 0,05`, −25,0 dB au-dessus de 0,2 (voir
-« Le biais propre de Quegan »). Et un seul indice faux dans les formes fermées laisse la
+Deux mesures le montrent. Les deux moyennages essayés sur des patchs de 256 px
+— une covariance par patch, et les fenêtres 5×5 de Babu avant leur retrait —
+diffèrent de 0,8 dB sur le crosstalk initial médian, mais s'accordent à 0,1 dB
+sur le résiduel : les deux butent sur le même plancher. Ce plancher s'explique
+par le biais propre de Quegan, qui croît avec le rapport `beta` des puissances
+croisée et co-polaire : −32,6 dB de résiduel médian sous `beta = 0,05`, −24,5 dB
+au-dessus de 0,2 (voir « Le biais propre de Quegan »). Et un seul indice faux dans les formes fermées laisse la
 campagne rendre `-20.10 dB`, identique à la décimale, sans rien signaler.
 
 **Elle ne permet pas non plus de comparer des méthodes entre elles.** Chaque
@@ -848,7 +878,7 @@ sur données réelles, la note d'une méthode parfaite.
 
 **Une réciprocité de faible résolution.** Même dans une direction visible, une
 erreur de −30 dB n'abaisse la cohérence que d'environ 2·10⁻³. Or, sur la pile,
-le bruit thermique la tient à 0,821 avant correction et 0,839 après : sur
+le bruit thermique la tient à 0,767 avant correction et 0,788 après : sur
 synthétique, avec le crosstalk de référence, un SNR cross-pol de 10 dB la
 plafonne à 0,897, et de 5 dB à 0,750. Départager deux méthodes à quelques dB
 l'une de l'autre demande des statistiques appariées, sur les mêmes patchs.

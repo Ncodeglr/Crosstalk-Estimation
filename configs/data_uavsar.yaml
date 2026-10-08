@@ -11,12 +11,15 @@ data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
-    # 256 px : ~428 m en distance (1,67 m/px) x ~152 m en azimut (0,6 m/px).
-    # Grille de 239 x 38 = 9 082 patchs par acquisition, 45 410 pour les 5 dates.
+    # 64 px : ~107 m en distance (1,67 m/px) x ~38 m en azimut (0,6 m/px).
+    # Grille de 958 x 154 = 147 532 patchs par acquisition, 737 660 pour les 5 dates.
     # Le découpage groupe les 5 dates d'un même emplacement (cvnn/data.py) : la
-    # partition de test compte 4 540 patchs, soit 908 emplacements x 5 dates.
-    patch_size: 256
-    patch_stride: 256
+    # partition de test compte 73 765 patchs, soit 14 753 emplacements x 5 dates.
+    # Taille par défaut de cvnn ; le bruit d'estimation de Quegan y reste petit
+    # devant son biais propre (README, « Taille des patchs »). Quegan et le CVNN
+    # doivent voir les mêmes patchs : ne changer qu'ici.
+    patch_size: 64
+    patch_stride: 64
 
   batch_size: 16
   num_workers: 8
@@ -26,7 +29,7 @@ data:
   max_num_samples: null  # null = toute la pile. Mettre un entier pour une mise au point rapide ; # la réduction a lieu AVANT le découpage train/valid/test, donc elle rétrécit aussi la partition de test.
   recompute_statistics: False
 
-  # --- Normalisation ---------------------------------------------------------
+  # --- Normalisation ---
 
   mean_complex_value:
     - [0.0, 0.0]
@@ -53,12 +56,7 @@ model:
   # Réseau à valeurs complexes : les 4 canaux restent complexes de bout en bout.
   layer_mode: complex
 
-# --- Baselines statistiques -------------------------------------------------
-# Bloc lu par src/run_baselines.py et ignoré par cvnn. Chaque entrée est
-# instanciée par le registre (crosstalk.estimators.registry) : `name` doit être
-# un nom enregistré, et sert aussi de clé dans le tableau de synthèse. Quegan
-# estime un jeu par patch, sur la covariance du patch entier : il n'a pas de
-# paramètre à régler ici.
+# --- Baselines statistiques ---
 baselines:
 
   estimators:
