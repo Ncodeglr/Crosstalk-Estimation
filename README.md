@@ -21,8 +21,8 @@ Le projet a **deux points d'entrée**, qui partagent le paquet `src/crosstalk/` 
 
 - [src/run_baselines.py](src/run_baselines.py) applique Quegan patch par patch,
   sur la partition de test. C'est la **baseline** que le CVNN devra battre. Les
-  patchs et leur position lui viennent de [src/patchs.py](src/patchs.py), seul
-  module du projet qui dépende de `cvnn`.
+  patchs lui viennent de [src/patchs.py](src/patchs.py), seul module du projet
+  qui dépende de `cvnn`.
 - [src/measure_reflectors.py](src/measure_reflectors.py) mesure la fuite aux
   réflecteurs en coin. C'est la **validation par vérité terrain**, comme chez
   Babu.
@@ -75,14 +75,14 @@ verrouillent.
 | A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 147 532 emplacements au sol, les 5 dates suivent leur emplacement → 590 130 / 73 765 / 73 765 patchs, sans fuite |
 | A6 | construire les transformations | `cvnn/transform_registry.build_transform_pipeline` | empilement du `dict` en ordre alphabétique (HH, HV, VH, VV) = `POL_ORDER`, tenseur, puis `GlobalScalarNormalize` qui divise par 0,16444 = √(2 × 0,013521) |
 | A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 4 611 lots |
-| A8 | lire les patchs | `patchs.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 64, 64)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
-| A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode, qui commence par la position du patch ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
+| A8 | lire les patchs | `patchs.iter_patches` | lot `(16, 4, 64, 64)` `complex64` → un patch numpy `(4, 64, 64)` à la fois |
+| A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-d ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
 | A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **4 096 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
 | A10b | formes fermées | `QueganEstimator._solve`, `QueganEstimator.estimate` | `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; les trois rapports de conditionnement doivent être finis et au-dessus des seuils, sinon `IllConditionedCovarianceError` → un `CrosstalkParameters` par patch |
 | A10c | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · s'` pour chaque pixel |
 | A10d | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
-| A11 | synthèse et sauvegarde | `run_baselines.ecrire_resultats`, `run_baselines.summarize` | les 73 765 lignes → `experiments/baselines.csv`, réécrit à chaque lancement ; leur médiane → tableau affiché |
+| A11 | synthèse | `run_baselines.summarize` | la médiane des 73 765 lignes → tableau affiché ; rien n'est écrit sur disque |
 
 ### Chaîne B — `python src/measure_reflectors.py`
 
@@ -114,19 +114,16 @@ qui le précèdent.
 | 8 | [src/crosstalk/estimators/base.py](src/crosstalk/estimators/base.py), puis [registry.py](src/crosstalk/estimators/registry.py) | interface abstraite, enregistrement par décorateur |
 | 9 | [src/crosstalk/estimators/quegan.py](src/crosstalk/estimators/quegan.py) | formes fermées, seuils relatifs, `isfinite`, critère nommé dans l'erreur |
 | 10 | [src/crosstalk/metrics.py](src/crosstalk/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas ; formule au réflecteur |
-| 11 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn` ; index → position dans la pile ; chargeur mélangé refusé |
+| 11 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn`, lots dépliés en patchs |
 | 12 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
 | 13 | [src/measure_reflectors.py](src/measure_reflectors.py) | assemblage de la chaîne B ; la bande comme rempart, partiel, contre la circularité |
 | 14 | [src/crosstalk/synthetic.py](src/crosstalk/synthetic.py) et [tests/](tests/) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
 
-**Quatre points à garder en tête en relisant.**
+**Trois points à garder en tête en relisant.**
 
 - **L'ordre des canaux est implicite** : il naît en A6, de l'ordre alphabétique
   du `dict` rendu par torchcvnn, et tout le reste en dépend. Un test verrouille
   `POL_ORDER == sorted(POL_ORDER)`.
-- **Les acquisitions ne sont pas dans l'ordre chronologique** : `SLCDataset` les range
-  dans l'ordre de `glob` — 160610, 160211, 160920, 160520, 160816 sur cette machine.
-  `experiments/baselines.csv` les désigne donc par leur clé, jamais par un rang.
 - **Les deux chaînes n'ont pas la même normalisation**, sans effet : `theta` et la
   fuite au réflecteur sont des rapports.
 - **La bande de la chaîne B contient le réflecteur qu'elle sert à corriger** :
@@ -233,23 +230,12 @@ test : changer la graine change les patchs évalués, pas la méthode. Sortie
 ci-dessus : `seed: 38`, patchs de 64 px, découpage groupé par emplacement au
 sol. Durée : environ 4 min.
 
-Le détail est écrit à chaque lancement dans `experiments/baselines.csv`, en
-écrasant le précédent ; le dossier est ignoré par git. Une ligne par patch et par
-méthode :
-
-| colonnes | contenu |
-|---|---|
-| `acquisition`, `ligne`, `colonne` | clé torchcvnn de l'acquisition, coin haut-gauche du patch en pixels 1×1 (azimut, distance) |
-| `name`, `status` | la méthode, `ok` ou `ill_conditioned` |
-| `initial_db` … `reciprocity_after` | les six grandeurs du tableau ci-dessus |
-| `u_re`, `u_im`, …, `alpha_re`, `alpha_im` | le `theta` initial, en parties réelle et imaginaire |
-
-La position sert de clé pour comparer deux méthodes patch à patch, sur les mêmes
-patchs. Le `theta` complet sert à la cohérence en azimut : le crosstalk ne
-dépendant que de la distance, les `theta` d'une même colonne et d'une même date
-ne devraient différer que par l'erreur d'estimation — `alpha` compris, que ni la
-réciprocité ni les réflecteurs ne voient. Une ligne `ill_conditioned` laisse ses
-cellules de mesure vides.
+Le script n'écrit aucun fichier : il affiche ce tableau. L'écriture d'un CSV, une
+ligne par patch avec sa position dans la pile, a été retirée le 2026-10-08 ; elle
+reste dans l'historique git (commit `e3326a8`). Le notebook
+[notebooks/analyse_baselines.ipynb](notebooks/analyse_baselines.ipynb) analyse le
+dernier `experiments/baselines.csv` qu'elle a produit, et ne peut plus être
+rafraîchi.
 
 Les méthodes évaluées se déclarent dans le bloc `baselines:` de
 [configs/data_uavsar.yaml](configs/data_uavsar.yaml) ; Quegan n'y a aucun

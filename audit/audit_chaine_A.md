@@ -1,6 +1,6 @@
 # Audit de la chaîne A — `python src/run_baselines.py`
 
-Ce guide suit la chaîne A maillon par maillon, du YAML au CSV, avec pour chaque
+Ce guide suit la chaîne A maillon par maillon, du YAML au tableau de synthèse, avec pour chaque
 maillon son rôle informatique (entrées, sorties, formes, types), son rôle
 mathématique, et ce qu'il faut vérifier en le relisant. Les fonctions sont
 citées par leur nom plutôt que par leur numéro de ligne, qui change à chaque
@@ -11,7 +11,7 @@ Les chiffres correspondent à la configuration livrée : patchs de 64 px,
 
 **Ce que fait la chaîne.** Pour chacun des 73 765 patchs de test : estimer
 `theta = (u, v, w, z, alpha)` par Quegan, corriger le patch, ré-estimer, mesurer
-la réciprocité HV/VH, et écrire une ligne dans `experiments/baselines.csv`.
+la réciprocité HV/VH ; puis afficher la médiane de ces mesures.
 
 ```
 configs/data_uavsar.yaml
@@ -23,7 +23,7 @@ src/run_baselines.py ─ main
    │                             ├─ torchcvnn SLCDataset / SLCFile   (lecture des .slc)
    │                             ├─ _groupes_par_emplacement          (découpage train/valid/test)
    │                             └─ cvnn/transform_registry.py        (PolSAR → tenseur → normalisation)
-   ├─ 4. patchs + positions . src/patchs.py : iter_patches, positions_de_test, position_du_patch
+   ├─ 4. patchs ............. src/patchs.py : iter_patches
    ├─ 5. boucle ............. evaluate_patches
    │     └─ crosstalk/metrics.py : residual_crosstalk
    │          ├─ estimators/base.py : estimate_and_correct
@@ -31,7 +31,7 @@ src/run_baselines.py ─ main
    │          │    └─ physics.py : inverse_distortion_matrix, apply_matrix
    │          ├─ re-estimate sur le patch corrigé
    │          └─ reciprocity avant / après
-   └─ 6. sorties ............ ecrire_resultats (CSV), summarize (médianes)
+   └─ 6. synthèse ........... summarize (médianes)
 ```
 
 **Conventions utilisées partout.** Ordre des canaux `[HH, HV, VH, VV]`. Les
@@ -103,8 +103,7 @@ torchcvnn `SLCDataset`, puis `SLCFile`.
 `k → (ligne, colonne) = ((k // 154) × 64, (k % 154) × 64)`.
 
 **À auditer.** L'ordre des acquisitions est celui de `glob`, donc **pas l'ordre
-chronologique**. C'est pourquoi le CSV désigne chaque acquisition par sa clé,
-jamais par un rang.
+chronologique**.
 
 ## Étape 4 — Découper train / valid / test sans fuite
 
@@ -174,32 +173,25 @@ batch_size=16, shuffle=False, num_workers=8)` → torchcvnn
   format est `complex64`, soit 8 octets par pixel.
 - C'est l'essentiel des 4 minutes de la chaîne.
 
-## Étape 7 — Associer chaque patch à sa position
+## Étape 7 — Déplier les lots en patchs
 
-**Fichiers.** [src/patchs.py](../src/patchs.py) : `iter_patches`,
-`positions_de_test`, `position_du_patch`.
+**Fichier.** [src/patchs.py](../src/patchs.py) : `iter_patches`.
 
 **Informatique.**
-- `iter_patches` refuse un chargeur mélangé : il exige un `SequentialSampler`.
-- Il déplie chaque lot `(16, 4, 64, 64)` en patchs numpy `(4, 64, 64)`
-  `complex64`.
-- `positions_de_test` relit `Subset.indices`, et `position_du_patch` refait
-  exactement le calcul de l'étape 3 : retrancher les comptes des acquisitions,
-  puis `(k // 154) × 64` et `(k % 154) × 64`.
-- `zip(..., strict=True)` lève une erreur si patchs et positions ne sont pas en
-  même nombre.
+- `iter_patches` déplie chaque lot `(16, 4, 64, 64)` en patchs numpy
+  `(4, 64, 64)` `complex64`, un à la fois.
+- C'est un générateur : les patchs sont lus sur disque puis abandonnés au fil
+  de l'eau, jamais tous gardés en mémoire.
 
-**À auditer.** Cette position est la clé qui permettra d'apparier Quegan et le
-CVNN patch par patch. Tests, dans `tests/test_patchs.py` : `test_position_du_patch`,
-`test_un_chargeur_melange_est_refuse`,
-`test_un_chargeur_qui_perd_des_patchs_est_refuse`.
+**À auditer.** Test : `test_les_lots_sont_deplies_en_patchs_dans_l_ordre`, dans
+`tests/test_patchs.py`.
 
 ## Étape 8 — La boucle d'évaluation
 
 **Fichier.** `run_baselines.evaluate_patches`.
 
 **Informatique.**
-- Pour chaque `(position, patch)` et chaque méthode, la boucle appelle
+- Pour chaque patch et chaque méthode, la boucle appelle
   `residual_crosstalk`.
 - Une `CrosstalkError` (covariance mal conditionnée ou `D` singulière) donne le
   statut `ill_conditioned` sans arrêter la boucle.
@@ -352,17 +344,15 @@ légèrement.
   surtout l'erreur relative de Quegan. Il ne prouve pas que la correction est
   juste.
 
-## Étape 10 — Les sorties
+## Étape 10 — La synthèse
 
-**Fichiers.** `run_baselines.ecrire_resultats`, `summarize`.
+**Fichier.** `run_baselines.summarize`.
 
 **Informatique.**
-- `ResidualReport.as_row` aplatit le rapport, avec `θ_initial` en parties réelle
-  et imaginaire (`u_re`, `u_im`…).
-- `csv.DictWriter` écrit les colonnes dans l'ordre de `COLONNES` ; un champ
-  imprévu lève une erreur au lieu d'être perdu.
-- Le CSV est écrasé à chaque lancement.
+- `ResidualReport.as_row` aplatit le rapport en un dictionnaire, une ligne par
+  patch et par méthode.
 - `summarize` affiche la **médiane** des lignes `ok` pour chaque méthode.
+- Rien n'est écrit sur disque.
 
 ---
 
@@ -370,8 +360,8 @@ légèrement.
 
 | maillon | fichier de tests | ce qui est garanti |
 |---|---|---|
-| configuration, méthodes, évaluation, CSV | `tests/test_run_baselines.py` | config livrée valide, méthode inconnue ou déclarée deux fois refusée, une ligne par patch, CSV relu à l'identique |
-| patchs et positions, découpage | `tests/test_patchs.py` | position de chaque index, chargeur mélangé refusé, découpage reproductible |
+| configuration, méthodes, évaluation, synthèse | `tests/test_run_baselines.py` | config livrée valide, méthode inconnue ou déclarée deux fois refusée, une ligne par patch, patch dégénéré consigné sans interrompre |
+| patchs, découpage | `tests/test_patchs.py` | lots dépliés en patchs dans l'ordre, découpage reproductible |
 | registre, interface | `tests/test_registry.py`, `tests/test_estimator_base.py` | instanciation par nom, `correct` inverse exactement `D` |
 | covariance | `tests/test_covariance.py` | convention `C_ij = <S'_i S'_j*>`, hermitienne et semi-définie positive, `C_s' = D C_s Dᴴ`, invariance d'échelle |
 | formes fermées et `alpha` | `tests/test_quegan.py` | exactes sur la covariance théorique, structure du biais, identité de `alpha`, garde-fous, invariance d'échelle |
@@ -382,7 +372,7 @@ légèrement.
 python -m pytest tests/ -q
 ```
 
-## Les cinq points d'audit prioritaires
+## Les quatre points d'audit prioritaires
 
 Chacun se tromperait **sans lever d'erreur** :
 
@@ -390,7 +380,6 @@ Chacun se tromperait **sans lever d'erreur** :
 2. **La conjugaison** de `C` (étape 9b).
 3. **La réindexation** par rapport à Fore (étape 9c).
 4. **La normalisation**, qui doit rester globale (étape 5).
-5. **L'association patch ↔ position** (étape 7).
 
 Les autres points font échouer un test, ou lèvent une exception, s'ils sont
 faux.
