@@ -56,11 +56,7 @@ def patchs_synthetiques(nombre=3, taille=(128, 128)):
 
 
 def estimateurs():
-    return rb.build_estimators(
-        [
-            {"name": "quegan", "params": {"window": "full"}},
-        ]
-    )
+    return rb.build_estimators([{"name": "quegan"}])
 
 
 # ------------------------------------------------------------- configuration

@@ -27,7 +27,7 @@ est connu parce qu'il a été appliqué : `parameter_errors` compare directement
    Le résiduel ne sert donc qu'à contrôler la cohérence interne d'une méthode.
    Comparer des méthodes demande des juges extérieurs à elles : la réciprocité
    et les réflecteurs en coin. Ces derniers donnent aussi la performance
-   absolue — 12,9 dB de réduction sur la pile Rosamond, si bien que l'écart avec
+   absolue — 12,4 dB de réduction sur la pile Rosamond, si bien que l'écart avec
    les 2,8 dB de Babu et al. (table 4) ne tient pas à la circularité du résiduel.
 
    Ces deux juges sont nécessaires, mais pas suffisants : aucun ne voit

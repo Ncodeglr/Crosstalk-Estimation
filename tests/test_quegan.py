@@ -1,11 +1,8 @@
 """Tests de l'estimateur de Quegan, dont le test de cohérence bout en bout."""
 
-import logging
-
 import numpy as np
 import pytest
 
-from src.crosstalk.covariance import BABU_WINDOW, polarimetric_covariance
 from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.exceptions import IllConditionedCovarianceError
@@ -64,51 +61,6 @@ def test_alpha_est_retrouve_en_module_et_en_phase():
     estime = estimateur().estimate(observe(theta(0.1), beta=0.002))
     assert abs(estime.alpha) == pytest.approx(abs(ALPHA), rel=0.02)
     assert np.degrees(np.angle(estime.alpha)) == pytest.approx(27.0, abs=1.0)
-
-
-def test_en_fenetre_glissante_alpha_moyenne_module_et_phase_separement():
-    """Module : moyenne des modules (Babu). Phase : celle de la moyenne complexe (Fore).
-
-    Moyenner directement les `alpha` complexes, dont la phase varie d'une fenêtre
-    5x5 à l'autre, ferait s'annuler une partie du module (-5,3 % mesuré sur la
-    pile) ; la règle retenue laisse le module identique à celui d'un `alpha` réel.
-    """
-    # Deux moitiés aux phases de alpha opposées (+27° et -27°) : sur un signal
-    # synthétique exactement réciproque, toutes les fenêtres d'une moitié
-    # rendent le même alpha, et c'est l'assemblage qui crée la dispersion.
-    gauche = theta(0.1)
-    droite = CrosstalkParameters(gauche.u, gauche.v, gauche.w, gauche.z, np.conj(gauche.alpha))
-    patch = np.concatenate(
-        [observe(gauche, shape=(64, 32), beta=0.002), observe(droite, shape=(64, 32), beta=0.002)],
-        axis=-1,
-    )
-    est = QueganEstimator(window=BABU_WINDOW)
-    thetas, valides, _ = est._solve(polarimetric_covariance(patch, BABU_WINDOW))
-    alphas = thetas[..., 4][valides]
-    estime = est.estimate(patch).alpha
-    assert abs(estime) == pytest.approx(np.mean(np.abs(alphas)), rel=1e-12)
-    assert np.angle(estime) == pytest.approx(np.angle(np.mean(alphas)), abs=1e-12)
-    assert abs(estime) > abs(np.mean(alphas))
-
-
-def test_par_ligne_de_distance_alpha_suit_la_meme_regle_de_moyenne():
-    """`estimate_range_lines` moyenne alpha comme `estimate` : module moyen, phase moyenne.
-
-    Une ligne de distance est une colonne : la dispersion de phase doit donc
-    venir de l'azimut. Moitiés haute et basse aux phases de alpha opposées.
-    """
-    haut = theta(0.1)
-    bas = CrosstalkParameters(haut.u, haut.v, haut.w, haut.z, np.conj(haut.alpha))
-    patch = np.concatenate(
-        [observe(haut, shape=(32, 16), beta=0.002), observe(bas, shape=(32, 16), beta=0.002)],
-        axis=-2,
-    )
-    est = QueganEstimator(window=BABU_WINDOW)
-    thetas, valides, _ = est._solve(polarimetric_covariance(patch, BABU_WINDOW))
-    for colonne, ligne in enumerate(est.estimate_range_lines(patch)):
-        alphas = thetas[:, colonne, 4][valides[:, colonne]]
-        assert abs(ligne.alpha) == pytest.approx(np.mean(np.abs(alphas)), rel=1e-12)
-        assert abs(ligne.alpha) > abs(np.mean(alphas))
 
 
 def test_le_biais_relatif_est_proportionnel_au_rapport_crosspol_copol():
@@ -213,7 +165,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     Covariance théorique, sans échantillonnage ; crosstalk à -39 dB pour rendre
     le reste en `O(theta^3)` négligeable. Puissances co-polaires inégales et
     `alpha` loin de 1 en module comme en phase, pour que chaque facteur compte.
-    `beta = 0.134` est la médiane mesurée sur la pile.
+    `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,118).
     """
     from src.crosstalk.physics import distortion_matrix
     from src.crosstalk.synthetic import quegan_covariance
@@ -265,33 +217,6 @@ def test_un_patch_sans_distorsion_donne_un_crosstalk_negligeable():
     assert estime.max_crosstalk_db() < -35.0
 
 
-# ============================================================ fenêtre glissante
-
-
-def test_mode_glissant_retrouve_aussi_theta():
-    vrai = theta(0.1)
-    patch = observe(vrai, shape=(128, 128), beta=0.002)
-    estime = estimateur(window=(16, 16)).estimate(patch)
-    assert erreur_relative(estime, vrai) < 0.30
-
-
-def test_estimate_range_lines_rend_un_jeu_par_colonne():
-    patch = observe(theta(0.1), shape=(64, 40), beta=0.02)
-    lignes = estimateur(window=BABU_WINDOW).estimate_range_lines(patch)
-    assert len(lignes) == 40 - 5 + 1
-    assert all(isinstance(jeu, CrosstalkParameters) for jeu in lignes)
-
-
-def test_estimate_range_lines_refuse_le_mode_full():
-    with pytest.raises(ValueError, match="fenêtre glissante"):
-        estimateur(window="full").estimate_range_lines(observe(theta(), (16, 16)))
-
-
-def test_fenetre_mal_formee_refusee():
-    with pytest.raises(ValueError, match="window"):
-        QueganEstimator(window=(5, 5, 5))
-
-
 # ============================================================== garde-fous
 
 
@@ -312,33 +237,6 @@ def test_le_message_nomme_le_critere_degrade():
     with pytest.raises(IllConditionedCovarianceError) as erreur:
         estimateur().estimate(constant)
     assert "C11 C44" in str(erreur.value) or "C22 C33" in str(erreur.value)
-
-
-def test_une_fenetre_exactement_nulle_est_ecartee():
-    """Un critère `inf` doit invalider la fenêtre, comme un `nan`.
-
-    Sur une fenêtre exactement nulle, la table de sommes cumulées laisse un
-    résidu d'annulation de l'ordre de 1e-18 au lieu de zéro : `C11` ressort
-    légèrement **négative** et `|X| / sqrt(C22 C33)` vaut `inf`. Or `inf > tol`
-    est vrai, là où `nan > tol` est faux — sans filtre de finitude, la fenêtre
-    était déclarée exploitable et son `theta` calculé sur du bruit numérique.
-
-    Le cas se rencontre sur les patchs de bord de fauchée, où les `.slc`
-    contiennent des zéros exacts.
-    """
-    rng = np.random.default_rng(0)
-    patch = (rng.normal(size=(4, 64, 64)) + 1j * rng.normal(size=(4, 64, 64))).astype(
-        np.complex64
-    )
-    patch[:, :, 20:30] = 0                       # dix colonnes éteintes
-    estime = estimateur(window=BABU_WINDOW)
-    _, valides, rapports = estime._solve(polarimetric_covariance(patch, BABU_WINDOW))
-
-    non_finis = ~np.isfinite(np.asarray(rapports["X / sqrt(C22 C33)"]))
-    assert non_finis.any(), "le cas à tester n'est pas reproduit"
-    assert not valides[non_finis].any(), (
-        f"{valides[non_finis].sum()} fenêtres à critère non fini déclarées valides"
-    )
 
 
 def test_le_message_nomme_le_bon_critere_quand_un_autre_vaut_nan():
@@ -374,46 +272,27 @@ def test_les_seuils_sont_relatifs_donc_invariants_d_echelle():
         estimateur().estimate(facteur * patch)  # aucune exception
 
 
-def test_fenetres_degenerees_ecartees_et_signalees(caplog):
-    """Une fenêtre inexploitable ne doit pas condamner tout le patch."""
-    patch = observe(theta(0.1), shape=(64, 64), beta=0.02).copy()
-    patch[:, :16, :16] = 1.0  # un coin constant : fenêtres dégénérées
-    with caplog.at_level(logging.WARNING, logger="src.crosstalk.estimators.quegan"):
-        estime = estimateur(window=(8, 8)).estimate(patch)
-    assert "écartées" in caplog.text
-    assert np.all(np.isfinite(estime.to_vector()))
-
-
 # ============================================================ intégration
 
 
-def test_fenetres_vides_ecartees():
+def test_un_patch_de_bord_de_fauchee_reste_estimable():
     """Cas réel : les patchs du bord de fauchée contiennent des pixels nuls.
 
     La grille des `.slc` UAVSAR déborde la fauchée utile ; un patch aligné sur
-    le bord contient des zones exactement nulles. Les covariances y sont nulles
-    et les critères de conditionnement valent `NaN`. Ces fenêtres doivent être
-    écartées, et non contaminer l'estimation du reste du patch.
+    le bord contient des zones exactement nulles. Elles ne font que diluer la
+    covariance du patch d'un facteur réel, auquel les formes fermées sont
+    insensibles : l'estimation est celle de la partie utile.
     """
     patch = observe(theta(0.1), shape=(64, 64), beta=0.02).copy()
     patch[:, :, :20] = 0.0  # bord de fauchée
-    estime = estimateur(window=BABU_WINDOW).estimate(patch)
-    assert np.all(np.isfinite(estime.to_vector()))
-    assert erreur_relative(estime, theta(0.1)) < 0.5
-
-
-def test_un_patch_entierement_vide_leve_une_exception():
-    vide = np.zeros((4, 32, 32), dtype=np.complex64)
-    with pytest.raises(IllConditionedCovarianceError):
-        estimateur(window=BABU_WINDOW).estimate(vide)
+    estime = estimateur().estimate(patch)
+    np.testing.assert_allclose(
+        estime.to_vector(), estimateur().estimate(patch[:, :, 20:]).to_vector(), rtol=1e-9
+    )
 
 
 def test_enregistre_dans_le_registre():
-    estime = create_from_config(
-        {"name": "quegan", "params": {"window": BABU_WINDOW}}
-    )
-    assert isinstance(estime, QueganEstimator)
-    assert estime.window == BABU_WINDOW
+    assert isinstance(create_from_config({"name": "quegan"}), QueganEstimator)
 
 
 def test_correction_heritee_de_la_base():
@@ -427,6 +306,5 @@ def test_correction_heritee_de_la_base():
 
 
 def test_representation_lisible():
-    texte = repr(estimateur(window=BABU_WINDOW))
-    assert "QueganEstimator" in texte
-    assert "(5, 5)" in texte and "tol" in texte
+    texte = repr(estimateur())
+    assert "QueganEstimator" in texte and "tol" in texte

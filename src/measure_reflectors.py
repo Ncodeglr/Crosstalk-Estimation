@@ -17,17 +17,14 @@ Trois jeux de données se rencontrent ici :
   radar ;
 - les `.slc` eux-mêmes, lus par `numpy.memmap` autour de chaque réflecteur.
 
-Avec `--desequilibre`, le déséquilibre de canaux et les biais de phase sont
-estimés puis corrigés **avant** le crosstalk, dans l'ordre de Babu et al.
-(2022, §3.2 puis §3.3) : `f` et `phi_t + phi_r` sur les pics des trièdres,
-`g` et `phi_t - phi_r` sur toute l'image. La colonne « avant » reste mesurée
-sur les données brutes, comme la colonne *Uncalibrated* de la Table 4 de Babu ;
-la colonne « après » porte alors les deux corrections enchaînées.
+Le déséquilibre de canaux de Babu et al. (2022, §3.2) n'est pas corrigé : les
+`.ann` portent `Polarimetrically Calibrated = Yes`. Le déséquilibre croisé
+résiduel est absorbé par `alpha` (Fore et al., 2015, équations 11 à 13), et le
+co-polaire `f` s'annule dans la mesure au réflecteur.
 """
 
 from __future__ import annotations
 
-import argparse
 import csv
 import logging
 import re
@@ -43,14 +40,9 @@ sys.path.insert(0, str(RACINE))
 from src.crosstalk.estimators import create_from_config  # noqa: E402
 from src.crosstalk.estimators.base import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
-from src.crosstalk.imbalance import (  # noqa: E402
-    ChannelImbalance,
-    crosspol_imbalance,
-    estimate_copol,
-)
 from src.crosstalk.metrics import corner_reflector_crosstalk  # noqa: E402
 from src.crosstalk.parameters import CrosstalkParameters  # noqa: E402
-from src.crosstalk.physics import POL_ORDER, apply_matrix, inverse_distortion_matrix  # noqa: E402
+from src.crosstalk.physics import POL_ORDER, inverse_distortion_matrix  # noqa: E402
 
 logger = logging.getLogger("measure_reflectors")
 
@@ -67,16 +59,6 @@ RECHERCHE_PIC: int = 60
 #: pixels. C'est la « stripe » de Fore et al. (2015, §V-B) : « a stripe of pixels
 #: that lie within ten samples of the current range bin ».
 DEMI_BANDE: int = 10
-
-#: Hauteur des tranches d'azimut traitées d'un coup. La bande fait toute la
-#: hauteur de la fauchée, soit 61 349 lignes : la découper borne la mémoire à
-#: environ 50 Mo par tranche, au lieu de plusieurs gigaoctets d'un coup.
-PAS_AZIMUT: int = 8192
-
-#: Hauteur des tranches pour l'estimation de `g` sur l'image entière. Une tranche
-#: couvre alors toute la largeur de la fauchée, 9 874 colonnes : 2 048 lignes
-#: font environ 160 Mo par canal, quand 8 192 en feraient 650.
-PAS_AZIMUT_IMAGE: int = 2048
 
 #: Un trièdre a `|S_VV / S_HH| = 1` et une phase co-polaire nulle. Au-delà de
 #: ces bornes, la cible n'est pas un trièdre — réflecteur masqué, déplacé, ou
@@ -229,41 +211,26 @@ def est_un_triedre(hh: complex, vv: complex) -> bool:
 def theta_de_la_bande(
     canaux: dict[str, np.memmap],
     colonne: int,
-    nombre_de_lignes: int,
     estimateur: CrosstalkEstimator,
-    correction: np.ndarray | None = None,
 ) -> CrosstalkParameters | None:
-    """Estime `theta` sur la bande de distance, et **jamais** sur le réflecteur seul.
+    """Estime `theta` sur la bande de distance du réflecteur, et non sur un patch.
 
-    C'est le point qui rend la mesure non circulaire. Le lac sec de Rosamond
-    rétrodiffuse si peu qu'un réflecteur porte 23 à 31 % de la puissance d'un
-    patch 256x256 — dans un **seul pixel**. Estimer `theta` sur ce patch revient
-    donc à l'ajuster sur le réflecteur, puis à s'en servir pour le corriger : la
-    fuite tombe de 18 dB sans que rien ne l'ait justifié.
+    Le lac sec de Rosamond rétrodiffuse si peu qu'un réflecteur porte 23 à 31 %
+    de la puissance d'un patch 256x256 — dans un **seul pixel**. Estimer `theta`
+    sur ce patch revient donc à l'ajuster sur le réflecteur, puis à s'en servir
+    pour le corriger : la fuite tombe de 18 dB sans que rien ne l'ait justifié.
 
-    Deux précautions lèvent cette circularité :
-
-    - la **bande** de Fore et al. (2015, §V-B) : toute la hauteur de la fauchée
-      plutôt qu'un patch, ce qui dilue le réflecteur dans 61 349 lignes ;
-    - la **moyenne des `theta`** plutôt que de la covariance, qui donne le même
-      poids à chaque fenêtre 5x5. Une covariance moyennée laisse au contraire un
-      pixel brillant écraser l'estimation. C'est une justification de fond du
-      protocole de Babu et al. (2022, §3.3.1) que ni lui ni Fore n'énoncent, et
-      elle n'apparaît que sur une scène portant des cibles ponctuelles.
-
-    La bande est traitée par tranches d'azimut pour borner la mémoire, et les
-    `theta` des tranches sont moyennés par `CrosstalkParameters.mean`, selon la
-    même règle que les fenêtres d'un patch. Les tranches étant de même hauteur,
-    cela équivaut à la moyenne globale, à la dernière tranche près.
-
-    Args:
-        correction: matrice diagonale du déséquilibre de canaux
-            (`ChannelImbalance.correction_matrix`), appliquée à chaque tranche
-            avant l'estimation ; `None` pour estimer sur les données brutes.
+    D'où la **bande** de Fore et al. (2015, §V-B) : ±10 colonnes sur toute la
+    hauteur de la fauchée, soit 61 349 lignes, en une seule covariance. Elle
+    dilue le réflecteur sans l'effacer : avec ses lobes secondaires, il porte
+    encore 13 % de la puissance de la bande en médiane, jusqu'à 25 %. La mesure
+    « après » reste donc optimiste d'environ 1,5 dB en moyenne — l'écart avec la
+    même bande privée des lignes à ±128 du réflecteur (README, « Le piège de
+    circularité »). Ce biais est accepté pour la simplicité du protocole.
 
     Returns:
-        Le `theta` de la bande, ou `None` si aucune tranche n'est exploitable ou
-        si la bande déborde de l'image.
+        Le `theta` de la bande, ou `None` si l'estimation échoue ou si la bande
+        déborde de l'image.
     """
     c0, c1 = colonne - DEMI_BANDE, colonne + DEMI_BANDE + 1
     # Un indice négatif ne lève pas d'erreur en Python : il compte depuis la fin
@@ -273,19 +240,13 @@ def theta_de_la_bande(
     if c0 < 0 or c1 > canaux["HH"].shape[1]:
         logger.warning("colonne %d : la bande de ±%d colonnes déborde de l'image", colonne, DEMI_BANDE)
         return None
-    jeux: list[np.ndarray] = []
-    for a0 in range(0, nombre_de_lignes, PAS_AZIMUT):
-        a1 = min(a0 + PAS_AZIMUT, nombre_de_lignes)
-        tranche = np.stack([np.asarray(canaux[pol][a0:a1, c0:c1]) for pol in POL_ORDER])
-        if correction is not None:
-            tranche = apply_matrix(correction, tranche, channel_axis=0)
-        try:
-            jeux.append(estimateur.estimate(tranche).to_vector())
-        except CrosstalkError as erreur:
-            logger.debug("tranche %d-%d, colonne %d : %s", a0, a1, colonne, erreur)
-    if not jeux:
+    # 61 349 lignes x 21 colonnes x 4 canaux en complex64 : environ 40 Mo.
+    bande = np.stack([np.asarray(canaux[pol][:, c0:c1]) for pol in POL_ORDER])
+    try:
+        return estimateur.estimate(bande)
+    except CrosstalkError as erreur:
+        logger.debug("colonne %d : %s", colonne, erreur)
         return None
-    return CrosstalkParameters.mean(np.array(jeux))
 
 
 def mesure_un_reflecteur(
@@ -293,17 +254,10 @@ def mesure_un_reflecteur(
     ligne: int,
     colonne: int,
     estimateur: CrosstalkEstimator,
-    nombre_de_lignes: int,
-    correction: np.ndarray | None = None,
 ) -> dict[str, float] | None:
     """Fuite co-pol vers cross-pol au réflecteur, avant et après correction.
 
     La signature de trièdre a déjà été contrôlée par `localise_les_reflecteurs`.
-
-    Args:
-        correction: matrice du déséquilibre de canaux, appliquée avant `Sigma`
-            au réflecteur comme à la bande ; `None` pour la chaîne sans §3.2.
-            La mesure « avant » se fait toujours sur les valeurs brutes.
 
     Returns:
         Les deux mesures, leur différence et le `|alpha|` de la bande, ou `None`
@@ -312,7 +266,7 @@ def mesure_un_reflecteur(
     valeurs = np.array([canaux[pol][ligne, colonne] for pol in POL_ORDER])
     avant = corner_reflector_crosstalk(*valeurs)
 
-    theta = theta_de_la_bande(canaux, colonne, nombre_de_lignes, estimateur, correction)
+    theta = theta_de_la_bande(canaux, colonne, estimateur)
     if theta is None:
         return None
     try:
@@ -321,8 +275,6 @@ def mesure_un_reflecteur(
         logger.debug("réflecteur (%d, %d) : %s", ligne, colonne, erreur)
         return None
 
-    if correction is not None:
-        valeurs = correction @ valeurs
     apres = corner_reflector_crosstalk(*(sigma @ valeurs))
     if not (np.isfinite(avant) and np.isfinite(apres)):
         return None
@@ -339,10 +291,8 @@ def localise_les_reflecteurs(
 ) -> list[tuple[Reflecteur, int, int]]:
     """Réflecteurs de Babu orientés vers le radar, avec la position de leur pic.
 
-    Séparée de la mesure parce que `f` s'estime sur ces pics : il faut les
-    connaître tous avant de corriger quoi que ce soit. Seuls les pics à
-    signature de trièdre sont rendus, pour que ni `f` ni la mesure ne portent
-    sur une cible parasite.
+    Seuls les pics à signature de trièdre sont rendus, pour que la mesure ne
+    porte pas sur une cible parasite.
 
     Returns:
         Une liste de `(reflecteur, ligne, colonne)`, en pixels 1x1.
@@ -364,51 +314,16 @@ def localise_les_reflecteurs(
     return trouves
 
 
-def desequilibre_de_l_acquisition(
-    canaux: dict[str, np.memmap],
-    pics: list[tuple[Reflecteur, int, int]],
-    nombre_de_lignes: int,
-) -> ChannelImbalance:
-    """Babu §3.2 sur une acquisition : `f` aux pics, `g` sur l'image entière.
-
-    Les moyennes `<|O_hv|^2>`, `<|O_vh|^2>` et `<O_hv O_vh*>` sont accumulées
-    par tranches d'azimut, puis passées à `crosspol_imbalance` : l'image fait
-    environ 4,8 Go par canal et ne tient pas en mémoire d'un bloc. C'est le choix
-    de Fore et al. (2015, §IV-B), qui moyenne sur l'image entière ; Babu parle
-    de cibles homogènes sans préciser lesquelles.
-    """
-    hh = np.array([canaux["HH"][ligne, colonne] for _, ligne, colonne in pics])
-    vv = np.array([canaux["VV"][ligne, colonne] for _, ligne, colonne in pics])
-    f, phi_somme = estimate_copol(hh, vv)
-
-    somme_hv = somme_vh = 0.0
-    correlation = 0j
-    for a0 in range(0, nombre_de_lignes, PAS_AZIMUT_IMAGE):
-        a1 = min(a0 + PAS_AZIMUT_IMAGE, nombre_de_lignes)
-        hv = np.asarray(canaux["HV"][a0:a1])
-        vh = np.asarray(canaux["VH"][a0:a1])
-        somme_hv += float(np.sum(np.abs(hv) ** 2, dtype=np.float64))
-        somme_vh += float(np.sum(np.abs(vh) ** 2, dtype=np.float64))
-        correlation += complex(np.sum(hv * np.conj(vh), dtype=np.complex128))
-    nombre = canaux["HV"].size
-    g, phi_difference = crosspol_imbalance(
-        somme_hv / nombre, somme_vh / nombre, correlation / nombre
-    )
-    return ChannelImbalance.from_estimates(f, phi_somme, g, phi_difference)
-
-
 def mesure_une_acquisition(
     prefixe: str,
     catalogue: Path,
     racine_donnees: Path,
     estimateur: CrosstalkEstimator,
-    desequilibre: bool = False,
-) -> tuple[list[dict[str, float | str]], ChannelImbalance | None]:
+) -> list[dict[str, float | str]]:
     """Mesure les réflecteurs de Babu orientés vers le radar pour une acquisition.
 
     Returns:
-        Une ligne par réflecteur mesuré, et le déséquilibre estimé si
-        `desequilibre` est vrai, `None` sinon.
+        Une ligne par réflecteur mesuré.
     """
     annotation = lire_annotation(racine_donnees / f"{prefixe}_L090HH_04_BC.ann")
     formes = (int(annotation["lignes"]), int(annotation["colonnes"]))
@@ -425,21 +340,17 @@ def mesure_une_acquisition(
     )
     latitudes, longitudes = np.asarray(llh[:, :, 0]), np.asarray(llh[:, :, 1])
 
-    pics = localise_les_reflecteurs(catalogue, canaux, annotation, latitudes, longitudes)
-    jeu = desequilibre_de_l_acquisition(canaux, pics, formes[0]) if desequilibre and pics else None
-    correction = None if jeu is None else jeu.correction_matrix()
-
     lignes: list[dict[str, float | str]] = []
-    for reflecteur, ligne, colonne in pics:
-        mesure = mesure_un_reflecteur(
-            canaux, ligne, colonne, estimateur, formes[0], correction
-        )
+    for reflecteur, ligne, colonne in localise_les_reflecteurs(
+        catalogue, canaux, annotation, latitudes, longitudes
+    ):
+        mesure = mesure_un_reflecteur(canaux, ligne, colonne, estimateur)
         if mesure is None:
             logger.info("réflecteur %s écarté (estimation)", reflecteur.ident)
             continue
         lignes.append({"ident": reflecteur.ident, "cote": reflecteur.cote,
                        "ligne": ligne, "colonne": colonne, **mesure})
-    return lignes, jeu
+    return lignes
 
 
 # ------------------------------------------------------------------- sorties
@@ -487,35 +398,12 @@ def resume(lignes: list[dict[str, float | str]], titre: str) -> str:
 # ----------------------------------------------------------------------- CLI
 
 
-def resume_desequilibre(jeu: ChannelImbalance) -> str:
-    """Les quatre paramètres de Babu §3.2, avec l'écart à l'idéal de sa Table 3."""
-    return (
-        f"  déséquilibre (Babu §3.2) : f = {jeu.f:.4f} (écart {jeu.f - 1:+.4f})   "
-        f"g = {jeu.g:.4f} (écart {jeu.g - 1:+.4f})\n"
-        f"  phases : phi_t + phi_r = {np.degrees(jeu.phi_t + jeu.phi_r):+.2f} deg   "
-        f"phi_t - phi_r = {np.degrees(jeu.phi_t - jeu.phi_r):+.2f} deg"
-    )
-
-
-def main(argv: list[str] | None = None) -> int:
+def main() -> int:
     """Mesure les cinq acquisitions et affiche un tableau par date."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument(
-        "--desequilibre", action="store_true",
-        help="corriger le déséquilibre de canaux avant le crosstalk (Babu §3.2)",
-    )
-    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
-    # Une bande de 8192 lignes porte 139 196 fenêtres 5x5 ; en écarter 150 pour
-    # mauvais conditionnement est le régime normal, et `estimate` le signale à
-    # chaque tranche. Soit 75 réflecteurs x 8 tranches de messages identiques,
-    # qui noieraient les tableaux. On les laisse en DEBUG.
-    logging.getLogger("src.crosstalk.estimators.quegan").setLevel(logging.ERROR)
     donnees = RACINE / "data" / "Rosamd_35012_04"
     catalogues = RACINE / "data" / "corner_reflectors"
-    # `(5, 5)` et non `full` : voir `theta_de_la_bande`. Sur une scène à cibles
-    # ponctuelles, moyenner la covariance laisse le réflecteur écraser `theta`.
-    estimateur = create_from_config({"name": "quegan", "params": {"window": [5, 5]}})
+    estimateur = create_from_config({"name": "quegan"})
 
     dates = {
         "Rosamd_35012_16002_001_160211": "rosamond_2016-02-11.csv",
@@ -526,12 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     toutes: list[dict[str, float | str]] = []
     for prefixe, catalogue in dates.items():
-        lignes, jeu = mesure_une_acquisition(
-            prefixe, catalogues / catalogue, donnees, estimateur, args.desequilibre
-        )
+        lignes = mesure_une_acquisition(prefixe, catalogues / catalogue, donnees, estimateur)
         print("\n" + resume(lignes, f"=== {prefixe} ==="))
-        if jeu is not None:
-            print(resume_desequilibre(jeu))
         toutes.extend(lignes)
 
     if toutes:

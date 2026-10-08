@@ -56,12 +56,12 @@ model:
 # --- Baselines statistiques -------------------------------------------------
 # Bloc lu par src/run_baselines.py et ignoré par cvnn. Chaque entrée est
 # instanciée par le registre (crosstalk.estimators.registry) : `name` doit être
-# un nom enregistré, et sert aussi de clé dans le tableau de synthèse.
+# un nom enregistré, et sert aussi de clé dans le tableau de synthèse. Quegan
+# estime un jeu par patch, sur la covariance du patch entier : il n'a pas de
+# paramètre à régler ici.
 baselines:
 
   estimators:
     - name: quegan
-      params:
-        window: [5, 5]   
 
 

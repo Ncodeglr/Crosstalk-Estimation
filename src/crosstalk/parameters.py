@@ -23,7 +23,7 @@ class CrosstalkParameters:
     frozen = True permet l'immuabilité et la sécurité
     slots = True permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
     
-    Jeu immuable `(u, v, w, z, alpha)` pour un patch ou une ligne de distance.
+    Jeu immuable `(u, v, w, z, alpha)` pour un patch, ou pour la bande de distance d'un réflecteur.
 
     Attributes:
         u, v, w, z: termes de crosstalk complexes, petits devant 1 (~ -20 dB sur UAVSAR bande L).
@@ -57,28 +57,6 @@ class CrosstalkParameters:
         if values.shape != (5,):
             raise ValueError(f"vecteur de forme {values.shape}, (5,) attendu")
         return cls(*(complex(value) for value in values))
-
-    @classmethod
-    def mean(cls, vectors: np.ndarray) -> "CrosstalkParameters":
-        """Moyenne de plusieurs jeux `(n, 5)`, ordonnés selon `PARAMETER_NAMES`.
-
-        `u, v, w, z` se moyennent sur les complexes. `alpha` non : sa phase
-        varie d'un jeu à l'autre (environ 23° entre fenêtres 5x5 sur la pile),
-        et la moyenne complexe ferait s'annuler une partie de son module. On
-        prend donc la moyenne des modules — celle de Babu, dont le `alpha` est
-        réel — et la phase de la moyenne complexe, que Fore ajoute (éq. 25).
-        Le détail des mesures est dans `QueganEstimator.estimate`.
-
-        Sert aux deux niveaux de moyenne du projet : les fenêtres d'un patch
-        (`QueganEstimator.estimate`) et les tranches d'une bande de distance
-        (`measure_reflectors.theta_de_la_bande`).
-        """
-        vecteurs = np.asarray(vectors, dtype=np.complex128)
-        if vecteurs.ndim != 2 or vecteurs.shape[1] != len(PARAMETER_NAMES) or len(vecteurs) == 0:
-            raise ValueError(f"jeux de forme {vecteurs.shape}, (n >= 1, 5) attendu")
-        moyenne = vecteurs.mean(axis=0)
-        moyenne[4] = np.mean(np.abs(vecteurs[:, 4])) * np.exp(1j * np.angle(moyenne[4]))
-        return cls.from_vector(moyenne)
 
     def to_vector(self) -> np.ndarray:
         """Vecteur (5,) complex128 ordonné selon `PARAMETER_NAMES`."""

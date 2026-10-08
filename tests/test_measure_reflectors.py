@@ -24,10 +24,10 @@ def canaux_factices() -> dict[str, np.ndarray]:
 def test_une_bande_qui_deborde_ecarte_le_reflecteur(colonne, caplog):
     """Sans ce garde, `colonne - DEMI_BANDE < 0` lirait l'autre bord de l'image."""
     with caplog.at_level(logging.WARNING, logger="measure_reflectors"):
-        assert theta_de_la_bande(canaux_factices(), colonne, 40, QueganEstimator(window=(5, 5))) is None
+        assert theta_de_la_bande(canaux_factices(), colonne, QueganEstimator()) is None
     assert "déborde" in caplog.text
 
 
 @pytest.mark.parametrize("colonne", [DEMI_BANDE, LARGEUR - DEMI_BANDE - 1])
 def test_une_bande_juste_dans_l_image_est_estimee(colonne):
-    assert theta_de_la_bande(canaux_factices(), colonne, 40, QueganEstimator(window=(5, 5))) is not None
+    assert theta_de_la_bande(canaux_factices(), colonne, QueganEstimator()) is not None

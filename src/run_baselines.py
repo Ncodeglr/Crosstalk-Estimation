@@ -71,10 +71,10 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
     """
     methodes: dict[str, CrosstalkEstimator] = {}
     for entree in entrees:
-        estimateur = create_from_config(entree) # QueganEstimator(window='full', tol=1e-08)
+        estimateur = create_from_config(entree) # QueganEstimator(name='quegan', tol=1e-08)
         if estimateur.name in methodes:
             raise ValueError(f"méthode déclarée deux fois : {estimateur.name!r}")
-        methodes[estimateur.name] = estimateur #{'quegan': QueganEstimator(window='full', tol=1e-08)}
+        methodes[estimateur.name] = estimateur #{'quegan': QueganEstimator(name='quegan', tol=1e-08)}
     return methodes
 
 
@@ -290,8 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    #2026-09-23 10:01:26,381 - src.crosstalk.estimators.quegan - WARNING - 2520 fenêtres sur 63504 écartées
-    #└──── %(asctime)s ────┘   └────────── %(name)s ─────────┘   └ %(levelname)s ┘   └──── %(message)s ────┘
+    #2026-09-23 10:01:26,381 - run_baselines - INFO - méthodes évaluées : ['quegan']
+    #└──── %(asctime)s ────┘   └─ %(name)s ─┘   └%(levelname)s┘   └──────── %(message)s ───────┘
 
     config = lire_configuration(chemin_de_configuration(args.config))
     baselines = config.get("baselines") or {}
