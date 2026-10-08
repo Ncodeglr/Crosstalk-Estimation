@@ -25,9 +25,7 @@ ponctuelle brillante peut dominer C (README, « Le piège de circularité »).
 
 from __future__ import annotations
 import numpy as np
-
 from .physics import POL_ORDER
-
 
 def _check_patch(patch: np.ndarray) -> None:
     if patch.ndim < 3:
