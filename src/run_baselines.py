@@ -67,7 +67,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
             else:
                 ligne.update(bilan_correction.as_row())
             lignes.append(ligne)
-            #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'alpha_im': -0.03}
+            #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'reciprocity_after': 0.79}
     return lignes
 
 

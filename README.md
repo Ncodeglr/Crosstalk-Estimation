@@ -891,7 +891,7 @@ que sur données synthétiques, où `theta` est connu (`metrics.parameter_errors
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 180 tests
+python -m pytest tests/ -q        # 179 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :
