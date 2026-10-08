@@ -22,15 +22,15 @@ class EstimateurConstant(CrosstalkEstimator):
 
     name = "constant"
 
-    def __init__(self, params: CrosstalkParameters = THETA, **kwargs) -> None:
+    def __init__(self, theta: CrosstalkParameters = THETA, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.params = params
+        self.theta = theta
         self.appels = 0
 
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         self.check_patch(patch)
         self.appels += 1
-        return self.params
+        return self.theta
 
 
 def patch_aleatoire(forme=(4, 32, 32), dtype=np.complex64, graine=5):
@@ -102,7 +102,7 @@ def test_correct_inverse_exactement_la_distorsion():
 
 def test_correct_avec_parametres_explicites_n_estime_pas():
     estimateur = EstimateurConstant()
-    estimateur.correct(patch_aleatoire(), params=THETA)
+    estimateur.correct(patch_aleatoire(), theta=THETA)
     assert estimateur.appels == 0
 
 
@@ -114,10 +114,10 @@ def test_correct_sans_parametres_estime_une_fois():
 
 def test_estimate_and_correct_n_estime_qu_une_fois():
     estimateur = EstimateurConstant()
-    corrige, params = estimateur.estimate_and_correct(patch_aleatoire())
+    patch_corrige, theta = estimateur.estimate_and_correct(patch_aleatoire())
     assert estimateur.appels == 1
-    assert params == THETA
-    np.testing.assert_allclose(corrige, estimateur.correct(patch_aleatoire(), THETA))
+    assert theta == THETA
+    np.testing.assert_allclose(patch_corrige, estimateur.correct(patch_aleatoire(), THETA))
 
 
 def test_forme_et_dtype_preserves():
@@ -132,19 +132,19 @@ def test_un_jeu_neutre_laisse_le_patch_inchange():
     neutre = CrosstalkParameters(0.0, 0.0, 0.0, 0.0, 1.0)
     patch = patch_aleatoire((4, 16, 16), dtype=np.complex128)
     np.testing.assert_allclose(
-        EstimateurConstant(params=neutre).correct(patch), patch, atol=1e-15
+        EstimateurConstant(theta=neutre).correct(patch), patch, atol=1e-15
     )
 
 
 def test_un_jeu_degenere_propage_l_exception():
     degenere = CrosstalkParameters(u=2.0, v=0.1, w=0.5, z=0.1, alpha=1.0)
     with pytest.raises(SingularDmatrixError):
-        EstimateurConstant(params=degenere).correct(patch_aleatoire())
+        EstimateurConstant(theta=degenere).correct(patch_aleatoire())
 
 
 def test_le_seuil_de_singularite_est_transmis():
     presque = CrosstalkParameters(u=1.0, v=0.1, w=1.0 - 1e-6, z=0.1, alpha=1.0)
     patch = patch_aleatoire((4, 8, 8))
-    EstimateurConstant(params=presque, tol=1e-12).correct(patch)  # passe
+    EstimateurConstant(theta=presque, tol=1e-12).correct(patch)  # passe
     with pytest.raises(SingularDmatrixError):
-        EstimateurConstant(params=presque, tol=1e-3).correct(patch)
+        EstimateurConstant(theta=presque, tol=1e-3).correct(patch)

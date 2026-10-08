@@ -59,7 +59,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
         for nom, estimateur in estimators.items(): #.items rend les couples (clé, valeur) d'un dictionnaire. Ici : ('quegan', QueganEstimator(name='quegan', tol=1e-08))
             ligne: dict[str, Any] = {"name": nom, "status": "ok"}
             try:
-                bilan_correction = residual_crosstalk(patch, estimateur)  # ResidualReport : theta initial, theta résiduel, réciprocité avant/après
+                bilan_correction = residual_crosstalk(patch, estimateur)  # Return une instance de ResidualReport : theta initial, theta résiduel, réciprocité avant/après
             except CrosstalkError as erreur:
                 ligne["status"] = "ill_conditioned"
                 logger.debug("patch n° %d, %s : %s", rang, nom, erreur)

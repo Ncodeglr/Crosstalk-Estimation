@@ -225,10 +225,10 @@ def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> Re
         IllConditionedCovarianceError: si l'une des deux estimations échoue.
         SingularDmatrixError: si la correction est impossible.
     """
-    corrige, initial = estimator.estimate_and_correct(patch)
+    patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode du méthode de type CrosstalkEstimator
     return ResidualReport(
-        initial=initial,
-        residual=estimator.estimate(corrige),
+        initial=theta_initial,
+        residual=estimator.estimate(patch_corrige),
         reciprocity_before=reciprocity(patch),
-        reciprocity_after=reciprocity(corrige),
+        reciprocity_after=reciprocity(patch_corrige),
     )

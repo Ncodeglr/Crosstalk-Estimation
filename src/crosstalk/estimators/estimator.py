@@ -45,23 +45,25 @@ class CrosstalkEstimator(ABC):
             raise ValueError(f"patch à {patch.shape[0]} canaux, {len(POL_ORDER)} attendus "
             f"(le patch doit être en ordre {POL_ORDER})")
 
-    def correct(self, patch: np.ndarray, params: CrosstalkParameters | None = None) -> np.ndarray:
+    def correct(self, patch: np.ndarray, theta: CrosstalkParameters | None = None) -> np.ndarray:
         """
         Corrige un patch du crosstalk : `s_chapeau = Sigma s'`.
+        Args: theta: le jeu `(u, v, w, z, alpha)` qui définit `Sigma` ; estimé sur `patch` s'il n'est pas fourni.
         Returns: Le patch corrigé, **dans l'ordre d'entrée** et de même dtype.
         """
-        if params is None:
-            params = self.estimate(patch)
+        if theta is None:
+            theta = self.estimate(patch)
         self.check_patch(patch)
-        return apply_correction(patch, params, tol=self.tol)
+        return apply_correction(patch, theta, tol=self.tol)
 
     def estimate_and_correct(self, patch: np.ndarray) -> tuple[np.ndarray, CrosstalkParameters]:
         """
         Estime puis corrige, sans estimer deux fois.
-        Returns: Le couple `(patch corrigé, paramètres)`.
+        Returns: Le couple `(patch_corrige, theta)` : le patch corrigé, et le jeu `(u, v, w, z, alpha)` estimé sur le patch d'entrée.
         """
-        params = self.estimate(patch)
-        return self.correct(patch, params), params
+        theta = self.estimate(patch)
+        patch_corrige = self.correct(patch, theta)
+        return patch_corrige, theta
 
     def __repr__(self) -> str:
         return (f"{type(self).__name__}(name={self.name!r}, tol={self.tol:g})")

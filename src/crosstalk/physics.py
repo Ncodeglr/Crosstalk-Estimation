@@ -12,18 +12,18 @@ DEFAULT_TOL: float = 1e-8 # Seuil sous lequel `|(uw-1)(vz-1)| ` fait lever `Sing
 WARN_CONDITIONING: float = 0.5 # Seuil d'alerte : en deçà, D est inversible mais le crosstalk n'est plus petit.
 
 
-def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
+def distortion_matrix(theta: CrosstalkParameters) -> np.ndarray:
     """
     Matrice de distorsion D, en ordre `POL_ORDER`.
     Ses coefficients sont ceux de l'équation 13 de Fore et al. (2015), **déjà réindexés** :
     lignes et colonnes 2 et 3 ont été échangées une fois pour toutes à l'écriture, puisque Fore ordonne [HH, VH, HV, VV].
     Aucune permutation n'a donc lieu à l'exécution — ni ici, ni ailleurs dans le paquet.
    
-    Args: params: le jeu `(u, v, w, z, alpha)`.
+    Args: theta: le jeu `(u, v, w, z, alpha)`.
     
     Returns: Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`.
     """
-    u, v, w, z, alpha = params.to_vector() # Utilise la méthode to_vector de parameters.py pour obtenir les valeurs des paramètres du vecteur
+    u, v, w, z, alpha = theta.to_vector() # Utilise la méthode to_vector de parameters.py pour obtenir les valeurs des paramètres du vecteur
     sa = np.sqrt(alpha)
     return np.array(
         [
@@ -36,7 +36,7 @@ def distortion_matrix(params: CrosstalkParameters) -> np.ndarray:
     )
 
 
-def inverse_distortion_matrix(params: CrosstalkParameters, tol: float = DEFAULT_TOL) -> np.ndarray:
+def inverse_distortion_matrix(theta: CrosstalkParameters, tol: float = DEFAULT_TOL) -> np.ndarray:
     """
     Matrice de calibration Sigma, en ordre `POL_ORDER`.
     Ses coefficients sont ceux de l'équation 15 de Fore, déjà réindexés de la même façon que ceux de distortion_matrix.
@@ -47,14 +47,14 @@ def inverse_distortion_matrix(params: CrosstalkParameters, tol: float = DEFAULT_
         ni l'une ni l'autre de ses matrices de distorsion ; celle de Fore est exacte.
 
     Args:
-        params: le jeu `(u, v, w, z, alpha)`.
+        theta: le jeu `(u, v, w, z, alpha)`.
         tol: seuil sur `|(uw-1)(vz-1)|` sous lequel D est déclarée singulière.
 
     Returns: Sigma, Tableau `(4, 4)` complex128, dans l'ordre `POL_ORDER`
 
     Raises: SingularDmatrixError: si le déterminant réduit est trop petit.
     """
-    u, v, w, z, alpha = params.to_vector()
+    u, v, w, z, alpha = theta.to_vector()
     sa = np.sqrt(alpha)
     determinant = (u * w - 1.0) * (v * z - 1.0)
 
@@ -116,22 +116,22 @@ def apply_matrix(matrix: np.ndarray, data: np.ndarray, channel_axis: int) -> np.
     return result
 
 
-def apply_distortion(sVector_scattering: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
+def apply_distortion(sVector_scattering: np.ndarray,theta: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,) -> np.ndarray:
     """
     Applique le modèle direct sans bruit : `s' = D s`.
     Sert à simuler des observations à theta connu — c'est le seul moyen de disposer d'une vérité terrain, les données réelles n'en ayant pas.
 
     Args:
         sVector_scattering: patch `(..., 4, H, W)` du signal vrai, ordre POL_ORDER.
-        params: le jeu `(u, v, w, z, alpha)` à appliquer.
+        theta: le jeu `(u, v, w, z, alpha)` à appliquer.
         channel_axis: axe des polarisations.
 
     Returns: Le patch distordu, de même forme et même dtype.
     """
-    return apply_matrix(distortion_matrix(params), sVector_scattering, channel_axis)
+    return apply_matrix(distortion_matrix(theta), sVector_scattering, channel_axis)
 
 
-def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,tol: float = DEFAULT_TOL,) -> np.ndarray:
+def apply_correction(observed: np.ndarray,theta: CrosstalkParameters,channel_axis: int = CHANNEL_AXIS,tol: float = DEFAULT_TOL,) -> np.ndarray:
     """
     Corrige un patch observé : s_corrigé = Sigma @ s' (Fore équation 14).
 
@@ -140,7 +140,7 @@ def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_ax
 
     Args:
         observed: patch (..., 4, H, W) du signal observé, ordre POL_ORDER.
-        params: le jeu estimé.
+        theta: le jeu `(u, v, w, z, alpha)` estimé.
         channel_axis: axe des polarisations.
         tol: seuil de singularité passé à `inverse_distortion_matrix`.
 
@@ -148,5 +148,5 @@ def apply_correction(observed: np.ndarray,params: CrosstalkParameters,channel_ax
 
     Raises: SingularDmatrixError: si D est singulière.
     """
-    sigma = inverse_distortion_matrix(params, tol=tol)
+    sigma = inverse_distortion_matrix(theta, tol=tol)
     return apply_matrix(sigma, observed, channel_axis)
