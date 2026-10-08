@@ -80,8 +80,8 @@ verrouillent.
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-d ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
 | A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **4 096 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
 | A10b | formes fermées | `QueganEstimator._solve`, `QueganEstimator.estimate` | `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` ; les trois rapports de conditionnement doivent être finis et au-dessus des seuils, sinon `IllConditionedCovarianceError` → un `CrosstalkParameters` par patch |
-| A10c | correction | `CrosstalkEstimator.correct` → `physics.inverse_distortion_matrix` → `physics.apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `s_chapeau = Sigma · s'` pour chaque pixel |
-| A10d | ré-estimation et réciprocité | `estimate(s_chapeau)`, `metrics.reciprocity` | `ResidualReport` : initial, résiduel, réciprocité avant et après |
+| A10c | correction | `CrosstalkEstimator.estimate_and_correct` → `correct(patch, theta)` → `physics.apply_correction` → `inverse_distortion_matrix`, `apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `patch_corrige = Sigma · s'` pour chaque pixel ; rend `(patch_corrige, theta_initial)` |
+| A10d | ré-estimation et réciprocité | `estimate(patch_corrige)`, `metrics.reciprocity` | `ResidualReport` : `theta_initial`, `theta` résiduel, réciprocité avant et après ; `evaluate_patches` le reçoit sous le nom `bilan_correction` |
 | A11 | synthèse | `run_baselines.summarize` | la médiane des 73 765 lignes → tableau affiché ; rien n'est écrit sur disque |
 
 ### Chaîne B — `python src/measure_reflectors.py`
@@ -891,7 +891,7 @@ que sur données synthétiques, où `theta` est connu (`metrics.parameter_errors
 ### Tests
 
 ```bash
-python -m pytest tests/ -q        # 197 tests
+python -m pytest tests/ -q        # 180 tests
 ```
 
 Trois niveaux, du plus faible au plus fort :

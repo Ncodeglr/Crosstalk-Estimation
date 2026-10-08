@@ -203,11 +203,17 @@ batch_size=16, shuffle=False, num_workers=8)` → torchcvnn
 **Fichier pilote.** [metrics.py](../src/crosstalk/metrics.py) :
 `residual_crosstalk(patch, estimateur)` :
 
+```python
+patch_corrige, theta_initial = estimator.estimate_and_correct(patch)   # 9a à 9e
+residual = estimator.estimate(patch_corrige)                           # 9a à 9c à nouveau
+reciprocity(patch), reciprocity(patch_corrige)                         # 9f
 ```
-corrigé, θ_initial = estimateur.estimate_and_correct(patch)      # 9a à 9e
-θ_résiduel        = estimateur.estimate(corrigé)                 # 9a à 9c à nouveau
-réciprocité avant = reciprocity(patch) ; après = reciprocity(corrigé)   # 9f
-```
+
+`patch` est le patch observé `s'`, non corrigé ; `patch_corrige` est
+`Sigma(theta_initial)·s'`. `theta_initial` et `residual` sont des jeux
+`(u, v, w, z, alpha)` (`CrosstalkParameters`), estimés avant et après
+correction. Le tout est rendu dans un `ResidualReport`, que `evaluate_patches`
+reçoit sous le nom `bilan_correction`.
 
 ### 9a. Le modèle physique — [physics.py](../src/crosstalk/physics.py), `distortion_matrix`
 
@@ -309,7 +315,7 @@ un patch constant. Sur la pile, aucun patch n'échoue.
 ([parameters.py](../src/crosstalk/parameters.py)) range le résultat dans un
 objet immuable `(u, v, w, z, alpha)` et refuse `alpha = 0`.
 
-### 9e. La correction — `CrosstalkEstimator.correct` → `physics.apply_correction`
+### 9e. La correction — [estimator.py](../src/crosstalk/estimators/estimator.py), `estimate_and_correct` → `correct` → `physics.apply_correction`
 
 **Mathématique.** `ŝ = Sigma·s'`, avec `Sigma = D⁻¹` sous forme analytique
 (Fore, équation 15, réindexée) :
@@ -325,6 +331,10 @@ Le bruit n'est pas retranché (`N` est inconnu) : la correction l'amplifie
 légèrement.
 
 **Informatique.**
+- `estimate_and_correct` estime une seule fois : `theta = estimate(patch)`, puis
+  `patch_corrige = correct(patch, theta)`, et rend `(patch_corrige, theta)`.
+- `correct` passe `theta` à `physics.apply_correction(patch, theta)`, qui
+  calcule `Sigma = inverse_distortion_matrix(theta)` puis l'applique.
 - Si `|(uw−1)(vz−1)| < 1e-8`, `SingularDmatrixError` est levée. Sous 0,5, un
   avertissement est émis.
 - `apply_matrix` contracte la matrice avec l'axe des canaux
@@ -333,8 +343,8 @@ légèrement.
 ### 9f. Les mesures — `metrics.reciprocity`, `ResidualReport`
 
 - **Crosstalk en dB :** `max(20·log10 |u|, |v|, |w|, |z|)`
-  (`CrosstalkParameters.max_crosstalk_db`). On l'obtient pour `θ_initial`
-  (`initial_db`) et pour `θ_résiduel` (`residual_db`). Leur différence donne
+  (`CrosstalkParameters.max_crosstalk_db`). On l'obtient pour `theta_initial`
+  (`initial_db`) et pour `residual` (`residual_db`). Leur différence donne
   `reduction_db`.
 - **Réciprocité :** `|<HV·VH*>| / √(<|HV|²>·<|VH|²>)`, avant et après
   correction. C'est le seul juge indépendant de Quegan, mais il est aveugle à
@@ -349,8 +359,9 @@ légèrement.
 **Fichier.** `run_baselines.summarize`.
 
 **Informatique.**
-- `ResidualReport.as_row` aplatit le rapport en un dictionnaire, une ligne par
-  patch et par méthode.
+- `evaluate_patches` aplatit chaque `bilan_correction` (`ResidualReport.as_row`)
+  en un dictionnaire : une ligne par patch et par méthode, qui ne dit plus de
+  quel patch elle vient — seul son rang dans la liste le fait.
 - `summarize` affiche la **médiane** des lignes `ok` pour chaque méthode.
 - Rien n'est écrit sur disque.
 
