@@ -17,13 +17,13 @@ la réciprocité HV/VH, et écrire une ligne dans `experiments/baselines.csv`.
 configs/data_uavsar.yaml
    │
 src/run_baselines.py ─ main
-   ├─ 1. configuration ...... chemin_de_configuration, lire_configuration
+   ├─ 1. configuration ...... CONFIG, lire_YAML
    ├─ 2. méthodes ........... build_estimators → crosstalk/estimators/registry.py → QueganEstimator
-   ├─ 3. données ............ build_dataloader → cvnn/src/cvnn/data.py (get_dataloaders)
+   ├─ 3. données ............ src/patchs.py : build_dataloader → cvnn/src/cvnn/data.py (get_dataloaders)
    │                             ├─ torchcvnn SLCDataset / SLCFile   (lecture des .slc)
    │                             ├─ _groupes_par_emplacement          (découpage train/valid/test)
    │                             └─ cvnn/transform_registry.py        (PolSAR → tenseur → normalisation)
-   ├─ 4. patchs + positions . iter_patches, positions_de_test, position_du_patch
+   ├─ 4. patchs + positions . src/patchs.py : iter_patches, positions_de_test, position_du_patch
    ├─ 5. boucle ............. evaluate_patches
    │     └─ crosstalk/metrics.py : residual_crosstalk
    │          ├─ estimators/base.py : estimate_and_correct
@@ -43,13 +43,13 @@ indices 1 à 4 des formules correspondent aux indices 0 à 3 du code.
 ## Étape 1 — Configuration
 
 **Fichiers.** [configs/data_uavsar.yaml](../configs/data_uavsar.yaml) ;
-[src/run_baselines.py](../src/run_baselines.py) : `main`,
-`chemin_de_configuration`, `lire_configuration`.
+[src/run_baselines.py](../src/run_baselines.py) : `main`, `CONFIG`,
+`lire_YAML`.
 
 **Informatique.**
-- `chemin_de_configuration` résout `--config` dans cet ordre : chemin absolu,
-  puis dossier courant, puis racine du dépôt.
-- `lire_configuration` charge le YAML en `dict` et ancre `trainpath` à la racine
+- Le script lit toujours le fichier désigné par la constante `CONFIG`,
+  `configs/data_uavsar.yaml` : il n'a pas d'option en ligne de commande.
+- `lire_YAML` charge le YAML en `dict` et ancre `trainpath` à la racine
   du dépôt. Sans cela, cvnn chercherait les `.slc` depuis le dossier courant.
 
 **Mathématique.** Rien.
@@ -62,21 +62,24 @@ ne contient que `{name: quegan}`.
 
 **Fichiers.** `run_baselines.build_estimators` →
 [estimators/registry.py](../src/crosstalk/estimators/registry.py)
-(`create_from_config`, `create_estimator`) →
+(`create_from_config`) →
 [estimators/quegan.py](../src/crosstalk/estimators/quegan.py).
 
 **Informatique.**
 - Importer le paquet `estimators` exécute `@register_estimator` sur
   `QueganEstimator`, ce qui remplit `_ESTIMATORS["quegan"]`.
-- `create_from_config({"name": "quegan"})` appelle `QueganEstimator()` avec ses
-  seuils par défaut : `tol = 1e-8`, `delta_tol = x_tol = 1e-6`.
+- `create_from_config({"name": "quegan"})` cherche la classe dans
+  `_ESTIMATORS` et appelle `QueganEstimator()` avec ses seuils par défaut :
+  `tol = 1e-8`, `delta_tol = x_tol = 1e-6`. Un nom inconnu lève une
+  `KeyError` qui liste les noms disponibles.
 - `build_estimators` refuse un nom déclaré deux fois.
 
 **Mathématique.** Rien.
 
 ## Étape 3 — Découvrir les fichiers, sans rien lire
 
-**Fichiers.** `run_baselines.build_dataloader` → cvnn `set_seed(38)`, puis
+**Fichiers.** [src/patchs.py](../src/patchs.py) : `build_dataloader` → cvnn
+`set_seed(38)`, puis
 `validate_and_correct_config`, puis `get_dataloaders` → `_create_dataset` →
 torchcvnn `SLCDataset`, puis `SLCFile`.
 
@@ -173,8 +176,8 @@ batch_size=16, shuffle=False, num_workers=8)` → torchcvnn
 
 ## Étape 7 — Associer chaque patch à sa position
 
-**Fichiers.** `run_baselines.iter_patches`, `positions_de_test`,
-`position_du_patch`.
+**Fichiers.** [src/patchs.py](../src/patchs.py) : `iter_patches`,
+`positions_de_test`, `position_du_patch`.
 
 **Informatique.**
 - `iter_patches` refuse un chargeur mélangé : il exige un `SequentialSampler`.
@@ -187,7 +190,7 @@ batch_size=16, shuffle=False, num_workers=8)` → torchcvnn
   même nombre.
 
 **À auditer.** Cette position est la clé qui permettra d'apparier Quegan et le
-CVNN patch par patch. Tests : `test_position_du_patch`,
+CVNN patch par patch. Tests, dans `tests/test_patchs.py` : `test_position_du_patch`,
 `test_un_chargeur_melange_est_refuse`,
 `test_un_chargeur_qui_perd_des_patchs_est_refuse`.
 
@@ -367,7 +370,8 @@ légèrement.
 
 | maillon | fichier de tests | ce qui est garanti |
 |---|---|---|
-| configuration, positions, CSV, découpage | `tests/test_run_baselines.py` | config livrée valide, position de chaque index, chargeur mélangé refusé, CSV relu à l'identique, découpage reproductible |
+| configuration, méthodes, évaluation, CSV | `tests/test_run_baselines.py` | config livrée valide, méthode inconnue ou déclarée deux fois refusée, une ligne par patch, CSV relu à l'identique |
+| patchs et positions, découpage | `tests/test_patchs.py` | position de chaque index, chargeur mélangé refusé, découpage reproductible |
 | registre, interface | `tests/test_registry.py`, `tests/test_estimator_base.py` | instanciation par nom, `correct` inverse exactement `D` |
 | covariance | `tests/test_covariance.py` | convention `C_ij = <S'_i S'_j*>`, hermitienne et semi-définie positive, `C_s' = D C_s Dᴴ`, invariance d'échelle |
 | formes fermées et `alpha` | `tests/test_quegan.py` | exactes sur la covariance théorique, structure du biais, identité de `alpha`, garde-fous, invariance d'échelle |

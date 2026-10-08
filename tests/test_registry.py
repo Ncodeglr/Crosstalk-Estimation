@@ -11,7 +11,6 @@ from src.crosstalk.estimators import registry
 from src.crosstalk.estimators.base import CrosstalkEstimator
 from src.crosstalk.estimators.registry import (
     available_estimators,
-    create_estimator,
     create_from_config,
     register_estimator,
 )
@@ -55,7 +54,7 @@ def fabrique_methode(nom: str = "factice", **attributs):
 def test_enregistrer_puis_retrouver():
     classe = fabrique_methode("factice")
     assert "factice" in available_estimators()
-    assert isinstance(create_estimator("factice"), classe)
+    assert isinstance(create_from_config({"name": "factice"}), classe)
 
 
 def test_le_decorateur_rend_la_classe_inchangee():
@@ -75,7 +74,7 @@ def test_reenregistrer_la_meme_classe_est_sans_effet():
     classe = fabrique_methode("factice")
     register_estimator(classe)  # idempotent
     assert available_estimators().count("factice") == 1
-    assert isinstance(create_estimator("factice"), classe)
+    assert isinstance(create_from_config({"name": "factice"}), classe)
 
 
 def test_nom_deja_pris_par_une_autre_classe():
@@ -115,33 +114,27 @@ def test_refuse_un_nom_vide():
 # ----------------------------------------------------------------- fabrication
 
 
-def test_create_estimator_transmet_les_arguments():
-    fabrique_methode("factice")
-    estimateur = create_estimator("factice", gain=2.0, tol=1e-10)
-    assert estimateur.gain == 2.0
-    assert estimateur.tol == 1e-10
-
-
 def test_nom_inconnu_liste_les_noms_valides():
     fabrique_methode("factice")
     with pytest.raises(KeyError) as erreur:
-        create_estimator("inexistant")
+        create_from_config({"name": "inexistant"})
     assert "factice" in str(erreur.value)
 
 
 def test_registre_vide_message_explicite():
     registry._ESTIMATORS.clear()
     with pytest.raises(KeyError, match="aucun"):
-        create_estimator("quoi_que_ce_soit")
+        create_from_config({"name": "quoi_que_ce_soit"})
 
 
 # ---------------------------------------------------------- pilotage par config
 
 
-def test_create_from_config():
+def test_create_from_config_transmet_les_parametres():
     fabrique_methode("factice")
-    estimateur = create_from_config({"name": "factice", "params": {"gain": 3.0}})
+    estimateur = create_from_config({"name": "factice", "params": {"gain": 3.0, "tol": 1e-10}})
     assert estimateur.gain == 3.0
+    assert estimateur.tol == 1e-10
 
 
 def test_create_from_config_sans_params():

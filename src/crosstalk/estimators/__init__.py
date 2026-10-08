@@ -21,7 +21,7 @@ modifier aucun fichier existant ::
             return CrosstalkParameters(0.0, 0.0, 0.0, 0.0, 1.0)
 
     # Sigma vaut alors l'identité : `correct` rend le patch inchangé.
-    estimateur = create_estimator("sans_crosstalk")
+    estimateur = create_from_config({"name": "sans_crosstalk"})
     corrige, theta = estimateur.estimate_and_correct(patch)
 
 Le registre est ensuite adressable depuis une configuration ::
@@ -33,7 +33,6 @@ from .base import CrosstalkEstimator
 from .quegan import QueganEstimator
 from .registry import (
     available_estimators,
-    create_estimator,
     create_from_config,
     register_estimator,
 )
@@ -42,7 +41,6 @@ __all__ = [
     "CrosstalkEstimator",
     "QueganEstimator",
     "available_estimators",
-    "create_estimator",
     "create_from_config",
     "register_estimator",
 ]

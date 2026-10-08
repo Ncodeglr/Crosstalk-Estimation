@@ -37,7 +37,6 @@ from .exceptions import (
 from .estimators import (
     CrosstalkEstimator,
     available_estimators,
-    create_estimator,
     create_from_config,
     register_estimator,
 )
@@ -71,7 +70,6 @@ __all__ = [
     "reciprocity",
     "residual_crosstalk",
     "available_estimators",
-    "create_estimator",
     "create_from_config",
     "register_estimator",
     "apply_correction",

@@ -37,7 +37,7 @@ import numpy as np
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-from src.crosstalk.estimators import create_from_config  # noqa: E402
+from src.crosstalk.estimators.quegan import QueganEstimator  # noqa: E402
 from src.crosstalk.estimators.base import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
 from src.crosstalk.metrics import corner_reflector_crosstalk  # noqa: E402
@@ -403,7 +403,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
     donnees = RACINE / "data" / "Rosamd_35012_04"
     catalogues = RACINE / "data" / "corner_reflectors"
-    estimateur = create_from_config({"name": "quegan"})
+    estimateur = QueganEstimator()
 
     dates = {
         "Rosamd_35012_16002_001_160211": "rosamond_2016-02-11.csv",

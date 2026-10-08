@@ -140,10 +140,8 @@ class QueganEstimator(CrosstalkEstimator):
         # dénominateur annulé.
         defaillants = [nom for nom, valeur in rapports.items() if not (np.isfinite(valeur) and valeur > seuils[nom])]
         if defaillants:
-            # Un critère non fini — canal éteint, patch constant — est le plus
-            # grave. Mais `nan` perd toute comparaison (`nan < x` et `x < nan`
-            # sont faux) : un `min` naïf ne le choisirait jamais et nommerait un
-            # critère sain dans le message. Il compte donc pour `-inf`.
+            # Un critère non fini — canal éteint, patch constant — est le plus grave.
+            # Mais nan perd toute comparaison (nan < x et x < nan sont faux) : un min naïf ne le choisirait jamais et nommerait un critère sain dans le message. Il compte donc pour -inf.
             nom = min(defaillants, key=lambda cle: rapports[cle] if np.isfinite(rapports[cle]) else -np.inf)
             raise IllConditionedCovarianceError(nom, rapports[nom], seuils[nom])
         return CrosstalkParameters.from_vector(theta)

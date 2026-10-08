@@ -11,13 +11,6 @@ data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
-    # 64 px : ~107 m en distance (1,67 m/px) x ~38 m en azimut (0,6 m/px).
-    # Grille de 958 x 154 = 147 532 patchs par acquisition, 737 660 pour les 5 dates.
-    # Le découpage groupe les 5 dates d'un même emplacement (cvnn/data.py) : la
-    # partition de test compte 73 765 patchs, soit 14 753 emplacements x 5 dates.
-    # Taille par défaut de cvnn ; le bruit d'estimation de Quegan y reste petit
-    # devant son biais propre (README, « Taille des patchs »). Quegan et le CVNN
-    # doivent voir les mêmes patchs : ne changer qu'ici.
     patch_size: 64
     patch_stride: 64
 

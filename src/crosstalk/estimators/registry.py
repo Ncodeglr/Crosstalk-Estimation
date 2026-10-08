@@ -35,31 +35,25 @@ def available_estimators() -> list[str]:
     return sorted(_ESTIMATORS)
 
 
-def create_estimator(name: str, **params: Any) -> CrosstalkEstimator:
-    """
-    Instancie un estimateur par son nom enregistré.
-
-    Args:
-        name: nom enregistré.
-        **params: arguments passés au constructeur de la méthode.
-    """
-    try:
-        classe = _ESTIMATORS[name]
-    except KeyError:
-        raise KeyError(
-            f"estimateur inconnu : {name!r}. Disponibles : "
-            f"{available_estimators() or '(aucun)'}"
-        ) from None
-    return classe(**params)
-
-
 def create_from_config(config: Mapping[str, Any]) -> CrosstalkEstimator:
     """
     À partir du nom, on crée un estimateur avec ses paramètres.
+
+    Args: config: une entrée du YAML, `{name: ..., params: {...}}`. `params` est facultatif : absent ou vide (`None`), le constructeur reçoit ses valeurs par défaut.
+    Raises:
+        KeyError: si `name` manque, ou ne désigne aucune méthode enregistrée — le message liste alors les noms disponibles.
+        TypeError: si `params` n'est pas un mapping.
     """
     if "name" not in config:
         raise KeyError(f"configuration sans clé 'name' : {dict(config)!r}")
     params = config.get("params") or {}
     if not isinstance(params, Mapping):
         raise TypeError(f"'params' doit être un mapping, reçu {type(params).__name__}")
-    return create_estimator(config["name"], **params) #QueganEstimator(name='quegan', tol=1e-08)
+    try:
+        classe = _ESTIMATORS[config["name"]]
+    except KeyError:
+        raise KeyError(
+            f"estimateur inconnu : {config['name']!r}. Disponibles : "
+            f"{available_estimators() or '(aucun)'}"
+        ) from None
+    return classe(**params) #QueganEstimator(name='quegan', tol=1e-08)

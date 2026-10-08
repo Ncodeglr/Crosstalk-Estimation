@@ -20,7 +20,9 @@ pip install -r requirements.txt
 Le projet a **deux points d'entrée**, qui partagent le paquet `src/crosstalk/` :
 
 - [src/run_baselines.py](src/run_baselines.py) applique Quegan patch par patch,
-  sur la partition de test. C'est la **baseline** que le CVNN devra battre.
+  sur la partition de test. C'est la **baseline** que le CVNN devra battre. Les
+  patchs et leur position lui viennent de [src/patchs.py](src/patchs.py), seul
+  module du projet qui dépende de `cvnn`.
 - [src/measure_reflectors.py](src/measure_reflectors.py) mesure la fuite aux
   réflecteurs en coin. C'est la **validation par vérité terrain**, comme chez
   Babu.
@@ -60,7 +62,7 @@ jamais appliquée aux données réelles.
 
 ### Chaîne A — `python src/run_baselines.py`
 
-Le guide d'audit [docs/audit_chaine_A.md](docs/audit_chaine_A.md) détaille
+Le guide d'audit [audit/audit_chaine_A.md](audit/audit_chaine_A.md) détaille
 chaque étape sur les plans informatique et mathématique, avec les tests qui la
 verrouillent.
 
@@ -68,12 +70,12 @@ verrouillent.
 |---|---|---|---|
 | A1 | lire la configuration | `run_baselines.main` | YAML → `dict` |
 | A2 | instancier les méthodes | `run_baselines.build_estimators` → `estimators/registry.create_from_config` | `{name: quegan}` → `QueganEstimator()`, que le décorateur `@register_estimator` a inscrit sous le nom `quegan` |
-| A3 | fixer le hasard, compléter la configuration | `run_baselines.build_dataloader` → `cvnn.utils.set_seed(38)`, puis `cvnn/data.validate_and_correct_config` | ajoute `type: polsar`, `has_labels: False`, `num_channels: 4`, lus dans `cvnn/dataset_registry.py` |
+| A3 | fixer le hasard, compléter la configuration | `patchs.build_dataloader` → `cvnn.utils.set_seed(38)`, puis `cvnn/data.validate_and_correct_config` | ajoute `type: polsar`, `has_labels: False`, `num_channels: 4`, lus dans `cvnn/dataset_registry.py` |
 | A4 | découvrir les fichiers | `cvnn/data._create_dataset` → `torchcvnn.SLCDataset` | groupe les `.slc` par date, lit les `.ann` ; grille de 958 × 154 = **147 532 patchs de 64 px par date**, 737 660 au total. Aucun pixel n'est encore lu |
 | A5 | **découper train / valid / test** | `cvnn/data._groupes_par_emplacement`, appelée par `get_dataloaders` | mélange les 147 532 emplacements au sol, les 5 dates suivent leur emplacement → 590 130 / 73 765 / 73 765 patchs, sans fuite |
 | A6 | construire les transformations | `cvnn/transform_registry.build_transform_pipeline` | empilement du `dict` en ordre alphabétique (HH, HV, VH, VV) = `POL_ORDER`, tenseur, puis `GlobalScalarNormalize` qui divise par 0,16444 = √(2 × 0,013521) |
 | A7 | construire les chargeurs | `cvnn/data.get_dataloaders` | seul `test_loader` sert : `shuffle=False`, lots de 16, soit 4 611 lots |
-| A8 | lire les patchs | `run_baselines.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 64, 64)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
+| A8 | lire les patchs | `patchs.iter_patches` → `positions_de_test` → `position_du_patch` | lot `(16, 4, 64, 64)` `complex64` → un couple `(position, patch)` à la fois : la position — acquisition, ligne et colonne du coin haut-gauche — se déduit de `Subset.indices`, de `SLCDataset.patch_counts` et de la grille de `SLCFile` ; un chargeur mélangé est refusé |
 | A9 | boucle d'évaluation | `run_baselines.evaluate_patches` | une ligne par couple patch/méthode, qui commence par la position du patch ; une `CrosstalkError` donne le statut `ill_conditioned` sans arrêter la boucle |
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-d ci-dessous, et tracé sur un patch réel dans « Trace sur un patch de contrôle » |
 | A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **4 096 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
@@ -112,9 +114,10 @@ qui le précèdent.
 | 8 | [src/crosstalk/estimators/base.py](src/crosstalk/estimators/base.py), puis [registry.py](src/crosstalk/estimators/registry.py) | interface abstraite, enregistrement par décorateur |
 | 9 | [src/crosstalk/estimators/quegan.py](src/crosstalk/estimators/quegan.py) | formes fermées, seuils relatifs, `isfinite`, critère nommé dans l'erreur |
 | 10 | [src/crosstalk/metrics.py](src/crosstalk/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas ; formule au réflecteur |
-| 11 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
-| 12 | [src/measure_reflectors.py](src/measure_reflectors.py) | assemblage de la chaîne B ; la bande comme rempart, partiel, contre la circularité |
-| 13 | [src/crosstalk/synthetic.py](src/crosstalk/synthetic.py) et [tests/](tests/) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
+| 11 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn` ; index → position dans la pile ; chargeur mélangé refusé |
+| 12 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
+| 13 | [src/measure_reflectors.py](src/measure_reflectors.py) | assemblage de la chaîne B ; la bande comme rempart, partiel, contre la circularité |
+| 14 | [src/crosstalk/synthetic.py](src/crosstalk/synthetic.py) et [tests/](tests/) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
 
 **Quatre points à garder en tête en relisant.**
 
@@ -211,8 +214,7 @@ Quegan est implémentée à ce jour. Elle estime un jeu `(u, v, w, z, alpha)` pa
 patch, à partir de la covariance du patch entier.
 
 ```bash
-python src/run_baselines.py                         # configuration par défaut
-python src/run_baselines.py --config autre.yaml     # ou une autre configuration
+python src/run_baselines.py      # lit toujours configs/data_uavsar.yaml
 ```
 
 ```
@@ -251,10 +253,9 @@ cellules de mesure vides.
 
 Les méthodes évaluées se déclarent dans le bloc `baselines:` de
 [configs/data_uavsar.yaml](configs/data_uavsar.yaml) ; Quegan n'y a aucun
-paramètre. Le script se lance depuis
-n'importe quel dossier : un `--config` relatif se résout depuis le dossier courant,
-ou à défaut depuis la racine du dépôt, et le `trainpath` du YAML toujours depuis
-la racine. Le modèle physique et la
+paramètre. Le script lit toujours ce fichier, et se lance depuis n'importe quel
+dossier : le `trainpath` du YAML est résolu depuis la racine du dépôt. Le modèle
+physique et la
 covariance sont **communs** à toutes les méthodes : une méthode nouvelle
 n'écrit que `estimate`, et s'inscrit au registre par `@register_estimator`.
 

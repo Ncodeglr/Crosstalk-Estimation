@@ -220,11 +220,10 @@ def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> Re
     Estime, corrige, puis ré-estime sur les données corrigées.
 
     Args:
-        patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
+        patch: (4, H, W) complexe, en physics.POL_ORDER.
         estimator: la méthode évaluée. C'est elle qui juge sa propre correction, d'où la réserve énoncée en tête de module.
 
-    Returns:
-        Le rapport complet : les deux jeux, et la cohérence HV/VH de part et d'autre de la correction.
+    Returns: Le rapport complet : les deux jeux, et la cohérence HV/VH de part et d'autre de la correction.
 
     Raises:
         IllConditionedCovarianceError: si l'une des deux estimations échoue.
