@@ -26,7 +26,7 @@ src/run_baselines.py ─ main
    ├─ 4. patchs ............. src/patchs.py : iter_patches
    ├─ 5. boucle ............. evaluate_patches
    │     └─ crosstalk/metrics.py : residual_crosstalk
-   │          ├─ estimators/base.py : estimate_and_correct
+   │          ├─ estimators/estimator.py : estimate_and_correct
    │          │    ├─ estimators/quegan.py : estimate → covariance.py → _solve
    │          │    └─ physics.py : inverse_distortion_matrix, apply_matrix
    │          ├─ re-estimate sur le patch corrigé

@@ -45,7 +45,7 @@ from .parameters import CROSSTALK_NAMES, PARAMETER_NAMES, CrosstalkParameters
 from .physics import POL_ORDER
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .estimators.base import CrosstalkEstimator
+    from .estimators.estimator import CrosstalkEstimator
 
 
 def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParameters) -> dict[str, float]:
@@ -218,10 +218,6 @@ class ResidualReport:
 def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> ResidualReport:
     """
     Estime, corrige, puis ré-estime sur les données corrigées.
-
-    Args:
-        patch: (4, H, W) complexe, en physics.POL_ORDER.
-        estimator: la méthode évaluée. C'est elle qui juge sa propre correction, d'où la réserve énoncée en tête de module.
 
     Returns: Le rapport complet : les deux jeux, et la cohérence HV/VH de part et d'autre de la correction.
 

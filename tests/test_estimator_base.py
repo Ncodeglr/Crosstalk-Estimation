@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.estimators.base import CrosstalkEstimator
+from src.crosstalk.estimators.estimator import CrosstalkEstimator
 from src.crosstalk.exceptions import SingularDmatrixError
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import apply_distortion

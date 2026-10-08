@@ -21,7 +21,7 @@ from ..covariance import polarimetric_covariance
 from ..exceptions import IllConditionedCovarianceError
 from ..parameters import CrosstalkParameters
 from ..physics import DEFAULT_TOL
-from .base import CrosstalkEstimator
+from .estimator import CrosstalkEstimator
 from .registry import register_estimator
 
 #: Seuils **relatifs** par défaut des garde-fous.
@@ -117,8 +117,10 @@ class QueganEstimator(CrosstalkEstimator):
         }
         return np.array([u, v, w, z, alpha]), rapports
 
+    
+    
     # -----------------------------Interface-------------------------------------------
-    #On override la méthode estimate de la classe mère CrosstalkEstimator pour implémenter l'estimation du crosstalk selon Quegan. Cette méthode prend en entrée un patch d'observation et renvoie les paramètres de crosstalk estimés.
+    #On override la méthode estimate de la classe mère CrosstalkEstimator afin d'implémenter l'estimation du crosstalk selon Quegan. Cette méthode prend en entrée un patch d'observation et renvoie les paramètres de crosstalk estimés.
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
         Estime un jeu `(u, v, w, z, alpha)` pour ce patch.

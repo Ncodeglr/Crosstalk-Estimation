@@ -18,7 +18,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from src.crosstalk.estimators import create_from_config  # noqa: E402
-from src.crosstalk.estimators.base import CrosstalkEstimator  # noqa: E402
+from src.crosstalk.estimators.estimator import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
 from src.crosstalk.metrics import residual_crosstalk  # noqa: E402
 from src.patchs import build_dataloader, iter_patches  # noqa: E402
@@ -29,7 +29,6 @@ logger = logging.getLogger("run_baselines")
 CONFIG: Path = RACINE / "configs" / "data_uavsar.yaml"
 
 
-#Méthodes
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
     """
     Instancie les méthodes déclarées dans baselines.estimators, indexées par leur nom.
@@ -43,7 +42,6 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
     return methodes
 
 
-#Évaluation
 def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
     """
     Applique chaque méthode à chaque patch et rend les lignes de résultat.
@@ -57,19 +55,19 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
         Une ligne par couple patch/méthode. Un patch sur lequel une méthode échoue donne une ligne de statut ill_conditioned, sans interrompre le parcours.
     """
     lignes: list[dict[str, Any]] = []
-    for rang, patch in enumerate(patches):
-        for nom, estimateur in estimators.items():
+    for rang, patch in enumerate(patches): #enumerate numérote les éléments d'un itérable au fil du parcours, à partir de 0. Il rend des couples (numéro, élément)
+        for nom, estimateur in estimators.items(): #.items rend les couples (clé, valeur) d'un dictionnaire. Ici : ('quegan', QueganEstimator(name='quegan', tol=1e-08))
             ligne: dict[str, Any] = {"name": nom, "status": "ok"}
             try:
-                rapport = residual_crosstalk(patch, estimateur)
+                bilan_correction = residual_crosstalk(patch, estimateur)  # ResidualReport : theta initial, theta résiduel, réciprocité avant/après
             except CrosstalkError as erreur:
                 ligne["status"] = "ill_conditioned"
                 logger.debug("patch n° %d, %s : %s", rang, nom, erreur)
+                #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
             else:
-                ligne.update(rapport.as_row())
+                ligne.update(bilan_correction.as_row())
             lignes.append(ligne)
-    #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'alpha_im': -0.03}
-    #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
+            #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'alpha_im': -0.03}
     return lignes
 
 
@@ -106,7 +104,7 @@ def summarize(lignes: Sequence[dict[str, Any]]) -> str:
     return "\n".join(sorties)
 
 
-#Configuration
+
 def lire_YAML(chemin: Path) -> dict[str, Any]:
     """
     Lit le YAML et ancre le chemin des données à la racine du dépôt.

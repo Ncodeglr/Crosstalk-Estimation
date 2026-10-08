@@ -29,7 +29,7 @@ Le registre est ensuite adressable depuis une configuration ::
     create_from_config({"name": "sans_crosstalk", "params": {"tol": 1e-10}})
 """
 
-from .base import CrosstalkEstimator
+from .estimator import CrosstalkEstimator
 from .quegan import QueganEstimator
 from .registry import (
     available_estimators,

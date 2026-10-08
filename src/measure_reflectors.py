@@ -38,7 +38,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from src.crosstalk.estimators.quegan import QueganEstimator  # noqa: E402
-from src.crosstalk.estimators.base import CrosstalkEstimator  # noqa: E402
+from src.crosstalk.estimators.estimator import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
 from src.crosstalk.metrics import corner_reflector_crosstalk  # noqa: E402
 from src.crosstalk.parameters import CrosstalkParameters  # noqa: E402

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from src.crosstalk.estimators import registry
-from src.crosstalk.estimators.base import CrosstalkEstimator
+from src.crosstalk.estimators.estimator import CrosstalkEstimator
 from src.crosstalk.estimators.registry import (
     available_estimators,
     create_from_config,

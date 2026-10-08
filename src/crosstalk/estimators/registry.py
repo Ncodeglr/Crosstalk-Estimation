@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Mapping, TypeVar
-from .base import CrosstalkEstimator
+from .estimator import CrosstalkEstimator
 
 _ESTIMATORS: dict[str, type[CrosstalkEstimator]] = {}
 T = TypeVar("T", bound=type[CrosstalkEstimator])
