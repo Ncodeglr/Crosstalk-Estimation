@@ -20,10 +20,10 @@ CROSSTALK_NAMES: tuple[str, ...] = ("u", "v", "w", "z")
 class CrosstalkParameters:
     """
     @dataclass permet de rendre le jeu de paramètres immuable et plus léger (slots), elles sont dédiées au stockage de données, avec très peu de code.
-    frozen = True permet l'immuabilité et la sécurité
-    slots = True permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
+    frozen = True : Permet l'immuabilité et la sécurité
+    slots = True : Permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
     
-    Jeu immuable `(u, v, w, z, alpha)` pour un patch, ou pour la bande de distance d'un réflecteur.
+    Jeu immuable (u, v, w, z, alpha) pour un patch, ou pour la bande de distance d'un réflecteur.
 
     Attributes:
         u, v, w, z: termes de crosstalk complexes, petits devant 1 (~ -20 dB sur UAVSAR bande L).

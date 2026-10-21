@@ -50,10 +50,8 @@ if TYPE_CHECKING:  # pragma: no cover
 def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParameters) -> dict[str, float]:
     """
     Écarts entre un jeu estimé et la vérité terrain.
-
-    N'a de sens que sur données synthétiques, `reference` étant le `theta`
-    effectivement appliqué par `physics.apply_distortion`.
-
+    N'a de sens que sur données synthétiques, `reference` étant le `theta` effectivement appliqué par `physics.apply_distortion`.
+    
     Args:
         estimate: jeu estimé.
         reference: jeu vrai.
@@ -72,14 +70,14 @@ def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParamete
     """
     resultats: dict[str, float] = {}
     relatives: list[float] = []
-    for name in CROSSTALK_NAMES:
-        estime = getattr(estimate, name)
-        vrai = getattr(reference, name)
-        absolue = abs(estime - vrai)
-        resultats[f"abs_error_{name}"] = float(absolue)
+    for parametre in CROSSTALK_NAMES:
+        parametre_estime = getattr(estimate, parametre)
+        parametre_vrai = getattr(reference, parametre)
+        resultats[f"abs_error_{parametre}"] = float(abs(parametre_estime - parametre_vrai))
+        
         with np.errstate(divide="ignore", invalid="ignore"):
-            relative = float(absolue / abs(vrai)) if vrai != 0 else float("inf")
-        resultats[f"rel_error_{name}"] = relative
+            relative = float( abs(parametre_estime - parametre_vrai) / abs(parametre_vrai)) if parametre_vrai != 0 else float("inf")
+        resultats[f"rel_error_{parametre}"] = relative
         relatives.append(relative)
     resultats["max_rel_error"] = max(relatives) #max_rel_error prend le pire des quatre, pas la moyenne — un seul paramètre mal estimé suffit à fausser la correction, donc on ne veut pas qu'il soit noyé.
     
@@ -90,27 +88,14 @@ def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParamete
 
 def reciprocity(patch: np.ndarray) -> float:
     """
-    Cohérence entre les canaux croisés : `|<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)`.
-
+    Cohérence entre les canaux croisés : |<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)
     Validation indépendante de Quegan, contrairement au résiduel.
-    Un radar monostatique émet et reçoit sur la même antenne, donc la réciprocité S_HV = S_VH est une propriété du capteur et non du modèle de Quegan.
-    Le crosstalk la viole, une correction qui la rétablit démontre quelque chose que Quegan n'a pas optimisé.
-
     C'est le contrôle du §4.4 de Babu, dont les figures 7a et 8a tracent HV contre VH avant et après calibration : un nuage dispersé devient une droite.
-
-    Angle mort : si `u = alpha z` et `v = alpha w`, les lignes HV et VH de D
-    donnent `O_VH = alpha O_HV` pixel par pixel, et la cohérence vaut exactement
-    1 quel que soit le crosstalk. Elle ignore aussi `alpha` lui-même. Elle ne
-    voit donc que `u - alpha z` et `v - alpha w`. Elle n'est pas indépendante
-    d'Ainsworth, dont le second membre est fait de `C31 - C21` et `C34 - C24`.
-
     Args : patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
 
-    Returns:
-        Un réel dans `[0, 1]`, `1` pour une réciprocité parfaite. Rend `nan` si
-        l'un des deux canaux croisés est éteint.
+    Returns: Un réel dans [0, 1], 1 pour une réciprocité parfaite. Rend nan si l'un des deux canaux croisés est éteint.
     """
-    hv = patch[POL_ORDER.index("HV")].ravel()
+    hv = patch[POL_ORDER.index("HV")].ravel() #.ravel() rend un tableau 1D à partir d'un tableau multidimensionnel, ici on a un patch (4, H, W) et on veut juste les valeurs du canal HV, donc on prend le canal HV et on le met en 1D pour faire les calculs.
     vh = patch[POL_ORDER.index("VH")].ravel()
     denominateur = np.sqrt(np.mean(np.abs(hv) ** 2) * np.mean(np.abs(vh) ** 2))
     with np.errstate(divide="ignore", invalid="ignore"):

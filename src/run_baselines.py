@@ -36,8 +36,8 @@ COLONNES: tuple[tuple[str, str, int, str], ...] = (
     ("residual_db", "résiduel dB", 12, ".1f"),
     ("reduction_db", "réduction dB", 13, ".1f"),
     ("alpha_abs", "|alpha|", 8, ".3f"),
-    ("reciprocity_before", "récip. avant", 13, ".3f"),
-    ("reciprocity_after", "récip. après", 13, ".3f"),
+    ("reciprocity_before", "reciprocity_before", 13, ".3f"),
+    ("reciprocity_after", "reciprocity_after", 13, ".3f"),
 )
 
 
