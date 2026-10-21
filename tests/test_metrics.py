@@ -75,7 +75,7 @@ def test_rapport_vue_plate():
         theta_initial=CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.2),
         theta_residual=CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 1.0),
     )
-    ligne = rapport.as_row()
+    ligne = rapport.to_metrics_row()
     assert set(ligne) == {
         "initial_db",
         "residual_db",

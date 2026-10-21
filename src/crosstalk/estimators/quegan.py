@@ -1,24 +1,5 @@
 """
 Méthode de Quegan : estimation du crosstalk en forme fermée.
-
-Domaine de validité. Les formes fermées (Babu, éq. 13 ; Fore, éq. 24) sont la
-solution exacte, par la règle de Cramer, de deux systèmes 2x2 obtenus en
-développant la covariance observée au premier ordre en crosstalk — **privés**
-du terme en puissance croisée vraie `P_X = <|S_HV|^2>` ::
-
-    C31 = u C11 + v C41 + P_X (e^{i arg alpha} v* + |alpha| w*) + O(theta^3)
-
-La méthode n'est donc exacte qu'à `P_X` nul. Son biais relatif est
-proportionnel à `beta = P_X / sigma_copol` et indépendant du niveau de
-crosstalk ; le coefficient dépend de la direction de `theta`, de `alpha` et de
-la corrélation HH-VV. Sur la pile Rosamond (`beta` médian 0,119), il est de
-l'ordre de 30 % du crosstalk.
-
-Aucune validation de la covariance : sur un patch dégénéré (patch constant ou
-nul, canal éteint, HH et VV parfaitement corrélés), les dénominateurs `Delta`
-ou `X` s'annulent et le jeu rendu contient des `nan`, ou des valeurs finies
-dépourvues de sens. Aucun des 73 765 patchs de test de la pile Rosamond n'est
-dans ce cas.
 """
 
 from __future__ import annotations
@@ -84,7 +65,7 @@ class QueganEstimator(CrosstalkEstimator):
     @override
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
-        Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
+        Estime un jeu (u, v, w, z, alpha) pour ce patch.
         """
         self.check_patch(patch)
         return CrosstalkParameters.from_vector(self.solve(polarimetric_covariance(patch)))

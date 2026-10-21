@@ -70,13 +70,13 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
         for nom, estimateur in estimators.items(): #.items rend les couples (clé, valeur) d'un dictionnaire. Ici : ('quegan', QueganEstimator(name='quegan', tol=1e-08))
             ligne: dict[str, Any] = {"name": nom, "status": "ok"}
             try:
-                bilan_correction = residual_crosstalk(patch, estimateur)  # Return une instance de ResidualReport : theta initial, theta résiduel, réciprocité avant/après
+                residual_report_patch = residual_crosstalk(patch, estimateur)  # Return une instance de ResidualReport : theta initial, theta résiduel, réciprocité avant/après
             except CrosstalkError as erreur:
                 ligne["status"] = "ill_conditioned"
                 logger.debug("patch n° %d, %s : %s", rang, nom, erreur)
                 #lignes[i+1] = {'name': 'quegan', 'status': 'ill_conditioned'}
             else:
-                ligne.update(bilan_correction.as_row())
+                ligne.update(residual_report_patch.to_metrics_row())
             lignes.append(ligne)
             #lignes[i] = {'name': 'quegan', 'status': 'ok', 'initial_db': -20.0, ..., 'reciprocity_after': 0.79}
     return lignes
@@ -85,7 +85,7 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
 def aggregate(lignes: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
     """
     Bilan par méthode : nombre de patchs, nombre d'échecs, et médiane de chaque grandeur sur les patchs exploitables.
-    Les grandeurs sont celles que portent les lignes (`ResidualReport.as_row`) : en ajouter une là-bas l'agrège ici sans retouche.
+    Les grandeurs sont celles que portent les lignes (`ResidualReport.to_metrics_row`) : en ajouter une là-bas l'agrège ici sans retouche.
     La médiane est celle de numpy : un nan dans une colonne la rend nan, ce qui se voit dans le tableau au lieu d'être écarté en silence.
 
     Args:

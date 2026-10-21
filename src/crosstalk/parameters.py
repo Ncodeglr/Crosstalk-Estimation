@@ -69,14 +69,14 @@ class CrosstalkParameters:
         Module des quatre termes de crosstalk en dB : `20 log10 |.|`.
 
         C'est l'échelle des figures 7 à 9 de Fore et des tableaux de Babu : -20 dB environ avant calibration.
-        Un terme exactement nul rend `-inf`, qui est sa valeur en dB : c'est le cas d'un jeu neutre, pas une erreur, et l'avertissement NumPy associé est donc réduit au silence avec le np.errstate(divide="ignore").
+        Un terme exactement nul rend `-inf`, qui est sa valeur en dB : c'est le cas d'un jeu neutre, pas une erreur.
         """
         with np.errstate(divide="ignore"):
             #np.errstate(divide="ignore") permet de supprimer les avertissements de division par zéro, ce qui est utile ici car on peut avoir des termes de crosstalk nuls
             return {name: float(20.0 * np.log10(abs(getattr(self, name)))) for name in CROSSTALK_NAMES}
 
     def max_crosstalk_db(self) -> float:
-        """Le pire des quatre termes, en dB. Résumé scalaire d'un jeu."""
+        """Le pire des quatre termes, en dB."""
         return max(self.crosstalk_db().values())
 
     def alpha_db(self) -> float:
@@ -95,4 +95,3 @@ class CrosstalkParameters:
             f"arg(alpha)={self.alpha_phase_deg():+.1f}°)"
         )
 
-    

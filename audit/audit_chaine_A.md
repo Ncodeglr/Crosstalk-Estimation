@@ -213,7 +213,7 @@ reciprocity(patch), reciprocity(patch_corrige)                         # 9f
 `Sigma(theta_initial)·s'`. `theta_initial` et `residual` sont des jeux
 `(u, v, w, z, alpha)` (`CrosstalkParameters`), estimés avant et après
 correction. Le tout est rendu dans un `ResidualReport`, que `evaluate_patches`
-reçoit sous le nom `bilan_correction`.
+reçoit sous le nom `residual_report_patch`.
 
 ### 9a. Le modèle physique — [physics.py](../src/crosstalk/physics.py), `distortion_matrix`
 
@@ -360,7 +360,7 @@ légèrement.
 **Fichier.** `run_baselines.summarize`.
 
 **Informatique.**
-- `evaluate_patches` aplatit chaque `bilan_correction` (`ResidualReport.as_row`)
+- `evaluate_patches` aplatit chaque `residual_report_patch` (`ResidualReport.to_metrics_row`)
   en un dictionnaire : une ligne par patch et par méthode, qui ne dit plus de
   quel patch elle vient — seul son rang dans la liste le fait.
 - `summarize` affiche la **médiane** des lignes `ok` pour chaque méthode.

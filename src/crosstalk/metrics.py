@@ -1,4 +1,5 @@
-"""Métriques d'évaluation des estimateurs de crosstalk.
+"""
+Métriques d'évaluation des estimateurs de crosstalk.
 
 Deux situations, deux familles de métriques.
 
@@ -6,34 +7,9 @@ Deux situations, deux familles de métriques.
 est connu parce qu'il a été appliqué : `parameter_errors` compare directement.
 
 **Pas de vérité terrain** — le cas des données réelles. Trois contrôles :
-
-- `residual_crosstalk` applique le protocole de Fore et al. (2015, §V) : il
-  corrige les données, puis ré-estime le crosstalk sur les données corrigées
-  **avec le même estimateur** ;
-- `reciprocity` mesure l'accord entre HV et VH, que Quegan n'optimise pas ;
 - `corner_reflector_crosstalk` mesure la fuite au pic d'un trièdre, dont les
-  canaux croisés sont nuls par construction (`measure_reflectors.py`).
+canaux croisés sont nuls par construction (`measure_reflectors.py`).
 
-.. warning::
-   Le résiduel est **auto-jugé** : l'estimateur évalue sa propre correction. Il
-   ne permet **pas** de comparer des méthodes entre elles, et pas davantage
-   d'annoncer une performance absolue. Une méthode qui ne corrige rien
-   (`theta = 0`) se relit, ne trouve aucun crosstalk et obtient la note
-   parfaite ; une méthode qui connaîtrait le vrai `theta` se relirait avec ce
-   même `theta` et semblerait n'avoir rien réduit. Mesuré sur un patch
-   synthétique à `theta` connu : sans correction, -inf dB ; correction parfaite,
-   -23,9 dB ; Quegan, -47,8 dB — l'ordre inverse de la réalité.
-
-   Le résiduel ne sert donc qu'à contrôler la cohérence interne d'une méthode.
-   Comparer des méthodes demande des juges extérieurs à elles : la réciprocité
-   et les réflecteurs en coin. Ces derniers donnent aussi la performance
-   absolue — 12,4 dB de réduction sur la pile Rosamond, si bien que l'écart avec
-   les 2,8 dB de Babu et al. (table 4) ne tient pas à la circularité du résiduel.
-
-   Ces deux juges sont nécessaires, mais pas suffisants : aucun ne voit
-   `alpha`, ni la direction `(u, v, w, z) = z (alpha, -alpha, -1, 1)`, et la
-   réciprocité n'est pas indépendante d'une méthode qui lit le désaccord entre
-   HV et VH, comme Ainsworth.
 """
 
 from __future__ import annotations
@@ -47,15 +23,15 @@ if TYPE_CHECKING:  # pragma: no cover
     from .estimators.estimator import CrosstalkEstimator
 
 
-def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParameters) -> dict[str, float]:
+def parameter_errors(estimate: CrosstalkParameters, ground_truth: CrosstalkParameters) -> dict[str, float]:
     """
     Écarts entre un jeu estimé et la vérité terrain.
-    N'a de sens que sur données synthétiques, `reference` étant le `theta` effectivement appliqué par `physics.apply_distortion`.
+    N'a de sens que sur données synthétiques, `ground_truth` étant le `theta` effectivement appliqué par `physics.apply_distortion`.
     
     Args:
         estimate: jeu estimé.
-        reference: jeu vrai.
-
+        ground_truth: jeu vrai (potentiellement synthétique)
+    
     Returns:
         Dictionnaire plat, prêt pour un CSV :
         - abs_error_u .. abs_error_z : |theta_estime - theta_vrai|
@@ -72,7 +48,7 @@ def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParamete
     relatives: list[float] = []
     for parametre in CROSSTALK_NAMES:
         parametre_estime = getattr(estimate, parametre)
-        parametre_vrai = getattr(reference, parametre)
+        parametre_vrai = getattr(ground_truth, parametre)
         resultats[f"abs_error_{parametre}"] = float(abs(parametre_estime - parametre_vrai))
         
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -82,13 +58,13 @@ def parameter_errors(estimate: CrosstalkParameters, reference: CrosstalkParamete
     resultats["max_rel_error"] = max(relatives) #max_rel_error prend le pire des quatre, pas la moyenne — un seul paramètre mal estimé suffit à fausser la correction, donc on ne veut pas qu'il soit noyé.
     
     #Pour alpha, on ne rend que l'écart des modules en dB
-    resultats["alpha_error_db"] = estimate.alpha_db() - reference.alpha_db()
+    resultats["alpha_error_db"] = estimate.alpha_db() - ground_truth.alpha_db()
     return resultats
 
 
 def reciprocity(patch: np.ndarray) -> float:
     """
-    Cohérence entre les canaux croisés : |<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)
+    Mesure la cohérence entre les canaux croisés soit HV et VH : |<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)
     Validation indépendante de Quegan, contrairement au résiduel.
     C'est le contrôle du §4.4 de Babu, dont les figures 7a et 8a tracent HV contre VH avant et après calibration : un nuage dispersé devient une droite.
     Args : patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
@@ -159,7 +135,7 @@ class ResidualReport:
     reciprocity_before: float = float("nan")
     reciprocity_after: float = float("nan")
 
-    @property
+    @property # @property transforme une méthode en attribut calculé : on la lit sans parenthèses, comme une donnée, mais elle est recalculée à chaque lecture.
     def initial_db(self) -> float:
         """Crosstalk initial, `max 20 log10 |u, v, w, z|`."""
         return self.theta_initial.max_crosstalk_db()
@@ -174,7 +150,7 @@ class ResidualReport:
         """Réduction obtenue, positive quand la correction améliore."""
         return self.initial_db - self.residual_db
 
-    def as_row(self) -> dict[str, float]:
+    def to_metrics_row(self) -> dict[str, float]:
         """
         Les six grandeurs résumées du rapport, en un dictionnaire plat : une ligne
         de résultats, dont `run_baselines.aggregate` prend la médiane.
