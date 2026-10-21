@@ -28,6 +28,19 @@ logger = logging.getLogger("run_baselines")
 #: Configuration de la chaîne A : pour changer un réglage, modifier ce fichier.
 CONFIG: Path = RACINE / "configs" / "data_uavsar.yaml"
 
+#Colonnes du tableau de synthèse : clé du bilan, titre, largeur, format.
+COLONNES: tuple[tuple[str, str, int, str], ...] = (
+    ("patchs", "patchs", 7, "d"),
+    ("echecs", "échecs", 7, "d"),
+    ("initial_db", "initial dB", 11, ".1f"),
+    ("residual_db", "résiduel dB", 12, ".1f"),
+    ("reduction_db", "réduction dB", 13, ".1f"),
+    ("alpha_abs", "|alpha|", 8, ".3f"),
+    ("reciprocity_before", "récip. avant", 13, ".3f"),
+    ("reciprocity_after", "récip. après", 13, ".3f"),
+)
+
+
 
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:
     """
@@ -45,8 +58,6 @@ def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkE
 def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, CrosstalkEstimator],) -> list[dict[str, Any]]:
     """
     Applique chaque méthode à chaque patch et rend les lignes de résultat.
-    Cœur pur de l'évaluation : il ne connaît ni fichiers ni dataloader, ce qui le rend testable sur des patchs synthétiques.
-
     Args:
         patches: itérable de patchs (4, H, W) complexes, dans l'ordre du pipeline.
         estimators: méthodes à appliquer, indexées par leur nom.
@@ -71,36 +82,49 @@ def evaluate_patches(patches: Iterable[np.ndarray],estimators: dict[str, Crossta
     return lignes
 
 
-def summarize(lignes: Sequence[dict[str, Any]]) -> str:
+def aggregate(lignes: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
     """
-    Tableau de synthèse, une ligne par méthode.
+    Bilan par méthode : nombre de patchs, nombre d'échecs, et médiane de chaque grandeur sur les patchs exploitables.
+    Les grandeurs sont celles que portent les lignes (`ResidualReport.as_row`) : en ajouter une là-bas l'agrège ici sans retouche.
+    La médiane est celle de numpy : un nan dans une colonne la rend nan, ce qui se voit dans le tableau au lieu d'être écarté en silence.
+
+    Args:
+        lignes: les lignes de evaluate_patches.
+
+    Returns:
+        {méthode: {grandeur: valeur}}, méthodes triées par nom. Une méthode en échec sur tous ses patchs n'a que ses deux compteurs, `patchs` et `echecs`.
     """
-    noms = sorted({ligne["name"] for ligne in lignes})
-    entete = (
-        f"{'méthode':>16} {'patchs':>7} {'échecs':>7} "
-        f"{'initial dB':>11} {'résiduel dB':>12} {'réduction dB':>13} "
-        f"{'|alpha|':>8} {'récip. avant':>13} {'récip. après':>13}"
-    )
-    sorties = [entete, "-" * len(entete)]
-    for nom in noms:
-        groupe = [ligne for ligne in lignes if ligne["name"] == nom]
+    groupes: dict[str, list[dict[str, Any]]] = {}
+    for ligne in lignes:
+        groupes.setdefault(ligne["name"], []).append(ligne) # un seul parcours : {'quegan': [ligne_0, ligne_1, ...]}
+    bilan: dict[str, dict[str, float]] = {}
+    for nom in sorted(groupes):
+        groupe = groupes[nom]
         valides = [ligne for ligne in groupe if ligne["status"] == "ok"]
-        if not valides:
-            sorties.append(f"{nom:>16} {len(groupe):>7} {len(groupe):>7}"
-                           f" {'-':>11} {'-':>12} {'-':>13} {'-':>8}"
-                           f" {'-':>13} {'-':>13}")
-            continue
-        mediane = {
-            cle: float(np.median([ligne[cle] for ligne in valides]))
-            for cle in ("initial_db", "residual_db", "reduction_db", "alpha_abs",
-                        "reciprocity_before", "reciprocity_after")
-        }
-        sorties.append(
-            f"{nom:>16} {len(groupe):>7} {len(groupe) - len(valides):>7} "
-            f"{mediane['initial_db']:>11.1f} {mediane['residual_db']:>12.1f} "
-            f"{mediane['reduction_db']:>13.1f} {mediane['alpha_abs']:>8.3f} "
-            f"{mediane['reciprocity_before']:>13.3f} {mediane['reciprocity_after']:>13.3f}"
-        )
+        resume: dict[str, float] = {"patchs": len(groupe), "echecs": len(groupe) - len(valides)}
+        if valides:
+            grandeurs = [cle for cle in valides[0] if cle not in ("name", "status")]
+            resume.update({cle: float(np.median([ligne[cle] for ligne in valides])) for cle in grandeurs})
+        bilan[nom] = resume
+        #bilan['quegan'] = {'patchs': 4, 'echecs': 1, 'initial_db': -19.3, ..., 'reciprocity_after': 1.0}
+    return bilan
+
+
+
+
+def summarize(bilan: dict[str, dict[str, float]]) -> str:
+    """
+    Met le bilan de `aggregate` en tableau, une ligne par méthode.
+    Mise en forme seule : aucun calcul ici. Une grandeur absente du bilan s'affiche `-`.
+    """
+    entete = " ".join([f"{'méthode':>16}"] + [f"{titre:>{largeur}}" for _, titre, largeur, _ in COLONNES])
+    sorties = [entete, "-" * len(entete)]
+    for nom, resume in bilan.items():
+        cellules = [f"{nom:>16}"]
+        for cle, _, largeur, fmt in COLONNES:
+            valeur = resume.get(cle)
+            cellules.append(f"{'-':>{largeur}}" if valeur is None else f"{valeur:>{largeur}{fmt}}")
+        sorties.append(" ".join(cellules))
     return "\n".join(sorties)
 
 
@@ -138,7 +162,7 @@ def main() -> int:
     loader = build_dataloader(config)
     lignes = evaluate_patches(iter_patches(loader), estimateurs)
 
-    print(summarize(lignes))
+    print(summarize(aggregate(lignes)))
     return 0
 
 

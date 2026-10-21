@@ -194,7 +194,7 @@ class ResidualReport:
     def as_row(self) -> dict[str, float]:
         """
         Les six grandeurs résumées du rapport, en un dictionnaire plat : une ligne
-        de résultats, dont `run_baselines.summarize` prend la médiane.
+        de résultats, dont `run_baselines.aggregate` prend la médiane.
         """
         return {
             "initial_db": self.initial_db,
@@ -209,17 +209,15 @@ class ResidualReport:
 def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> ResidualReport:
     """
     Estime, corrige, puis ré-estime sur les données corrigées.
-
-    Returns: Le rapport complet : les deux jeux, et la cohérence HV/VH de part et d'autre de la correction.
-
     Raises:
         IllConditionedCovarianceError: si l'une des deux estimations échoue.
         SingularDmatrixError: si la correction est impossible.
     """
-    patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode du méthode de type CrosstalkEstimator
+    patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode de type CrosstalkEstimator
     return ResidualReport(
         initial=theta_initial,
         residual=estimator.estimate(patch_corrige),
         reciprocity_before=reciprocity(patch),
         reciprocity_after=reciprocity(patch_corrige),
     )
+

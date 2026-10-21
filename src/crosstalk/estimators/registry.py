@@ -8,8 +8,8 @@ T = TypeVar("T", bound=type[CrosstalkEstimator])
 
 def register_estimator(cls: T) -> T:
     """
-    Décorateur : enregistre une classe sous son attribut `name`.
-    Args: cls: sous-classe concrète de `CrosstalkEstimator`.
+    Décorateur : enregistre une classe sous son attribut name.
+    Args: cls: sous-classe concrète de CrosstalkEstimator.
     Returns: La classe, inchangée.
 
     Raises:
@@ -41,8 +41,8 @@ def create_from_config(config: Mapping[str, Any]) -> CrosstalkEstimator:
 
     Args: config: une entrée du YAML, `{name: ..., params: {...}}`. `params` est facultatif : absent ou vide (`None`), le constructeur reçoit ses valeurs par défaut.
     Raises:
-        KeyError: si `name` manque, ou ne désigne aucune méthode enregistrée — le message liste alors les noms disponibles.
-        TypeError: si `params` n'est pas un mapping.
+        KeyError: si name manque, ou ne désigne aucune méthode enregistrée, le message liste alors les noms disponibles.
+        TypeError: si params n'est pas un mapping.
     """
     if "name" not in config:
         raise KeyError(f"configuration sans clé 'name' : {dict(config)!r}")

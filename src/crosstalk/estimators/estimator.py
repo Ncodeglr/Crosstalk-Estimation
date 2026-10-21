@@ -1,9 +1,9 @@
 """
 Interface commune aux méthodes d'estimation du crosstalk.
 Le principe directeur du paquet : le modèle physique (D, Sigma, correction) et
-la covariance sont **communs** à toutes les méthodes ; seule l'estimation de `theta = (u, v, w, z, alpha)` les distingue.
+la covariance sont **communs** à toutes les méthodes ; seule l'estimation de theta = (u, v, w, z, alpha) les distingue.
 
-Ordre des canaux `[HH, HV, VH, VV]`
+Ordre des canaux [HH, HV, VH, VV]
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from ..parameters import CrosstalkParameters
 from ..physics import DEFAULT_TOL, POL_ORDER, apply_correction
 
 # Class CrosstalkEstimator(ABC) est une classe abstraite qui définit l'interface commune pour toutes les méthodes d'estimation du crosstalk. 
-# Attribut de classe `name` qui doit être défini par chaque sous-classe concrète
+# Attribut de classe name qui doit être défini par chaque sous-classe concrète
 
 class CrosstalkEstimator(ABC):
     name: ClassVar[str] #Partage le nom de la méthode, utilisé pour l'enregistrement et l'identification.
@@ -27,9 +27,9 @@ class CrosstalkEstimator(ABC):
     @abstractmethod
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
-        Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
-        Args: patch: `(4, H, W)` complexe, en ordre `POL_ORDER`.
-        Returns: Les paramètres `(u, v, w, z, alpha)`.
+        Estime un jeu (u, v, w, z, alpha) pour ce patch.
+        Args: patch: (4, H, W) complexe, en ordre POL_ORDER
+        Returns: Les paramètres (u, v, w, z, alpha)
         """
 
     #------------------------------Méthodes Héritées------------------------------
@@ -59,7 +59,7 @@ class CrosstalkEstimator(ABC):
     def estimate_and_correct(self, patch: np.ndarray) -> tuple[np.ndarray, CrosstalkParameters]:
         """
         Estime puis corrige, sans estimer deux fois.
-        Returns: Le couple `(patch_corrige, theta)` : le patch corrigé, et le jeu `(u, v, w, z, alpha)` estimé sur le patch d'entrée.
+        Returns: Le couple `(patch_corrige, theta)` : le patch corrigé, et le jeu (u, v, w, z, alpha) estimé sur le patch d'entrée.
         """
         theta = self.estimate(patch)
         patch_corrige = self.correct(patch, theta)

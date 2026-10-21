@@ -16,6 +16,7 @@ l'ordre de 30 % du crosstalk. Voir le README, « Le biais propre de Quegan ».
 """
 
 from __future__ import annotations
+from typing import override
 import numpy as np
 from ..covariance import polarimetric_covariance
 from ..exceptions import IllConditionedCovarianceError
@@ -42,9 +43,7 @@ DEFAULT_X_TOL: float = 1e-6
 class QueganEstimator(CrosstalkEstimator):
     """
     Estimation du crosstalk par les formes fermées de Quegan (1994).
-
-    Un jeu `(u, v, w, z, alpha)` par patch, tiré de l'unique covariance du patch
-    (`covariance.polarimetric_covariance`).
+    Un jeu `(u, v, w, z, alpha)` par patch, tiré de l'unique covariance du patch (`covariance.polarimetric_covariance`).
 
     Args:
         tol: seuil de singularité de D, transmis à la correction.
@@ -118,16 +117,12 @@ class QueganEstimator(CrosstalkEstimator):
         return np.array([u, v, w, z, alpha]), rapports
 
     
-    
-    # -----------------------------Interface-------------------------------------------
-    #On override la méthode estimate de la classe mère CrosstalkEstimator afin d'implémenter l'estimation du crosstalk selon Quegan. Cette méthode prend en entrée un patch d'observation et renvoie les paramètres de crosstalk estimés.
+    @override
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
         Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
-
         Raises:
-            IllConditionedCovarianceError: si la covariance est dégénérée. Le
-                message nomme le critère le plus dégradé.
+            IllConditionedCovarianceError: si la covariance est dégénérée. Le message nomme le critère le plus dégradé.
         """
         self.check_patch(patch)
         theta, rapports = self._solve(polarimetric_covariance(patch))

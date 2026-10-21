@@ -6,6 +6,7 @@ Importer ce paquet peuple le registre : chaque module de méthode se déclare vi
 Exemple d'extension — brancher une méthode sur l'interface ne demande de
 modifier aucun fichier existant ::
 
+    from typing import override
     import numpy as np
     from src.crosstalk.estimators import CrosstalkEstimator, register_estimator
     from src.crosstalk.parameters import CrosstalkParameters
@@ -16,6 +17,7 @@ modifier aucun fichier existant ::
 
         name = "sans_crosstalk"
 
+        @override
         def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
             self.check_patch(patch)
             return CrosstalkParameters(0.0, 0.0, 0.0, 0.0, 1.0)
