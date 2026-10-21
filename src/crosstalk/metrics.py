@@ -163,26 +163,26 @@ class ResidualReport:
     Résultat du protocole de résiduel de Fore (§V).
 
     Attributes:
-        initial: jeu estimé sur les données d'origine.
-        residual: jeu ré-estimé sur les données corrigées.
+        theta_initial: jeu estimé sur les données d'origine.
+        theta_residual: jeu ré-estimé sur les données corrigées.
         reciprocity_before: cohérence HV/VH avant correction.
         reciprocity_after: la même après correction. C'est la seule des quatre grandeurs que l'estimateur ne juge pas lui-même.
     """
 
-    initial: CrosstalkParameters
-    residual: CrosstalkParameters
+    theta_initial: CrosstalkParameters
+    theta_residual: CrosstalkParameters
     reciprocity_before: float = float("nan")
     reciprocity_after: float = float("nan")
 
     @property
     def initial_db(self) -> float:
         """Crosstalk initial, `max 20 log10 |u, v, w, z|`."""
-        return self.initial.max_crosstalk_db()
+        return self.theta_initial.max_crosstalk_db()
 
     @property
     def residual_db(self) -> float:
         """Crosstalk résiduel après correction."""
-        return self.residual.max_crosstalk_db()
+        return self.theta_residual.max_crosstalk_db()
 
     @property
     def reduction_db(self) -> float:
@@ -198,7 +198,7 @@ class ResidualReport:
             "initial_db": self.initial_db,
             "residual_db": self.residual_db,
             "reduction_db": self.reduction_db,
-            "alpha_abs": float(abs(self.initial.alpha)),
+            "alpha_abs": float(abs(self.theta_initial.alpha)),
             "reciprocity_before": self.reciprocity_before,
             "reciprocity_after": self.reciprocity_after,
         }
@@ -207,13 +207,11 @@ class ResidualReport:
 def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> ResidualReport:
     """
     Estime, corrige, puis ré-estime sur les données corrigées.
-    Raises:
-        SingularDmatrixError: si la correction est impossible.
     """
     patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode de type CrosstalkEstimator
     return ResidualReport(
-        initial=theta_initial,
-        residual=estimator.estimate(patch_corrige),
+        theta_initial=theta_initial,
+        theta_residual=estimator.estimate(patch_corrige),
         reciprocity_before=reciprocity(patch),
         reciprocity_after=reciprocity(patch_corrige),
     )

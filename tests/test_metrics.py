@@ -64,7 +64,7 @@ def test_ecart_de_module_de_alpha_en_db():
 def test_rapport_de_residuel():
     initial = CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.0)      # -20 dB
     residuel = CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 1.0)  # -40 dB
-    rapport = ResidualReport(initial=initial, residual=residuel)
+    rapport = ResidualReport(theta_initial=initial, theta_residual=residuel)
     assert rapport.initial_db == pytest.approx(-20.0)
     assert rapport.residual_db == pytest.approx(-40.0)
     assert rapport.reduction_db == pytest.approx(20.0)
@@ -72,8 +72,8 @@ def test_rapport_de_residuel():
 
 def test_rapport_vue_plate():
     rapport = ResidualReport(
-        initial=CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.2),
-        residual=CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 1.0),
+        theta_initial=CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.2),
+        theta_residual=CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 1.0),
     )
     ligne = rapport.as_row()
     assert set(ligne) == {
