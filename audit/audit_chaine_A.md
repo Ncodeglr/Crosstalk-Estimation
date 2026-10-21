@@ -27,7 +27,7 @@ src/run_baselines.py ─ main
    ├─ 5. boucle ............. evaluate_patches
    │     └─ crosstalk/metrics.py : residual_crosstalk
    │          ├─ estimators/estimator.py : estimate_and_correct
-   │          │    ├─ estimators/quegan.py : estimate → covariance.py → _solve
+   │          │    ├─ estimators/quegan.py : estimate → covariance.py → solve
    │          │    └─ physics.py : inverse_distortion_matrix, apply_matrix
    │          ├─ re-estimate sur le patch corrigé
    │          └─ reciprocity avant / après
@@ -69,8 +69,8 @@ ne contient que `{name: quegan}`.
 - Importer le paquet `estimators` exécute `@register_estimator` sur
   `QueganEstimator`, ce qui remplit `_ESTIMATORS["quegan"]`.
 - `create_from_config({"name": "quegan"})` cherche la classe dans
-  `_ESTIMATORS` et appelle `QueganEstimator()` avec ses seuils par défaut :
-  `tol = 1e-8`, `delta_tol = x_tol = 1e-6`. Un nom inconnu lève une
+  `_ESTIMATORS` et appelle `QueganEstimator()` avec son seuil par défaut :
+  `tol = 1e-8`, pour la singularité de `D`. Un nom inconnu lève une
   `KeyError` qui liste les noms disponibles.
 - `build_estimators` refuse un nom déclaré deux fois.
 
@@ -193,8 +193,8 @@ batch_size=16, shuffle=False, num_workers=8)` → torchcvnn
 **Informatique.**
 - Pour chaque patch et chaque méthode, la boucle appelle
   `residual_crosstalk`.
-- Une `CrosstalkError` (covariance mal conditionnée ou `D` singulière) donne le
-  statut `ill_conditioned` sans arrêter la boucle.
+- Une `CrosstalkError` (`D` singulière) donne le statut `ill_conditioned` sans
+  arrêter la boucle.
 - Cette fonction ne connaît ni fichiers ni dataloader, ce qui la rend testable
   sur des patchs synthétiques.
 
@@ -232,8 +232,7 @@ VH, et `w` celle de VV vers HV. `alpha` est le déséquilibre entre HV et VH.
 
 **À auditer.** `D` et `Sigma` sont comparées terme à terme à Fore réindexé
 (`test_d_est_la_matrice_de_fore_reindexee`), et `Sigma · D = I`. Les équations
-10 et 12 de Babu sont fausses et ne sont pas utilisées (README, « Les deux
-articles de référence »).
+10 et 12 de Babu sont fausses et ne sont pas utilisées.
 
 ### 9b. La covariance — [covariance.py](../src/crosstalk/covariance.py), `polarimetric_covariance`
 
@@ -252,7 +251,7 @@ forme `(4, 4 096)` ; `C = V @ Vᴴ / 4 096` donne une matrice `(4, 4)`.
 - **Le lien `C_s' = D C_s Dᴴ`** est vérifié par
   `test_la_distorsion_transporte_la_covariance`.
 
-### 9c. Les formes fermées — `QueganEstimator._solve`
+### 9c. Les formes fermées — `QueganEstimator.solve`
 
 **Hypothèses de Quegan sur le signal vrai.**
 - Symétrie de réflexion : `<S_HH S_X*> = <S_VV S_X*> = 0`.
@@ -289,27 +288,29 @@ racine positive de `x − 1/x = |α₁| − 1/|α₂|`. Ce choix est verrouillé
 de Fore porte la faute `4 + |α₂|²`, et que Babu omet la phase.
 
 **Ce que la méthode néglige.** Les termes en `P_X·theta`. Il en résulte un biais
-relatif proportionnel à `beta = P_X / sigma_co`, d'environ 30 % au `beta` médian
-(README, « Le biais propre de Quegan »). Verrouillé par
+relatif proportionnel à `beta = P_X / sigma_co`, d'environ 30 % au `beta` médian.
+Verrouillé par
 `test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees`.
 
-**À auditer.** Chaque indice, contre la table « Correspondance équation ↔ code »
-du README. Ne pas « corriger » `C31` en `C21` : c'est la réindexation. Écrire la
+**À auditer.** Chaque indice, contre les équations 24 à 26 de Fore réindexées
+(indices 2 et 3 échangés : Fore ordonne `[HH, VH, HV, VV]`). Ne pas « corriger » `C31` en `C21` : c'est la réindexation. Écrire la
 formule de Fore non réindexée fait échouer 7 des 20 tests de `test_quegan.py`.
 
-### 9d. Les garde-fous — `QueganEstimator.estimate`
+### 9d. Pas de garde-fou sur la covariance — `QueganEstimator.estimate`
 
-Trois rapports sans dimension, invariants d'échelle :
+`estimate` rend directement le résultat de `solve`, sans contrôler les
+dénominateurs `Δ`, `X` et `C22 − z*C21 − w*C24`. Trois seuils relatifs
+existaient ; ils ont été retirés le 2026-10-21. Sur les 73 765 patchs de test,
+aucun ne se déclenchait, et les résultats étaient identiques au bit près avec
+ou sans eux : le plus petit `|X| / √(C22·C33)` observé vaut 6,5·10⁻⁴, soit 650
+fois le seuil.
 
-| rapport | sens | doit être |
-|---|---|---|
-| `\|Δ\| / (C11·C44)` | `= 1 − \|ρ_HHVV\|²` | fini et > 1e-6 |
-| `\|X\| / √(C22·C33)` | cohérence HV/VH une fois le crosstalk retiré | fini et > 1e-6 |
-| `\|C22 − z*C21 − w*C24\| / C22` | dénominateur de `α₂` | fini et > 1e-6 |
-
-Si l'un échoue, `IllConditionedCovarianceError` est levée et nomme le critère le
-plus dégradé, un `nan` comptant pour −∞. Le cas typique est un canal éteint ou
-un patch constant. Sur la pile, aucun patch n'échoue.
+**À garder en tête.** Sur un patch dégénéré (constant, nul, canal éteint), le
+jeu rendu contient des `nan`, qui passent la correction sans lever
+`SingularDmatrixError` (`abs(nan) < tol` est faux) et rendent `nan` les
+médianes du tableau. Sur un patch où HH et VV sont parfaitement corrélés
+(trièdre pur), `Δ` est numériquement nul mais fini : le jeu rendu est fini,
+plausible et faux.
 
 À la sortie, `CrosstalkParameters.from_vector`
 ([parameters.py](../src/crosstalk/parameters.py)) range le résultat dans un
@@ -371,11 +372,11 @@ légèrement.
 
 | maillon | fichier de tests | ce qui est garanti |
 |---|---|---|
-| configuration, méthodes, évaluation, synthèse | `tests/test_run_baselines.py` | config livrée valide, méthode inconnue ou déclarée deux fois refusée, une ligne par patch, patch dégénéré consigné sans interrompre |
+| configuration, méthodes, évaluation, synthèse | `tests/test_run_baselines.py` | config livrée valide, méthode inconnue ou déclarée deux fois refusée, une ligne par patch, échec consigné sans interrompre |
 | patchs, découpage | `tests/test_patchs.py` | lots dépliés en patchs dans l'ordre, découpage reproductible |
 | registre, interface | `tests/test_registry.py`, `tests/test_estimator_base.py` | instanciation par nom, `correct` inverse exactement `D` |
 | covariance | `tests/test_covariance.py` | convention `C_ij = <S'_i S'_j*>`, hermitienne et semi-définie positive, `C_s' = D C_s Dᴴ`, invariance d'échelle |
-| formes fermées et `alpha` | `tests/test_quegan.py` | exactes sur la covariance théorique, structure du biais, identité de `alpha`, garde-fous, invariance d'échelle |
+| formes fermées et `alpha` | `tests/test_quegan.py` | exactes sur la covariance théorique, structure du biais, identité de `alpha`, invariance d'échelle |
 | modèle physique | `tests/test_physics.py` | `D` et `Sigma` identiques à Fore réindexé, `Sigma·D = I`, `POL_ORDER` trié |
 | mesures | `tests/test_metrics.py` | réciprocité et ses angles morts, formule au réflecteur |
 

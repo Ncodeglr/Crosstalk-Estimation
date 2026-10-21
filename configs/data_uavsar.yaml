@@ -5,7 +5,7 @@
 # transform PolSAR de torchcvnn empile en (4, H, W) complexe ; cvnn découpe train/valid/test et construit les DataLoader.
 
 task: reconstruction
-seed: 38
+seed: 300
 
 data:
   dataset:

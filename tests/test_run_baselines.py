@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import yaml
 
+from src.crosstalk.estimators.estimator import CrosstalkEstimator
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import apply_distortion
 from src.crosstalk.synthetic import reflection_symmetric_scattering
@@ -46,6 +47,16 @@ def patchs_synthetiques(nombre=3, taille=(128, 128)):
 
 def estimateurs():
     return rb.build_estimators([{"name": "quegan"}])
+
+
+class EstimateurSingulier(CrosstalkEstimator):
+    """Rend un jeu dont la matrice D est singulière : la correction échoue à chaque patch."""
+
+    name = "singulier"
+
+    def estimate(self, patch):
+        self.check_patch(patch)
+        return CrosstalkParameters(1.0, 0.0, 1.0, 0.0, 1.0)  # uw - 1 = 0
 
 
 # ------------------------------------------------------------- configuration
@@ -94,14 +105,46 @@ def test_une_ligne_par_patch_et_par_methode():
     assert all(ligne["reduction_db"] > 0 for ligne in lignes)
 
 
-def test_un_patch_degenere_est_consigne_sans_interrompre():
-    patchs = [
-        np.ones((4, 32, 32), dtype=np.complex64),        # dégénéré
-        next(iter(patchs_synthetiques(1, (64, 64)))),    # exploitable
+def test_un_echec_est_consigne_sans_interrompre():
+    """Une méthode qui échoue n'arrête ni le parcours des patchs ni les autres méthodes."""
+    methodes = {**estimateurs(), "singulier": EstimateurSingulier()}
+    lignes = rb.evaluate_patches(patchs_synthetiques(2, (64, 64)), methodes)
+    assert [(ligne["name"], ligne["status"]) for ligne in lignes] == [
+        ("quegan", "ok"), ("singulier", "ill_conditioned"),
+        ("quegan", "ok"), ("singulier", "ill_conditioned"),
     ]
-    lignes = rb.evaluate_patches(patchs, estimateurs())
-    assert [ligne["status"] for ligne in lignes] == ["ill_conditioned", "ok"]
-    assert "initial_db" not in lignes[0]
+    assert "initial_db" not in lignes[1]
+
+
+# ------------------------------------------------------------------- bilan
+
+
+def test_bilan_prend_la_mediane_des_patchs_exploitables():
+    """Lignes écrites à la main : `aggregate` se teste sans estimateur."""
+    lignes = [
+        {"name": "quegan", "status": "ok", "reduction_db": 10.0},
+        {"name": "quegan", "status": "ok", "reduction_db": 30.0},
+        {"name": "quegan", "status": "ok", "reduction_db": 14.0},
+        {"name": "quegan", "status": "ill_conditioned"},
+    ]
+    assert rb.aggregate(lignes) == {"quegan": {"patchs": 4, "echecs": 1, "reduction_db": 14.0}}
+
+
+def test_bilan_separe_les_methodes_et_les_trie():
+    lignes = [
+        {"name": "b", "status": "ok", "alpha_abs": 1.0},
+        {"name": "a", "status": "ok", "alpha_abs": 3.0},
+        {"name": "b", "status": "ok", "alpha_abs": 5.0},
+    ]
+    bilan = rb.aggregate(lignes)
+    assert list(bilan) == ["a", "b"]
+    assert bilan["b"]["alpha_abs"] == 3.0
+
+
+def test_bilan_laisse_voir_un_nan():
+    """Un `nan` n'est pas écarté en silence : il se lit dans le tableau."""
+    lignes = [{"name": "quegan", "status": "ok", "reciprocity_after": v} for v in (0.9, float("nan"))]
+    assert np.isnan(rb.aggregate(lignes)["quegan"]["reciprocity_after"])
 
 
 # ------------------------------------------------------------------ synthèse
@@ -109,13 +152,16 @@ def test_un_patch_degenere_est_consigne_sans_interrompre():
 
 def test_synthese_liste_les_methodes():
     lignes = rb.evaluate_patches(patchs_synthetiques(2), estimateurs())
-    texte = rb.summarize(lignes)
+    texte = rb.summarize(rb.aggregate(lignes))
     assert "quegan" in texte and "réduction dB" in texte
 
 
 def test_synthese_signale_une_methode_entierement_en_echec():
-    lignes = rb.evaluate_patches([np.ones((4, 16, 16), dtype=np.complex64)], estimateurs())
-    assert "1       1" in rb.summarize(lignes)
+    lignes = rb.evaluate_patches(patchs_synthetiques(1, (64, 64)), {"singulier": EstimateurSingulier()})
+    bilan = rb.aggregate(lignes)
+    assert bilan == {"singulier": {"patchs": 1, "echecs": 1}}
+    ligne_singulier = rb.summarize(bilan).splitlines()[2]
+    assert ligne_singulier.split() == ["singulier", "1", "1"] + ["-"] * 6
 
 
 # ------------------------------------------------------------- configuration

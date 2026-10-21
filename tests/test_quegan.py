@@ -5,7 +5,6 @@ import pytest
 
 from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
-from src.crosstalk.exceptions import IllConditionedCovarianceError
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.physics import apply_distortion
 from src.crosstalk.synthetic import reflection_symmetric_scattering
@@ -144,7 +143,7 @@ def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
     vrai = theta(1e-3)
     matrice = distortion_matrix(vrai)
     cov = matrice @ quegan_covariance(beta=1e-6) @ matrice.conj().T
-    estime = CrosstalkParameters.from_vector(estimateur()._solve(cov)[0])
+    estime = CrosstalkParameters.from_vector(estimateur().solve(cov))
     assert erreur_relative(estime, vrai) < 1e-4
 
 
@@ -153,7 +152,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     """Le biais de Quegan a une origine identifiée, pas seulement un ordre de grandeur.
 
     Au premier ordre en crosstalk, avec `P_X = <|S_HV|^2>` la puissance croisée
-    vraie (README, « Le biais propre de Quegan ») ::
+    vraie ::
 
         C31 = u C11 + v C41 + P_X (e^{i arg alpha} v* + |alpha| w*) + O(theta^3)
         C34 = u C14 + v C44 + P_X (e^{i arg alpha} u* + |alpha| z*) + O(theta^3)
@@ -182,7 +181,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
         @ quegan_covariance(sigma_hh, sigma_vv, 0.5 * np.exp(0.3j), p_x)
         @ matrice.conj().T
     )
-    biais = estimateur()._solve(cov)[0][:4] - vrai.to_vector()[:4]
+    biais = estimateur().solve(cov)[:4] - vrai.to_vector()[:4]
 
     phase, module = np.exp(1j * np.angle(alpha)), abs(alpha)
     systeme = np.array([[cov[0, 0], cov[3, 0]], [cov[0, 3], cov[3, 3]]])
@@ -215,61 +214,6 @@ def test_un_patch_sans_distorsion_donne_un_crosstalk_negligeable():
     signal = observe(neutre, shape=(512, 512), beta=0.02)
     estime = estimateur().estimate(signal)
     assert estime.max_crosstalk_db() < -35.0
-
-
-# ============================================================== garde-fous
-
-
-def test_patch_constant_leve_une_exception():
-    # Covariance de rang 1 : Delta et X sont nuls.
-    constant = np.ones((4, 16, 16), dtype=np.complex64)
-    with pytest.raises(IllConditionedCovarianceError):
-        estimateur().estimate(constant)
-
-
-def test_patch_nul_leve_une_exception():
-    with pytest.raises(IllConditionedCovarianceError):
-        estimateur().estimate(np.zeros((4, 16, 16), dtype=np.complex64))
-
-
-def test_le_message_nomme_le_critere_degrade():
-    constant = np.ones((4, 8, 8), dtype=np.complex64)
-    with pytest.raises(IllConditionedCovarianceError) as erreur:
-        estimateur().estimate(constant)
-    assert "C11 C44" in str(erreur.value) or "C22 C33" in str(erreur.value)
-
-
-def test_le_message_nomme_le_bon_critere_quand_un_autre_vaut_nan():
-    """Un critère `nan` doit l'emporter dans le diagnostic.
-
-    Canaux croisés éteints : `Delta / (C11 C44)` reste sain à 0,999 tandis que
-    `X / sqrt(C22 C33)` vaut `nan`, son dénominateur s'étant annulé. Comme
-    `nan` perd toute comparaison, un `min` naïf gardait son premier élément et
-    accusait `Delta` — en affichant « 9.992e-01 < tol = 1.000e-06 », ce qui est
-    faux et envoie le lecteur sur une fausse piste.
-    """
-    rng = np.random.default_rng(0)
-    copol = (rng.normal(size=(64, 64)) + 1j * rng.normal(size=(64, 64))).astype(np.complex64)
-    patch = np.stack(
-        [copol, np.zeros_like(copol), np.zeros_like(copol),
-         (rng.normal(size=(64, 64)) + 1j * rng.normal(size=(64, 64))).astype(np.complex64)]
-    )
-    with pytest.raises(IllConditionedCovarianceError) as erreur:
-        estimateur().estimate(patch)
-    assert "C22 C33" in erreur.value.name, (
-        f"critère rapporté : {erreur.value.name!r} ; le fautif est X / sqrt(C22 C33)"
-    )
-
-
-def test_les_seuils_sont_relatifs_donc_invariants_d_echelle():
-    """Une homothétie ne doit pas faire basculer un garde-fou.
-
-    `Delta` est homogène à une puissance au carré : un seuil absolu se
-    déclencherait ou non selon la normalisation appliquée en amont.
-    """
-    patch = observe(theta(0.1), shape=(128, 128))
-    for facteur in (1e-4, 1.0, 1e4):
-        estimateur().estimate(facteur * patch)  # aucune exception
 
 
 # ============================================================ intégration

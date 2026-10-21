@@ -99,11 +99,18 @@ def test_residuel_sur_donnees_synthetiques():
 
 
 def test_residuel_propage_l_echec():
-    from src.crosstalk.exceptions import IllConditionedCovarianceError
+    """Une correction impossible remonte telle quelle à l'appelant."""
+    from src.crosstalk.estimators.estimator import CrosstalkEstimator
+    from src.crosstalk.exceptions import SingularDmatrixError
 
-    estimateur = QueganEstimator()
-    with pytest.raises(IllConditionedCovarianceError):
-        residual_crosstalk(np.ones((4, 16, 16), dtype=np.complex64), estimateur)
+    class Singulier(CrosstalkEstimator):
+        name = "singulier"
+
+        def estimate(self, patch):
+            return CrosstalkParameters(1.0, 0.0, 1.0, 0.0, 1.0)  # uw - 1 = 0 : D singulière
+
+    with pytest.raises(SingularDmatrixError):
+        residual_crosstalk(np.ones((4, 16, 16), dtype=np.complex64), Singulier())
 
 
 # ------------------------------------------------- réciprocité (Babu, §4.4)
@@ -143,7 +150,7 @@ def test_la_correction_restaure_la_reciprocite():
 
 @pytest.mark.parametrize("alpha", [1.0, 1.25 * np.exp(-1j * np.deg2rad(23.0))])
 def test_la_reciprocite_est_aveugle_a_u_egal_alpha_z_et_v_egal_alpha_w(alpha):
-    """Angle mort exact, et non approché (README, « Niveau 2 — la réciprocité »).
+    """Angle mort exact, et non approché.
 
     Avec `u = alpha z` et `v = alpha w`, les lignes HV et VH de D donnent
     `O_VH = alpha O_HV` pixel par pixel : la cohérence vaut 1 alors que le
