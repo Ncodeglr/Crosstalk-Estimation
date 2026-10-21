@@ -53,36 +53,31 @@ class QueganEstimator(CrosstalkEstimator):
         c31, c33, c34 = cov_matrix[2, 0], cov_matrix[2, 2], cov_matrix[2, 3]
         c41, c43, c44 = cov_matrix[3, 0], cov_matrix[3, 2], cov_matrix[3, 3]
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            #np.errstate(divide="ignore") permet de supprimer les avertissements de division par zéro / invalid="ignore" permet de supprimer les avertissements de calculs invalides, comme la division par zéro ou la racine carrée d'un nombre négatif
-            
-            # ---------------------------------Crosstalk--------------------------------------------------
-            #Babu éq. 14, Fore éq. 24. C étant hermitienne, |C14|^2 = C14 C41 : les deux écritures sont équivalentes, la forme en module garantit un Delta réel.
-            delta = c11 * c44 - np.abs(c14) ** 2
-            u =(c44 * c31 - c41 * c34) / delta
-            v = (c11 * c34 - c31 * c14) / delta
-            z = (c44 * c21 - c41 * c24) / delta
-            w = (c11 * c24 - c21 * c14) / delta
+        # ---------------------------------Crosstalk--------------------------------------------------
+        #Babu éq. 14, Fore éq. 24. C étant hermitienne, |C14|^2 = C14 C41 : les deux écritures sont équivalentes, la forme en module garantit un Delta réel.
+        delta = c11 * c44 - np.abs(c14) ** 2
+        u =(c44 * c31 - c41 * c34) / delta
+        v = (c11 * c34 - c31 * c14) / delta
+        z = (c44 * c21 - c41 * c24) / delta
+        w = (c11 * c24 - c21 * c14) / delta
 
-            # ------------------- Déséquilibre croisé - (Babu, équations 15 à 18 ; Fore, équations 25-26) -------------------
-            x = c23 - z * c13 - w * c43
-            alpha1 = (c33 - u * c13 - v * c43) / x
+        # ------------------- Déséquilibre croisé - (Babu, équations 15 à 18 ; Fore, équations 25-26) -------------------
+        x = c23 - z * c13 - w * c43
+        alpha1 = (c33 - u * c13 - v * c43) / x
 
-            denominateur_2 = c22 - np.conj(z) * c21 - np.conj(w) * c24
-            alpha2 =np.conj(x) / denominateur_2
+        denominateur_2 = c22 - np.conj(z) * c21 - np.conj(w) * c24
+        alpha2 =np.conj(x) / denominateur_2
 
-            # Le module suit Babu éq. 15 (`4|alpha2|^2` sous la racine, là où le
-            # texte de Fore porte la faute `4 + |alpha2|^2`). La phase suit Fore
-            # éq. 25, qui multiplie par `alpha1 / |alpha1|` : Babu omet ce facteur
-            # et rend un alpha réel, ce qui laisserait après correction un
-            # déphasage `arg(alpha)` entre HV et VH. `exp(i angle)` plutôt
-            # qu'une division : `angle(0)` vaut 0, sans produire de `nan`.
-            produit = np.abs(alpha1 * alpha2)
-            module = (
-                produit - 1.0 + np.sqrt((produit - 1.0) ** 2 + 4.0 * np.abs(alpha2) ** 2)
-            ) / (2.0 * np.abs(alpha2))
-            alpha = module * np.exp(1j * np.angle(alpha1))
-
+        # Le module suit Babu éq. 15 (`4|alpha2|^2` sous la racine, là où le
+        # texte de Fore porte la faute `4 + |alpha2|^2`). La phase suit Fore
+        # éq. 25, qui multiplie par `alpha1 / |alpha1|` : Babu omet ce facteur
+        # et rend un alpha réel, ce qui laisserait après correction un
+        # déphasage `arg(alpha)` entre HV et VH. `exp(i angle)` plutôt
+        # qu'une division : `angle(0)` vaut 0, sans produire de `nan`.
+        produit = np.abs(alpha1 * alpha2)
+        module = (produit - 1.0 + np.sqrt((produit - 1.0) ** 2 + 4.0 * np.abs(alpha2) ** 2)) / (2.0 * np.abs(alpha2))
+        alpha = module * np.exp(1j * np.angle(alpha1))
+        
         return np.array([u, v, w, z, alpha])
 
 
