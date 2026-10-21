@@ -12,7 +12,7 @@ La méthode n'est donc exacte qu'à `P_X` nul. Son biais relatif est
 proportionnel à `beta = P_X / sigma_copol` et indépendant du niveau de
 crosstalk ; le coefficient dépend de la direction de `theta`, de `alpha` et de
 la corrélation HH-VV. Sur la pile Rosamond (`beta` médian 0,119), il est de
-l'ordre de 30 % du crosstalk. Voir le README, « Le biais propre de Quegan ».
+l'ordre de 30 % du crosstalk.
 
 Aucune validation de la covariance : sur un patch dégénéré (patch constant ou
 nul, canal éteint, HH et VV parfaitement corrélés), les dénominateurs `Delta`
@@ -35,9 +35,6 @@ class QueganEstimator(CrosstalkEstimator):
     """
     Estimation du crosstalk par les formes fermées de Quegan (1994).
     Un jeu `(u, v, w, z, alpha)` par patch, tiré de l'unique covariance du patch (`covariance.polarimetric_covariance`).
-
-    Args:
-        tol: seuil de singularité de D, transmis à la correction.
     """
 
     name = "quegan"
@@ -47,10 +44,8 @@ class QueganEstimator(CrosstalkEstimator):
     def solve(self, cov_matrix: np.ndarray) -> np.ndarray:
         """
         Résout les formes fermées sur une covariance.
-        Propre à Quegan : l'interface commune prend un patch, pas une covariance.
 
         Args: cov_matrix: `(4, 4)` complex128.
-
         Returns: theta, `(5,)` dans l'ordre `(u, v, w, z, alpha)`, `nan` là où un dénominateur s'est annulé.
         """
         c11, c13, c14 = cov_matrix[0, 0], cov_matrix[0, 2], cov_matrix[0, 3]
@@ -95,7 +90,6 @@ class QueganEstimator(CrosstalkEstimator):
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
         Estime un jeu `(u, v, w, z, alpha)` pour ce patch.
-        Sans validation : un patch dégénéré rend des `nan` (voir la docstring du module).
         """
         self.check_patch(patch)
         return CrosstalkParameters.from_vector(self.solve(polarimetric_covariance(patch)))

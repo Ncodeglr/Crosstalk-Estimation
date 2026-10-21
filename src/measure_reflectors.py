@@ -225,8 +225,7 @@ def theta_de_la_bande(
     dilue le réflecteur sans l'effacer : avec ses lobes secondaires, il porte
     encore 13 % de la puissance de la bande en médiane, jusqu'à 25 %. La mesure
     « après » reste donc optimiste d'environ 1,5 dB en moyenne — l'écart avec la
-    même bande privée des lignes à ±128 du réflecteur (README, « Le piège de
-    circularité »). Ce biais est accepté pour la simplicité du protocole.
+    même bande privée des lignes à ±128 du réflecteur. Ce biais est accepté pour la simplicité du protocole.
 
     Returns:
         Le `theta` de la bande, ou `None` si l'estimation échoue ou si la bande

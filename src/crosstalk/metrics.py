@@ -33,8 +33,7 @@ est connu parce qu'il a été appliqué : `parameter_errors` compare directement
    Ces deux juges sont nécessaires, mais pas suffisants : aucun ne voit
    `alpha`, ni la direction `(u, v, w, z) = z (alpha, -alpha, -1, 1)`, et la
    réciprocité n'est pas indépendante d'une méthode qui lit le désaccord entre
-   HV et VH, comme Ainsworth. Voir le README, « Ce que les niveaux 2 et 3 ne
-   voient pas ».
+   HV et VH, comme Ainsworth.
 """
 
 from __future__ import annotations

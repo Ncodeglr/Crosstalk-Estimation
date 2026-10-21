@@ -1,7 +1,7 @@
 """
 Interface commune aux méthodes d'estimation du crosstalk.
-Le principe directeur du paquet : le modèle physique (D, Sigma, correction) et
-la covariance sont **communs** à toutes les méthodes ; seule l'estimation de theta = (u, v, w, z, alpha) les distingue.
+Le principe directeur du paquet : le modèle physique (D, Sigma, correction) est
+**commun** à toutes les méthodes ; seule l'estimation de theta = (u, v, w, z, alpha) les distingue.
 
 Ordre des canaux [HH, HV, VH, VV]
 """
@@ -13,10 +13,20 @@ from typing import ClassVar
 from ..parameters import CrosstalkParameters
 from ..physics import DEFAULT_TOL, POL_ORDER, apply_correction
 
-# Class CrosstalkEstimator(ABC) est une classe abstraite qui définit l'interface commune pour toutes les méthodes d'estimation du crosstalk. 
-# Attribut de classe name qui doit être défini par chaque sous-classe concrète
 
 class CrosstalkEstimator(ABC):
+    """
+    Interface commune aux méthodes d'estimation du crosstalk.
+    Le modèle physique (D, Sigma, correction) est commun à toutes les méthodes ;
+    seule l'estimation de theta = (u, v, w, z, alpha) les distingue.
+
+    Attributes:
+        name: nom de la méthode, attribut de classe que chaque sous-classe concrète doit définir ; sert à l'enregistrement.
+
+    Args:
+        tol: seuil de singularité de D, transmis à la correction.
+    """
+    
     name: ClassVar[str] #Partage le nom de la méthode, utilisé pour l'enregistrement et l'identification.
 
     def __init__(self, tol: float = DEFAULT_TOL) -> None:
