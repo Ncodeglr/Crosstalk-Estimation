@@ -1,10 +1,9 @@
 """
-Les estimateurs de crosstalk manipulent des quotients dont les dénominateurs
-s'annulent sur des configurations dégénérées (scène à un seul mécanisme de
-diffusion, patch homogène, covariance de rang déficient). 
+La correction inverse la matrice de distorsion D, dont le déterminant peut s'annuler.
 
-Plutôt que de laisser NumPy produire des inf ou des nan qui se propagent silencieusement jusqu'aux
-métriques, chaque garde-fou lève l'une de ces exceptions en rapportant la valeur fautive.
+Plutôt que de laisser NumPy produire des inf qui se propagent silencieusement jusqu'aux
+métriques, le garde-fou lève une exception qui rapporte la valeur fautive.
+Les formes fermées de Quegan, elles, ne sont pas gardées : voir la docstring de `estimators.quegan`.
 """
 
 from __future__ import annotations
@@ -25,20 +24,3 @@ class SingularDmatrixError(CrosstalkError):
         super().__init__(
             f"matrice de distorsion singulière : |(uw-1)(vz-1)| = "f"{abs(determinant):.3e} < tol = {tol:.3e}"
             )
-
-
-class IllConditionedCovarianceError(CrosstalkError):
-    """
-    Une quantité dérivée de la covariance observée s'annule. 
-    Concerne les dénominateurs des formes fermées de Quegan : Delta et X
-    (Babu, équations 13 et 15 à 18).
-    """
-
-    def __init__(self, name: str, value: complex, tol: float) -> None:
-        self.name = name
-        self.value = value
-        self.tol = tol
-        super().__init__(
-            f"covariance mal conditionnée : |{name}| = {abs(value):.3e} "
-            f"< tol = {tol:.3e}"
-        )

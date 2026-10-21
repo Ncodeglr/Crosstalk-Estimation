@@ -27,12 +27,12 @@ class CrosstalkEstimator(ABC):
     @abstractmethod
     def estimate(self, patch: np.ndarray) -> CrosstalkParameters:
         """
-        Estime un jeu (u, v, w, z, alpha) pour ce patch.
+        Estime un jeu (u, v, w, z, alpha) pour un patch.
         Args: patch: (4, H, W) complexe, en ordre POL_ORDER
         Returns: Les paramètres (u, v, w, z, alpha)
         """
 
-    #------------------------------Méthodes Héritées------------------------------
+    #------------------------------Méthodes------------------------------
     
     def check_patch(self, patch: np.ndarray) -> None:
         """
@@ -48,7 +48,7 @@ class CrosstalkEstimator(ABC):
     def correct(self, patch: np.ndarray, theta: CrosstalkParameters | None = None) -> np.ndarray:
         """
         Corrige un patch du crosstalk : `s_chapeau = Sigma s'`.
-        Args: theta: le jeu `(u, v, w, z, alpha)` qui définit `Sigma` ; estimé sur `patch` s'il n'est pas fourni.
+        Args: theta: le jeu (u, v, w, z, alpha) qui définit `Sigma` ; estimé sur `patch` s'il n'est pas fourni.
         Returns: Le patch corrigé, **dans l'ordre d'entrée** et de même dtype.
         """
         if theta is None:

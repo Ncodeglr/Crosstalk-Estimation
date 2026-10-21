@@ -147,8 +147,7 @@ def corner_reflector_crosstalk(hh: complex, hv: complex, vh: complex, vv: comple
         Rend `-inf` sur un trièdre parfait, et une valeur non finie quand la
         référence co-polaire s'annule — `inf` si les canaux croisés ne sont pas
         nuls, nan si les canaux croisés le sont aussi. L'appelant doit donc filtrer par
-        `np.isfinite`, comme le fait le garde-fou de `QueganEstimator._solve` :
-        un réflecteur absent ou masqué ne doit pas produire un chiffre.
+        `np.isfinite` : un réflecteur absent ou masqué ne doit pas produire un chiffre.
     """
     copol = np.sqrt(abs(hh) * abs(vv))
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -210,7 +209,6 @@ def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> Re
     """
     Estime, corrige, puis ré-estime sur les données corrigées.
     Raises:
-        IllConditionedCovarianceError: si l'une des deux estimations échoue.
         SingularDmatrixError: si la correction est impossible.
     """
     patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode de type CrosstalkEstimator

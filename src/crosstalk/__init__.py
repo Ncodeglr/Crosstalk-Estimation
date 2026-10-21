@@ -32,7 +32,6 @@ from .covariance import polarimetric_covariance
 from .exceptions import (
     CrosstalkError,
     SingularDmatrixError,
-    IllConditionedCovarianceError,
 )
 from .estimators import (
     CrosstalkEstimator,
@@ -61,7 +60,6 @@ __all__ = [
     "POL_ORDER",
     "CrosstalkError",
     "SingularDmatrixError",
-    "IllConditionedCovarianceError",
     "CrosstalkEstimator",
     "CrosstalkParameters",
     "ResidualReport",
