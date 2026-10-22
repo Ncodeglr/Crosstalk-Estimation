@@ -28,7 +28,7 @@ src/run_baselines.py ─ main
    │     └─ crosstalk/metrics.py : residual_crosstalk
    │          ├─ estimators/estimator.py : estimate_and_correct
    │          │    ├─ estimators/quegan.py : estimate → covariance.py → solve
-   │          │    └─ physics.py : inverse_distortion_matrix, apply_matrix
+   │          │    └─ matrix.py : sigma_calibration_matrix, apply_matrix
    │          ├─ re-estimate sur le patch corrigé
    │          └─ reciprocity avant / après
    └─ 6. synthèse ........... summarize (médianes)
@@ -215,7 +215,7 @@ reciprocity(patch), reciprocity(patch_corrige)                         # 9f
 correction. Le tout est rendu dans un `ResidualReport`, que `evaluate_patches`
 reçoit sous le nom `residual_report_patch`.
 
-### 9a. Le modèle physique — [physics.py](../src/crosstalk/physics.py), `distortion_matrix`
+### 9a. Le modèle physique — [matrix.py](../src/crosstalk/matrix.py), `distortion_matrix`
 
 `s' = D·s`, avec `D` égale à l'équation 13 de Fore **réindexée** dans l'ordre
 `[HH, HV, VH, VV]` :
@@ -316,7 +316,7 @@ plausible et faux.
 ([parameters.py](../src/crosstalk/parameters.py)) range le résultat dans un
 objet immuable `(u, v, w, z, alpha)` et refuse `alpha = 0`.
 
-### 9e. La correction — [estimator.py](../src/crosstalk/estimators/estimator.py), `estimate_and_correct` → `correct` → `physics.apply_correction`
+### 9e. La correction — [estimator.py](../src/crosstalk/estimators/estimator.py), `estimate_and_correct` → `correct` → `matrix.apply_correction`
 
 **Mathématique.** `ŝ = Sigma·s'`, avec `Sigma = D⁻¹` sous forme analytique
 (Fore, équation 15, réindexée) :
@@ -334,8 +334,8 @@ légèrement.
 **Informatique.**
 - `estimate_and_correct` estime une seule fois : `theta = estimate(patch)`, puis
   `patch_corrige = correct(patch, theta)`, et rend `(patch_corrige, theta)`.
-- `correct` passe `theta` à `physics.apply_correction(patch, theta)`, qui
-  calcule `Sigma = inverse_distortion_matrix(theta)` puis l'applique.
+- `correct` passe `theta` à `matrix.apply_correction(patch, theta)`, qui
+  calcule `Sigma = sigma_calibration_matrix(theta)` puis l'applique.
 - Si `|(uw−1)(vz−1)| < 1e-8`, `SingularDmatrixError` est levée. Sous 0,5, un
   avertissement est émis.
 - `apply_matrix` contracte la matrice avec l'axe des canaux

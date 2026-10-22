@@ -35,7 +35,7 @@ Le projet a **deux points d'entrée**, qui partagent le paquet `src/crosstalk/` 
       │ torchcvnn → cvnn → patchs   │          │ numpy.memmap direct, sans cvnn│
       └──────────────┬──────────────┘          └─────────────┬─────────────────┘
                      │        src/crosstalk/ (commun)        │
-                     └──► covariance → quegan → physics ◄────┘
+                     └──► covariance → quegan → matrix  ◄────┘
                                         │
                résiduel + réciprocité (par patch)    fuite aux réflecteurs (vérité terrain)
 ```
@@ -79,7 +79,7 @@ verrouillent.
 | A10 | estimer, corriger, ré-estimer | `metrics.residual_crosstalk` | détaillé en A10a-d ci-dessous |
 | A10a | covariance | `covariance.polarimetric_covariance` | `C = (1/N) Σ k·kᴴ` sur les **4 096 pixels** du patch → une seule `C` de forme `(4, 4)` `complex128` |
 | A10b | formes fermées | `QueganEstimator.solve`, `QueganEstimator.estimate` | `Δ`, `u, v, w, z` (Babu, équation 13), `X`, `alpha` → un `CrosstalkParameters` par patch ; aucune validation : un patch dégénéré (constant, nul, canal éteint, HH et VV parfaitement corrélés) rend des `nan` ou des valeurs finies sans signification, cas absent des 73 765 patchs de test |
-| A10c | correction | `CrosstalkEstimator.estimate_and_correct` → `correct(patch, theta)` → `physics.apply_correction` → `inverse_distortion_matrix`, `apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `patch_corrige = Sigma · s'` pour chaque pixel ; rend `(patch_corrige, theta_initial)` |
+| A10c | correction | `CrosstalkEstimator.estimate_and_correct` → `correct(patch, theta)` → `matrix.apply_correction` → `sigma_calibration_matrix`, `apply_matrix` | `Sigma` `(4, 4)`, protégée contre `(uw−1)(vz−1) ≈ 0`, puis `patch_corrige = Sigma · s'` pour chaque pixel ; rend `(patch_corrige, theta_initial)` |
 | A10d | ré-estimation et réciprocité | `estimate(patch_corrige)`, `metrics.reciprocity` | `ResidualReport` : `theta_initial`, `theta` résiduel, réciprocité avant et après ; `evaluate_patches` le reçoit sous le nom `residual_report_patch` |
 | A11 | synthèse | `run_baselines.summarize` | la médiane des 73 765 lignes → tableau affiché ; rien n'est écrit sur disque |
 
@@ -108,7 +108,7 @@ qui le précèdent.
 | 3 | [cvnn/src/cvnn/transform_registry.py](cvnn/src/cvnn/transform_registry.py) — `GlobalScalarNormalize` | la normalisation est **un seul scalaire réel**, donc `theta` invariant |
 | 4 | [src/crosstalk/exceptions.py](src/crosstalk/exceptions.py) | le seul cas d'échec : D singulière |
 | 5 | [src/crosstalk/parameters.py](src/crosstalk/parameters.py) | ordre `(u, v, w, z, alpha)`, conversions en dB |
-| 6 | [src/crosstalk/physics.py](src/crosstalk/physics.py) | `POL_ORDER`, D réindexée de Fore, `Sigma · D = I`, `apply_matrix` |
+| 6 | [src/crosstalk/matrix.py](src/crosstalk/matrix.py) | `POL_ORDER`, D réindexée de Fore, `Sigma · D = I`, `apply_matrix` |
 | 7 | [src/crosstalk/covariance.py](src/crosstalk/covariance.py) | une seule `C` par patch, forme `(4, 4)` ; convention `C_ij = <S'_i S'_j*>` |
 | 8 | [src/crosstalk/estimators/estimator.py](src/crosstalk/estimators/estimator.py), puis [registry.py](src/crosstalk/estimators/registry.py) | interface abstraite, enregistrement par décorateur |
 | 9 | [src/crosstalk/estimators/quegan.py](src/crosstalk/estimators/quegan.py) | formes fermées, sans validation de la covariance |

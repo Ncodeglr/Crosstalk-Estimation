@@ -10,7 +10,7 @@ Elle est calculée sur s', le signal **observé** — le S' de Babu (éq. 8), é
 
 from __future__ import annotations
 import numpy as np
-from .physics import POL_ORDER
+from .matrix import POL_ORDER
 
 def _check_patch(patch: np.ndarray) -> None:
     if patch.ndim < 3:

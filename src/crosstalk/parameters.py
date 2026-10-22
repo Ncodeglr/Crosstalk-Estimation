@@ -45,8 +45,7 @@ class CrosstalkParameters:
         if self.alpha == 0:
             raise ValueError("alpha nul : D fait intervenir 1/sqrt(alpha) et n'est pas définie")
 
-    
-    #--------------------------------Vecteurs----------------------------------
+    #--------------------------------Méthodes : Conversion en vecteurs----------------------------------
 
     @classmethod #Signifie que la méthode est liée à la classe et non à une instance de la classe. Elle peut être appelée sur la classe elle-même, sans avoir besoin de créer une instance de la classe.
     def from_vector(cls, theta: Iterable[complex]) -> "CrosstalkParameters":
@@ -62,7 +61,7 @@ class CrosstalkParameters:
         """Vecteur (5,) complex128 ordonné selon `PARAMETER_NAMES`."""
         return np.array([getattr(self, name) for name in PARAMETER_NAMES], dtype=np.complex128)
 
-    #------------------------------Lectures physiques------------------------
+    #------------------------------Méthodes : Lectures physiques----------------------------------------- 
 
     def crosstalk_db(self) -> dict[str, float]:
         """

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 import numpy as np
 from .parameters import CROSSTALK_NAMES, CrosstalkParameters
-from .physics import POL_ORDER
+from .matrix import POL_ORDER
 
 if TYPE_CHECKING:  # pragma: no cover
     from .estimators.estimator import CrosstalkEstimator
@@ -26,7 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover
 def parameter_errors(estimate: CrosstalkParameters, ground_truth: CrosstalkParameters) -> dict[str, float]:
     """
     Écarts entre un jeu estimé et la vérité terrain.
-    N'a de sens que sur données synthétiques, `ground_truth` étant le `theta` effectivement appliqué par `physics.apply_distortion`.
+    N'a de sens que sur données synthétiques, `ground_truth` étant le `theta` effectivement appliqué par `matrix.apply_distortion`.
     
     Args:
         estimate: jeu estimé.
@@ -67,7 +67,7 @@ def reciprocity(patch: np.ndarray) -> float:
     Mesure la cohérence entre les canaux croisés soit HV et VH : |<HV VH*>| / sqrt(<|HV|^2><|VH|^2>)
     Validation indépendante de Quegan, contrairement au résiduel.
     C'est le contrôle du §4.4 de Babu, dont les figures 7a et 8a tracent HV contre VH avant et après calibration : un nuage dispersé devient une droite.
-    Args : patch: `(4, H, W)` complexe, en `physics.POL_ORDER`.
+    Args : patch: `(4, H, W)` complexe, en `matrix.POL_ORDER`.
 
     Returns: Un réel dans [0, 1], 1 pour une réciprocité parfaite. Rend nan si l'un des deux canaux croisés est éteint.
     """
@@ -80,25 +80,16 @@ def reciprocity(patch: np.ndarray) -> float:
 
 def corner_reflector_crosstalk(hh: complex, hv: complex, vh: complex, vv: complex) -> float:
     """
-    Fuite co-pol vers cross-pol mesurée à un trièdre, en dB.
+    Fuite co-pol vers cross-pol mesurée à un trièdre, en dB. C'est la mesure de Babu et al. (2022, §4.6 et figure 9).
 
     La seule vérité terrain disponible sur ces données. Un trièdre a pour
-    matrice de diffusion `S = sqrt(sigma) * I` (Fore et al., 2015, équation 5) :
+    matrice de diffusion `S = sqrt(sigma) * I` (Fore, équation 5) :
     ses canaux croisés sont **nuls par construction**. Tout ce qu'on y mesure
     est donc du crosstalk, sans aucune hypothèse de modèle — contrairement au
     résiduel de `residual_crosstalk`, que le même estimateur juge.
 
-    C'est la mesure de Babu et al. (2022, §4.6 et figure 9).
-
-    Au premier ordre en `(u, v, w, z)`, appliquer `D` à `S = I` donne
-    `O_HV / O_HH = z + w` et `O_VH / O_VV = u + v` : la fuite rendue ici vaut
-    donc `max(|z + w|, |u + v|)`. Ce n'est **pas** le `max 20 log10 |u,v,w,z|`
-    de `CrosstalkParameters.max_crosstalk_db`, qui porte sur les paramètres
-    isolés — les deux peuvent différer par compensation entre termes.
-    Le trièdre est donc aveugle à `u = -v, z = -w`, et à `alpha`, qui ne
-    multiplie que la composante croisée du signal vrai, nulle ici.
-
-    Args: hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur, en ordre `physics.POL_ORDER`.
+   
+    Args: hh, hv, vh, vv: les quatre valeurs complexes observées au réflecteur, en ordre `matrix.POL_ORDER`.
 
     Returns:
         20 log10( max(|hv|, |vh|) / sqrt(|hh| |vv|) ). 
@@ -172,7 +163,7 @@ def residual_crosstalk(patch: np.ndarray, estimator: "CrosstalkEstimator") -> Re
     patch_corrige, theta_initial = estimator.estimate_and_correct(patch) #Applique la méthode de type CrosstalkEstimator
     return ResidualReport(
         theta_initial=theta_initial,
-        theta_residual=estimator.estimate(patch_corrige),
+        theta_residual=estimator.estimate(patch_corrige), #Ré-estime le crosstalk sur les données corrigées, avec le même estimateur. Cela crée un biais de validation, mais c'est le protocole de Fore et al. (2015, §V) et Babu et al. (2022, §4.4).
         reciprocity_before=reciprocity(patch),
         reciprocity_after=reciprocity(patch_corrige),
     )

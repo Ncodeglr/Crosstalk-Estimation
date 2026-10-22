@@ -42,7 +42,7 @@ from src.crosstalk.estimators.estimator import CrosstalkEstimator  # noqa: E402
 from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
 from src.crosstalk.metrics import corner_reflector_crosstalk  # noqa: E402
 from src.crosstalk.parameters import CrosstalkParameters  # noqa: E402
-from src.crosstalk.physics import POL_ORDER, inverse_distortion_matrix  # noqa: E402
+from src.crosstalk.matrix import POL_ORDER, sigma_calibration_matrix  # noqa: E402
 
 logger = logging.getLogger("measure_reflectors")
 
@@ -269,7 +269,7 @@ def mesure_un_reflecteur(
     if theta is None:
         return None
     try:
-        sigma = inverse_distortion_matrix(theta)
+        sigma = sigma_calibration_matrix(theta)
     except CrosstalkError as erreur:
         logger.debug("réflecteur (%d, %d) : %s", ligne, colonne, erreur)
         return None

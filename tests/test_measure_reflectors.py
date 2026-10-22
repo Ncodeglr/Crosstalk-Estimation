@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from src.crosstalk.estimators.quegan import QueganEstimator
-from src.crosstalk.physics import POL_ORDER
+from src.crosstalk.matrix import POL_ORDER
 from src.measure_reflectors import DEMI_BANDE, theta_de_la_bande
 
 LARGEUR = 64

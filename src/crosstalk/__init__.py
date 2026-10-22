@@ -3,7 +3,7 @@
 Le paquet sépare cinq responsabilités :
 
 - `parameters`  : le jeu `(u, v, w, z, alpha)` ;
-- `physics`     : l'ordre des polarisations, D, Sigma et leur application —
+- `matrix`      : l'ordre des polarisations, D, Sigma et leur application —
   commun à toutes les méthodes ;
 - `covariance`  : C = < s' s'^H >, moyennée sur le patch entier, l'entrée des
   méthodes statistiques ;
@@ -18,7 +18,7 @@ L'ordre des polarisations suit ses équations 8 et 9, les formes fermées de
 Quegan son équation 13, et le module de `alpha` son équation 15. La matrice de
 distorsion, son inverse, la réindexation de `alpha` et sa phase viennent en
 revanche de Fore, réindexés dans cet ordre : les équations 10, 12 et 16 à 18 de
-Babu sont erronées, et son équation 15 omet la phase (voir `physics.py`). Règle suivie : Babu, sauf là où ses équations sont incohérentes ou
+Babu sont erronées, et son équation 15 omet la phase (voir `matrix.py`). Règle suivie : Babu, sauf là où ses équations sont incohérentes ou
 incomplètes, auquel cas Fore.
 
 Référence secondaire, citée là où elle est la source d'un fait que Babu ne
@@ -46,12 +46,12 @@ from .metrics import (
     residual_crosstalk,
 )
 from .parameters import CrosstalkParameters
-from .physics import (
+from .matrix import (
     POL_ORDER,
     apply_correction,
     apply_distortion,
     distortion_matrix,
-    inverse_distortion_matrix,
+    sigma_calibration_matrix,
 )
 
 __all__ = [
@@ -72,5 +72,5 @@ __all__ = [
     "apply_correction",
     "apply_distortion",
     "distortion_matrix",
-    "inverse_distortion_matrix",
+    "sigma_calibration_matrix",
 ]

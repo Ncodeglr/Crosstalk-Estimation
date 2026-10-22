@@ -11,7 +11,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import ClassVar
 from ..parameters import CrosstalkParameters
-from ..physics import DEFAULT_TOL, POL_ORDER, apply_correction
+from ..matrix import DEFAULT_TOL, POL_ORDER, apply_correction
 
 
 class CrosstalkEstimator(ABC):

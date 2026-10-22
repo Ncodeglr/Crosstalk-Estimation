@@ -15,7 +15,7 @@ import yaml
 
 from src.crosstalk.estimators.estimator import CrosstalkEstimator
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.physics import apply_distortion
+from src.crosstalk.matrix import apply_distortion
 from src.crosstalk.synthetic import reflection_symmetric_scattering
 
 RACINE = Path(__file__).resolve().parent.parent

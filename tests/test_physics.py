@@ -7,13 +7,13 @@ import pytest
 
 from src.crosstalk.exceptions import SingularDmatrixError
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.physics import (
+from src.crosstalk.matrix import (
     CHANNEL_AXIS,
     POL_ORDER,
     apply_correction,
     apply_distortion,
     distortion_matrix,
-    inverse_distortion_matrix,
+    sigma_calibration_matrix,
 )
 
 THETA = CrosstalkParameters(
@@ -43,14 +43,14 @@ def jeux_aleatoires(nombre: int, echelle: float = 0.1, graine: int = 0) -> list:
 def test_sigma_est_l_inverse_exact_de_d(params):
     # Fore et al. (2015), équation 15 : forme analytique, pas une approximation
     # au premier ordre. L'égalité doit tenir à la précision machine.
-    produit = distortion_matrix(params) @ inverse_distortion_matrix(params)
+    produit = distortion_matrix(params) @ sigma_calibration_matrix(params)
     np.testing.assert_allclose(produit, np.eye(4), atol=1e-12)
 
 
 @pytest.mark.parametrize("params", jeux_aleatoires(20, graine=1))
 def test_sigma_coincide_avec_l_inverse_numerique(params):
     np.testing.assert_allclose(
-        inverse_distortion_matrix(params),
+        sigma_calibration_matrix(params),
         np.linalg.inv(distortion_matrix(params)),
         atol=1e-12,
     )
@@ -86,7 +86,7 @@ def test_melanger_les_deux_conventions_renomme_les_parametres():
     et al. (2022) — redonne une matrice de la même famille, avec
     `(u, v, w, z, alpha) -> (z, w, v, u, 1/alpha)`. Aucune erreur n'est levée :
     seuls les noms changent. C'est pour cela que l'ordre des canaux doit rester
-    celui que déclare `physics.POL_ORDER`.
+    celui que déclare `matrix.POL_ORDER`.
     """
     perm = [0, 2, 1, 3]
     permutee = distortion_matrix(THETA)[np.ix_(perm, perm)]
@@ -99,31 +99,31 @@ def test_melanger_les_deux_conventions_renomme_les_parametres():
 # ------------------------------------------------------------------- garde-fous
 
 
-def test_determinant_nul_leve_une_exception():
+def test_denominateur_sigma_nul_leve_une_exception():
     # u w = 1 exactement.
     degenere = CrosstalkParameters(u=2.0, v=0.1, w=0.5, z=0.1, alpha=1.0)
     with pytest.raises(SingularDmatrixError) as erreur:
-        inverse_distortion_matrix(degenere)
+        sigma_calibration_matrix(degenere)
     assert "singulière" in str(erreur.value)
 
 
 def test_le_seuil_de_singularite_est_reglable():
     presque = CrosstalkParameters(u=1.0, v=0.1, w=1.0 - 1e-6, z=0.1, alpha=1.0)
-    inverse_distortion_matrix(presque, tol=1e-12)  # passe
+    sigma_calibration_matrix(presque, tol=1e-12)  # passe
     with pytest.raises(SingularDmatrixError):
-        inverse_distortion_matrix(presque, tol=1e-3)
+        sigma_calibration_matrix(presque, tol=1e-3)
 
 
 def test_conditionnement_degrade_journalise_une_alerte(caplog):
     limite = CrosstalkParameters(u=0.8, v=0.1, w=0.8, z=0.1, alpha=1.0)
-    with caplog.at_level(logging.WARNING, logger="src.crosstalk.physics"):
-        inverse_distortion_matrix(limite)
+    with caplog.at_level(logging.WARNING, logger="src.crosstalk.matrix"):
+        sigma_calibration_matrix(limite)
     assert "conditionnement" in caplog.text
 
 
 def test_pas_d_alerte_pour_un_crosstalk_realiste(caplog):
-    with caplog.at_level(logging.WARNING, logger="src.crosstalk.physics"):
-        inverse_distortion_matrix(THETA)
+    with caplog.at_level(logging.WARNING, logger="src.crosstalk.matrix"):
+        sigma_calibration_matrix(THETA)
     assert caplog.text == ""
 
 
@@ -243,7 +243,7 @@ def test_sigma_est_la_matrice_de_fore_reindexee():
     ) / ((u * w - 1.0) * (v * z - 1.0))
     perm = [0, 2, 1, 3]
     np.testing.assert_allclose(
-        inverse_distortion_matrix(THETA), sigma_fore[np.ix_(perm, perm)], atol=1e-14
+        sigma_calibration_matrix(THETA), sigma_fore[np.ix_(perm, perm)], atol=1e-14
     )
 
 

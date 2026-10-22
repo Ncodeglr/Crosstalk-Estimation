@@ -12,7 +12,7 @@ from src.crosstalk.metrics import (
     residual_crosstalk,
 )
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.physics import apply_correction, apply_distortion, distortion_matrix
+from src.crosstalk.matrix import apply_correction, apply_distortion, distortion_matrix
 from src.crosstalk.synthetic import reflection_symmetric_scattering
 
 THETA = CrosstalkParameters(
@@ -139,7 +139,7 @@ def test_le_crosstalk_degrade_la_reciprocite():
 
 def test_la_correction_restaure_la_reciprocite():
     """Validation indépendante : corriger avec le `theta` vrai doit la rendre à 1."""
-    from src.crosstalk.physics import apply_correction
+    from src.crosstalk.matrix import apply_correction
 
     signal = reflection_symmetric_scattering(
         (256, 256), beta=0.05, rng=np.random.default_rng(0)

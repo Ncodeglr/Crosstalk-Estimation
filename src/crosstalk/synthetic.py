@@ -6,7 +6,7 @@ appliquer une distorsion connue, et de comparer.
 
 Encore faut-il que ce `S` respecte les hypothèses de la méthode, sans quoi
 l'échec du test ne prouverait rien. Quegan suppose la covariance vraie
-(Fore et al., 2015, équation 17 ; Babu et al., 2022 §3.3.3), dans l'ordre `physics.POL_ORDER` ::
+(Fore et al., 2015, équation 17 ; Babu et al., 2022 §3.3.3), dans l'ordre `matrix.POL_ORDER` ::
 
               | sigma_hh    0       0      sigma_hhvv |
         C_Q = |    0      beta    beta         0      |
@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Indices 0-based dans `physics.POL_ORDER` (les articles indexent à partir
+#: Indices 0-based dans `matrix.POL_ORDER` (les articles indexent à partir
 #: de 1). Redéclarés ici plutôt qu'importés pour que ce module de génération
 #: reste indépendant du modèle qu'il sert à tester ; `tests/test_synthetic.py`
 #: verrouille leur cohérence avec `POL_ORDER`.

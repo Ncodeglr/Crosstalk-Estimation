@@ -6,7 +6,7 @@ import pytest
 from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.physics import apply_distortion
+from src.crosstalk.matrix import apply_distortion
 from src.crosstalk.synthetic import reflection_symmetric_scattering
 
 #: Direction de crosstalk de référence, mise à l'échelle par `epsilon`.
@@ -137,7 +137,7 @@ def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
     cross-pol négligeable (`beta` très petit) et crosstalk très faible, les
     formes fermées doivent redonner `theta` à la précision machine près.
     """
-    from src.crosstalk.physics import distortion_matrix
+    from src.crosstalk.matrix import distortion_matrix
     from src.crosstalk.synthetic import quegan_covariance
 
     vrai = theta(1e-3)
@@ -166,7 +166,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     `alpha` loin de 1 en module comme en phase, pour que chaque facteur compte.
     `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,119).
     """
-    from src.crosstalk.physics import distortion_matrix
+    from src.crosstalk.matrix import distortion_matrix
     from src.crosstalk.synthetic import quegan_covariance
 
     vrai = CrosstalkParameters.from_vector(
