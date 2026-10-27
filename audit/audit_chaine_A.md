@@ -377,7 +377,7 @@ légèrement.
 | registre, interface | `tests/test_registry.py`, `tests/test_estimator_base.py` | instanciation par nom, `correct` inverse exactement `D` |
 | covariance | `tests/test_covariance.py` | convention `C_ij = <S'_i S'_j*>`, hermitienne et semi-définie positive, `C_s' = D C_s Dᴴ`, invariance d'échelle |
 | formes fermées et `alpha` | `tests/test_quegan.py` | exactes sur la covariance théorique, structure du biais, identité de `alpha`, invariance d'échelle |
-| modèle physique | `tests/test_physics.py` | `D` et `Sigma` identiques à Fore réindexé, `Sigma·D = I`, `POL_ORDER` trié |
+| modèle physique | `tests/test_matrix.py` | `D` et `Sigma` identiques à Fore réindexé, `Sigma·D = I`, `POL_ORDER` trié |
 | mesures | `tests/test_metrics.py` | réciprocité et ses angles morts, formule au réflecteur |
 
 ```bash

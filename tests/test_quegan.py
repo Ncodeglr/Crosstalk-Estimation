@@ -7,7 +7,7 @@ from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.matrix import apply_distortion
-from src.crosstalk.synthetic import ScatteringParameters, sample_scattering
+from synthetic import ScatteringParameters, sample_scattering
 
 #: Direction de crosstalk de référence, mise à l'échelle par `epsilon`.
 DIRECTION = np.array([0.8 + 0.5j, -0.6 + 0.9j, 1.0 - 0.3j, -0.4 - 0.7j])

@@ -6,7 +6,8 @@ Rôle
 Vérifier les formules d'un estimateur à theta connu : on part d'un signal vrai S synthétique, on lui
 applique un theta connu avec `matrix.apply_distortion`, puis on compare l'estimation à ce theta. Ce
 module ne sert qu'aux tests : il ne produit ni données d'entraînement ni données d'évaluation. Il ne
-fabrique que S : il ne sait rien du crosstalk.
+fabrique que S : il ne sait rien du crosstalk. Il est donc rangé dans tests/ et non dans la bibliothèque src/crosstalk,
+et s'importe par son nom (`from synthetic import ...`, voir conftest.py).
 
 Modèle
 ------

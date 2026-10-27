@@ -116,7 +116,7 @@ qui le précèdent.
 | 11 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn`, lots dépliés en patchs |
 | 12 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
 | 13 | [src/measure_reflectors.py](src/measure_reflectors.py) | assemblage de la chaîne B ; la bande comme rempart, partiel, contre la circularité |
-| 14 | [src/crosstalk/synthetic.py](src/crosstalk/synthetic.py) et [tests/](tests/) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
+| 14 | [tests/](tests/), dont l'outil [tests/synthetic.py](tests/synthetic.py) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
 
 **Trois points à garder en tête en relisant.**
 

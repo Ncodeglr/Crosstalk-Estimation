@@ -80,6 +80,7 @@ class InjectionLaw:
             valeurs = getattr(self, nom)
             if np.ndim(valeurs) != 1 or len(valeurs) != 2:
                 raise ValueError(f"{nom} = {valeurs!r} : deux bornes (borne_min, borne_max) attendues")
+            
             borne_min, borne_max = (float(valeur) for valeur in valeurs)
             if not (np.isfinite(borne_min) and np.isfinite(borne_max)):
                 raise ValueError(f"{nom} = ({borne_min}, {borne_max}) : les bornes doivent être finies")

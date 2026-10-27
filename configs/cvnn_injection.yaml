@@ -1,0 +1,37 @@
+# Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04), servie par cvnn.
+#
+# Mêmes données, même graine globale et mêmes proportions que data_uavsar.yaml : le découpage
+# entraînement / validation / test est identique à celui de la chaîne A.
+
+task: crosstalk_injection
+seed: 300 # Graine globale de cvnn (découpage, mélange). Ne pas mettre 0 : cvnn la remplacerait par une graine au hasard.
+
+model:
+  layer_mode: complex
+
+data:
+  dataset:
+    name: UavsarSLC
+    trainpath: data/Rosamd_35012_04 # Répertoire des .slc 1x1 et de leurs .ann.
+    patch_size: 64
+    patch_stride: 64
+
+  batch_size: 16
+  num_workers: 8
+  shuffle: True
+  valid_ratio: 0.1
+  test_ratio: 0.1
+  max_num_samples: null # null = toute la pile. La réduction a lieu AVANT le découpage : elle change aussi la partition de test.
+  recompute_statistics: False
+
+  # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
+  # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/injection.py, patch_rng) de ses constantes.
+  transforms:
+    - name: crosstalk_injection # src/crosstalk/deep_learning/injection_transform.py : patch -> (10 entrées de C, theta_k)
+      params:
+        seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
+        crosstalk_db: [-40.0, -5.0] # La loi d'injection : valeurs et sources dans src/crosstalk/injection.py.
+        term_spread_db: 4.0
+        alpha_module_db: [-3.0, 3.0]
+        alpha_phase_deg: [-30.0, 30.0]
+        no_injection_rate: 0.2

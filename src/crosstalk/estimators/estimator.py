@@ -10,8 +10,9 @@ from __future__ import annotations
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import ClassVar
+from ..covariance import check_patch
 from ..parameters import CrosstalkParameters
-from ..matrix import DEFAULT_TOL, POL_ORDER, apply_correction
+from ..matrix import DEFAULT_TOL, apply_correction
 
 
 class CrosstalkEstimator(ABC):
@@ -46,14 +47,10 @@ class CrosstalkEstimator(ABC):
     
     def check_patch(self, patch: np.ndarray) -> None:
         """
-        Valide la forme d'un patch : un seul patch `(4, H, W)`.
+        Valide un patch : un seul patch `(4, H, W)`, puisqu'un estimateur rend un jeu de paramètres par patch.
+        La vérification elle-même est celle de tout le projet : covariance.check_patch.
         """
-        if patch.ndim != 3:
-            raise ValueError(f"patch de forme {patch.shape} : (4, H, W) attendu. Un estimateur "
-            "rend un jeu de paramètres par patch ; pour un lot, itérez.")
-        if patch.shape[0] != len(POL_ORDER):
-            raise ValueError(f"patch à {patch.shape[0]} canaux, {len(POL_ORDER)} attendus "
-            f"(le patch doit être en ordre {POL_ORDER})")
+        check_patch(patch)
 
     def correct(self, patch: np.ndarray, theta: CrosstalkParameters | None = None) -> np.ndarray:
         """

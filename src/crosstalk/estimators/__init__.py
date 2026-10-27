@@ -32,6 +32,7 @@ Le registre est ensuite adressable depuis une configuration ::
 """
 
 from .estimator import CrosstalkEstimator
+from .exact import ExactEstimator
 from .quegan import QueganEstimator
 from .registry import (
     available_estimators,
@@ -41,6 +42,7 @@ from .registry import (
 
 __all__ = [
     "CrosstalkEstimator",
+    "ExactEstimator",
     "QueganEstimator",
     "available_estimators",
     "create_from_config",

@@ -18,7 +18,7 @@ import pytest
 from src.crosstalk.covariance import polarimetric_covariance
 from src.crosstalk.matrix import POL_ORDER, distortion_matrix
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.synthetic import (
+from synthetic import (
     IDX_HH,
     IDX_HV,
     IDX_VH,

@@ -13,7 +13,7 @@ from src.crosstalk.metrics import (
 )
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.matrix import apply_correction, apply_distortion, distortion_matrix
-from src.crosstalk.synthetic import ScatteringParameters, sample_scattering
+from synthetic import ScatteringParameters, sample_scattering
 
 THETA = CrosstalkParameters(
     u=0.08 + 0.05j,
