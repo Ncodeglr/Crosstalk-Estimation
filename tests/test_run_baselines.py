@@ -16,7 +16,7 @@ import yaml
 from src.crosstalk.estimators.estimator import CrosstalkEstimator
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.matrix import apply_distortion
-from src.crosstalk.synthetic import reflection_symmetric_scattering
+from src.crosstalk.synthetic import ScatteringParameters, sample_scattering
 
 RACINE = Path(__file__).resolve().parent.parent
 
@@ -39,8 +39,7 @@ THETA = CrosstalkParameters(0.08 + 0.05j, -0.06 + 0.09j, 0.10 - 0.03j, -0.04 - 0
 
 def patchs_synthetiques(nombre=3, taille=(128, 128)):
     for graine in range(nombre):
-        signal = reflection_symmetric_scattering(
-            taille, beta=0.01, rng=np.random.default_rng(graine)
+        signal = sample_scattering(ScatteringParameters(beta=0.01), taille, rng=np.random.default_rng(graine)
         )
         yield apply_distortion(signal, THETA)
 

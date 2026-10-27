@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Évalue les baselines statistiques de crosstalk sur la pile UAVSAR.
-Chaque patch et chaque méthode donnent une ligne de résultat : crosstalk estimé, crosstalk résiduel après correction, et statut — un patch dégénéré est consigné,pas propagé en exception.
 Le script affiche la médiane de ces lignes, par méthode.
 """
 
@@ -39,7 +38,6 @@ COLONNES: tuple[tuple[str, str, int, str], ...] = (
     ("reciprocity_before", "reciprocity_before", 13, ".3f"),
     ("reciprocity_after", "reciprocity_after", 13, ".3f"),
 )
-
 
 
 def build_estimators(entrees: Sequence[dict[str, Any]],) -> dict[str, CrosstalkEstimator]:

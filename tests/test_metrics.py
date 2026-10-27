@@ -13,7 +13,7 @@ from src.crosstalk.metrics import (
 )
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.matrix import apply_correction, apply_distortion, distortion_matrix
-from src.crosstalk.synthetic import reflection_symmetric_scattering
+from src.crosstalk.synthetic import ScatteringParameters, sample_scattering
 
 THETA = CrosstalkParameters(
     u=0.08 + 0.05j,
@@ -88,8 +88,7 @@ def test_rapport_vue_plate():
 
 
 def test_residuel_sur_donnees_synthetiques():
-    signal = reflection_symmetric_scattering(
-        (256, 256), beta=0.01, rng=np.random.default_rng(0)
+    signal = sample_scattering(ScatteringParameters(beta=0.01), (256, 256), rng=np.random.default_rng(0)
     )
     patch = apply_distortion(signal, THETA)
     estimateur = QueganEstimator()
@@ -118,8 +117,7 @@ def test_residuel_propage_l_echec():
 
 def test_reciprocite_parfaite_vaut_un():
     """`S_HV = S_VH` exactement : c'est l'hypothèse de Quegan sur le signal vrai."""
-    signal = reflection_symmetric_scattering(
-        (64, 64), beta=0.05, rng=np.random.default_rng(0)
+    signal = sample_scattering(ScatteringParameters(beta=0.05), (64, 64), rng=np.random.default_rng(0)
     )
     assert reciprocity(signal) == pytest.approx(1.0)
 
@@ -131,8 +129,7 @@ def test_le_crosstalk_degrade_la_reciprocite():
     `u, v, w, z` ne lisent que des corrélations co-pol/cross-pol, et si son
     `alpha` lit `<HV VH*>`, la cohérence est insensible à `alpha`.
     """
-    signal = reflection_symmetric_scattering(
-        (256, 256), beta=0.05, rng=np.random.default_rng(0)
+    signal = sample_scattering(ScatteringParameters(beta=0.05), (256, 256), rng=np.random.default_rng(0)
     )
     assert reciprocity(apply_distortion(signal, THETA)) < reciprocity(signal)
 
@@ -141,8 +138,7 @@ def test_la_correction_restaure_la_reciprocite():
     """Validation indépendante : corriger avec le `theta` vrai doit la rendre à 1."""
     from src.crosstalk.matrix import apply_correction
 
-    signal = reflection_symmetric_scattering(
-        (256, 256), beta=0.05, rng=np.random.default_rng(0)
+    signal = sample_scattering(ScatteringParameters(beta=0.05), (256, 256), rng=np.random.default_rng(0)
     )
     observe = apply_distortion(signal, THETA)
     assert reciprocity(apply_correction(observe, THETA)) == pytest.approx(1.0, abs=1e-9)
@@ -157,8 +153,7 @@ def test_la_reciprocite_est_aveugle_a_u_egal_alpha_z_et_v_egal_alpha_w(alpha):
     crosstalk est bien présent. Elle ignore aussi `alpha` lui-même. Le cas
     `alpha` complexe distingue cette direction de `u = z, v = w`.
     """
-    signal = reflection_symmetric_scattering(
-        (64, 64), beta=0.15, rng=np.random.default_rng(0)
+    signal = sample_scattering(ScatteringParameters(beta=0.15), (64, 64), rng=np.random.default_rng(0)
     )
     z, w = 0.05 * np.exp(0.9j), 0.03 * np.exp(-1.7j)
     aveugle = CrosstalkParameters(u=alpha * z, v=alpha * w, w=w, z=z, alpha=alpha)
@@ -252,7 +247,7 @@ def test_la_phase_de_alpha_ne_change_aucune_metrique_comparable_a_babu():
     """
     sans_phase = CrosstalkParameters(THETA.u, THETA.v, THETA.w, THETA.z, abs(THETA.alpha))
     observe = apply_distortion(
-        reflection_symmetric_scattering((64, 64), rng=np.random.default_rng(5)), THETA
+        sample_scattering(ScatteringParameters(), (64, 64), rng=np.random.default_rng(5)), THETA
     )
     avec, sans = apply_correction(observe, THETA), apply_correction(observe, sans_phase)
 

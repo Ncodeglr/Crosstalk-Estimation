@@ -7,7 +7,7 @@ from src.crosstalk.estimators import create_from_config
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.parameters import CrosstalkParameters
 from src.crosstalk.matrix import apply_distortion
-from src.crosstalk.synthetic import reflection_symmetric_scattering
+from src.crosstalk.synthetic import ScatteringParameters, sample_scattering
 
 #: Direction de crosstalk de référence, mise à l'échelle par `epsilon`.
 DIRECTION = np.array([0.8 + 0.5j, -0.6 + 0.9j, 1.0 - 0.3j, -0.4 - 0.7j])
@@ -21,8 +21,7 @@ def theta(epsilon: float = 0.1) -> CrosstalkParameters:
 
 def observe(params, shape=(1024, 1024), beta=0.05, graine=0, **kwargs):
     """Observation synthétique sans bruit, en ordre modèle : `s' = D s`."""
-    signal = reflection_symmetric_scattering(
-        shape, beta=beta, rng=np.random.default_rng(graine), **kwargs
+    signal = sample_scattering(ScatteringParameters(beta=beta, **kwargs), shape, rng=np.random.default_rng(graine)
     )
     return apply_distortion(signal, params)
 
@@ -138,11 +137,10 @@ def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
     formes fermées doivent redonner `theta` à la précision machine près.
     """
     from src.crosstalk.matrix import distortion_matrix
-    from src.crosstalk.synthetic import quegan_covariance
 
     vrai = theta(1e-3)
     matrice = distortion_matrix(vrai)
-    cov = matrice @ quegan_covariance(beta=1e-6) @ matrice.conj().T
+    cov = matrice @ ScatteringParameters(beta=1e-6).to_covariance() @ matrice.conj().T
     estime = CrosstalkParameters.from_vector(estimateur().solve(cov))
     assert erreur_relative(estime, vrai) < 1e-4
 
@@ -167,7 +165,6 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,119).
     """
     from src.crosstalk.matrix import distortion_matrix
-    from src.crosstalk.synthetic import quegan_covariance
 
     vrai = CrosstalkParameters.from_vector(
         [*(1e-2 * DIRECTION), 1.25 * np.exp(-1j * np.deg2rad(23.0))]
@@ -178,7 +175,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     matrice = distortion_matrix(vrai)
     cov = (
         matrice
-        @ quegan_covariance(sigma_hh, sigma_vv, 0.5 * np.exp(0.3j), p_x)
+        @ ScatteringParameters(sigma_hh, sigma_vv, 0.5 * np.exp(0.3j) * np.sqrt(sigma_hh * sigma_vv), p_x).to_covariance()
         @ matrice.conj().T
     )
     biais = estimateur().solve(cov)[:4] - vrai.to_vector()[:4]
