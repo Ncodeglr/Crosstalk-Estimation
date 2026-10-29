@@ -20,7 +20,6 @@ L'injection elle-même est matrix.apply_distortion(patch, theta_k).
 """
 
 from __future__ import annotations
-import hashlib
 from dataclasses import dataclass
 import numpy as np
 from .parameters import CrosstalkParameters
@@ -30,9 +29,10 @@ NEUTRE: CrosstalkParameters = CrosstalkParameters(0.0, 0.0, 0.0, 0.0, 1.0)
 
 
 @dataclass(frozen=True, slots=True)
-class InjectionLaw:
+class CrosstalkSampler:
     """
-    Loi de theta_k. Chaque tirage est, avec la probabilité no_injection_rate, le theta_k NEUTRE ; sinon :
+    Loi de theta_k, et son tirage (generate). Chaque tirage est, avec la probabilité no_injection_rate, le theta_k
+    NEUTRE ; sinon :
         niveau commun L : uniforme en dB dans [crosstalk_db[0] + term_spread_db, crosstalk_db[1] - term_spread_db] ;
         |u|, |v|, |w|, |z| : L + un écart uniforme dans [-term_spread_db, +term_spread_db] dB, tiré pour chaque
             terme séparément, si bien que les quatre termes restent dans l'enveloppe crosstalk_db ;
@@ -102,47 +102,16 @@ class InjectionLaw:
         if not 0.0 <= self.no_injection_rate < 1.0:
             raise ValueError(f"no_injection_rate = {self.no_injection_rate} : il doit être dans [0, 1[")
 
+    def generate(self, rng: np.random.Generator) -> CrosstalkParameters:
+        """Tire un theta_k selon la loi, permet d'avoir des valeurs pas trop extrêmes, et de laisser un patch sur cinq sans injection pour l'apprentissage."""
+        if rng.random() < self.no_injection_rate:
+            return NEUTRE
+        ecart = self.term_spread_db
+        niveau_L = rng.uniform(self.crosstalk_db[0] + ecart, self.crosstalk_db[1] - ecart) #niveau commun L : uniforme dans l'enveloppe, mais en laissant la place à l'écart de chaque terme
+        modules = 10.0 ** ((niveau_L + rng.uniform(-ecart, ecart, size=4)) / 20.0)
+        phases = rng.uniform(0.0, 2.0 * np.pi, size=4)
 
-def draw_injection(law: InjectionLaw, rng: np.random.Generator) -> CrosstalkParameters:
-    """Tire un theta_k selon law, permet d'avoir des valeurs pas trop extrêmes, et de laisser un patch sur cinq sans injection pour l'apprentissage."""
-    if rng.random() < law.no_injection_rate:
-        return NEUTRE
-    ecart = law.term_spread_db
-    niveau_L = rng.uniform(law.crosstalk_db[0] + ecart, law.crosstalk_db[1] - ecart) #niveau commun L : uniforme dans l'enveloppe, mais en laissant la place à l'écart de chaque terme
-    modules = 10.0 ** ((niveau_L + rng.uniform(-ecart, ecart, size=4)) / 20.0)
-    phases = rng.uniform(0.0, 2.0 * np.pi, size=4)
-    
-    u, v, w, z = modules * np.exp(1j * phases)
-    module_alpha = 10.0 ** (rng.uniform(*law.alpha_module_db) / 20.0)
-    alpha = module_alpha * np.exp(1j * np.deg2rad(rng.uniform(*law.alpha_phase_deg)))
-    return CrosstalkParameters(u, v, w, z, alpha)
-
-
-def patch_rng(patch: np.ndarray, seed: int) -> np.random.Generator:
-    """
-    Générateur aléatoire propre à un patch : sa graine combine seed et une empreinte du contenu du patch.
-
-    Le même patch donne toujours le même générateur, donc le même theta_k, quel que soit le processus ou l'époque.
-    L'empreinte porte sur les octets, la forme et le type du tableau : un même patch en complex64 et en complex128
-    donne deux générateurs différents. Le patch doit donc toujours être passé tel qu'il est lu.
-
-    Args:
-        patch: le patch, tel qu'il est lu.
-        seed: entier positif ou nul. Le changer change toutes les injections : c'est une autre expérience.
-    """
-    if not isinstance(patch, np.ndarray):
-        raise TypeError(f"patch de type {type(patch).__name__} : np.ndarray attendu")
-    # Pour un tableau d'objets Python, tobytes() écrit des adresses mémoire et non des valeurs : l'empreinte
-    # changerait d'un processus à l'autre. Seuls les types numériques donnent une empreinte déterministe.
-    if patch.dtype.kind not in "biufc":
-        raise TypeError(f"patch de type d'éléments {patch.dtype} : un type numérique est attendu (complex64 pour les .slc)")
-    if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)):
-        raise TypeError(f"seed de type {type(seed).__name__} : entier attendu")
-    if seed < 0:
-        raise ValueError(f"seed = {seed} : il doit être positif ou nul")
-    
-    #hashlib.blake2b est une fonction de hachage cryptographique qui produit un haché de 64 octets par défaut. 
-    empreinte = hashlib.blake2b(digest_size=8) #Empreinte du patch, pour que le même patch donne toujours le même générateur, donc le même theta_k, quel que soit le processus ou l'époch.
-    empreinte.update(f"{patch.dtype.str}{patch.shape}".encode()) #patch.dtype.str = '<c8' pour complex64 ou '<c16' pour complex128,  patch.shape = (4, H, W). On encode en bytes pour que hashlib puisse traiter la chaîne.
-    empreinte.update(patch.tobytes(order='C')) #tobytes() écrit les octets dans l'ordre des index (ordre C), quelle que soit la disposition du tableau en mémoire : 8 octets par complexe en complex64, soit 8 x (Nb_channels x H_patch x W_patch) octets. On met à jour l'empreinte avec le contenu du patch.
-    return np.random.default_rng([int(seed), int.from_bytes(empreinte.digest(), "little")])
+        u, v, w, z = modules * np.exp(1j * phases)
+        module_alpha = 10.0 ** (rng.uniform(*self.alpha_module_db) / 20.0)
+        alpha = module_alpha * np.exp(1j * np.deg2rad(rng.uniform(*self.alpha_phase_deg)))
+        return CrosstalkParameters(u, v, w, z, alpha)

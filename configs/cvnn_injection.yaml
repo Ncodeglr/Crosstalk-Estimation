@@ -30,13 +30,13 @@ data:
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
-  # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/injection.py, patch_rng) de ses constantes.
+  # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/patch_rng.py) de ses constantes.
   transforms:
     - name: crosstalk_injection # src/crosstalk/deep_learning/injection_transform.py : patch -> (10 entrées de C, theta_k)
       params:
         seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
-        crosstalk_db: [-40.0, -5.0] # La loi d'injection : valeurs et sources dans src/crosstalk/injection.py.
-        term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son σ².
+        crosstalk_db: [-40.0, -5.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
+        term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son moment d'ordre 2 m.
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]
         no_injection_rate: 0.2

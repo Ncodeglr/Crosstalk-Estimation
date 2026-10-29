@@ -1,7 +1,7 @@
 """
 Tests de la perte « CrosstalkLoss » :
 
-1. σ² : l'estimation par tirages contre la formule fermée de la loi, et le prédicteur nul qui coûte 1 par composante ;
+1. m = E|y|² : l'estimation par tirages contre la formule fermée de la loi, et le prédicteur nul qui coûte 1 par composante ;
 2. la formule sur un lot, et les métriques par composante ;
 3. les patchs écartés : retirés avant la soustraction, gradient sans nan, lot sans patch valide ;
 4. avec cvnn : les boucles d'entraînement et de validation de cvnn reçoivent la perte et les métriques ; les refus.
@@ -12,8 +12,8 @@ import pytest
 import torch
 
 from src.crosstalk.deep_learning import CrosstalkInjectionTransform, MLP
-from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss, target_power
-from src.crosstalk.injection import InjectionLaw, draw_injection
+from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss, mean_squared_parameters
+from src.crosstalk.crosstalk_sampler import CrosstalkSampler
 
 LN10 = np.log(10.0)
 
@@ -24,9 +24,9 @@ def perte() -> CrosstalkLoss:
     return CrosstalkLoss()
 
 
-def sigma2_exact(law: InjectionLaw) -> np.ndarray:
+def mean_squared_exact(sampler: CrosstalkSampler) -> np.ndarray:
     """
-    σ² = E|y_j|² par la formule fermée de InjectionLaw (docstring de injection.InjectionLaw).
+    m_j = E|y_j|² par la formule fermée de CrosstalkSampler (docstring de crosstalk_sampler.CrosstalkSampler).
 
     Crosstalk : |u|² = 10^((L + e) / 10), L et e indépendants et uniformes en dB, donc E|u|² = E[10^(L/10)] E[10^(e/10)],
     avec E[10^(x/10)] = (10^(b/10) - 10^(a/10)) / ((b - a) ln(10) / 10) pour x uniforme sur [a, b].
@@ -39,16 +39,16 @@ def sigma2_exact(law: InjectionLaw) -> np.ndarray:
     def moment2(a, b):
         return (a * a + a * b + b * b) / 3
 
-    s = law.term_spread_db
-    crosstalk = moyenne_puissance(law.crosstalk_db[0] + s, law.crosstalk_db[1] - s) * moyenne_puissance(-s, s)
-    log_alpha = (LN10 / 20) ** 2 * moment2(*law.alpha_module_db) + moment2(*np.deg2rad(law.alpha_phase_deg))
-    return (1 - law.no_injection_rate) * np.array([crosstalk] * 4 + [log_alpha])
+    s = sampler.term_spread_db
+    crosstalk = moyenne_puissance(sampler.crosstalk_db[0] + s, sampler.crosstalk_db[1] - s) * moyenne_puissance(-s, s)
+    log_alpha = (LN10 / 20) ** 2 * moment2(*sampler.alpha_module_db) + moment2(*np.deg2rad(sampler.alpha_phase_deg))
+    return (1 - sampler.no_injection_rate) * np.array([crosstalk] * 4 + [log_alpha])
 
 
-def cibles_de_la_loi(n: int, graine: int, law: InjectionLaw = InjectionLaw()) -> torch.Tensor:
+def cibles_de_la_loi(n: int, graine: int, sampler: CrosstalkSampler = CrosstalkSampler()) -> torch.Tensor:
     """n cibles (u, v, w, z, log alpha) tirées de la loi, comme CrosstalkInjectionTransform les construit."""
     rng = np.random.default_rng(graine)
-    cibles = np.array([draw_injection(law, rng).to_vector() for _ in range(n)])
+    cibles = np.array([sampler.generate(rng).to_vector() for _ in range(n)])
     cibles[:, 4] = np.log(cibles[:, 4])
     return torch.from_numpy(cibles.astype(np.complex64))
 
@@ -60,17 +60,17 @@ def lot_aleatoire(b: int = 6, graine: int = 0) -> tuple[torch.Tensor, torch.Tens
     return sorties, 0.1 * torch.randn(b, 5, dtype=torch.complex64, generator=g)
 
 
-# ----------------------------------------------------------------- σ²
+# ----------------------------------------------------------------- m = E|y|²
 
 
-def test_sigma2_par_tirages_suit_la_formule_fermee_de_la_loi_par_defaut(perte):
-    np.testing.assert_allclose(perte.sigma2.numpy(), sigma2_exact(InjectionLaw()), rtol=0.03)
+def test_m_par_tirages_suit_la_formule_fermee_de_la_loi_par_defaut(perte):
+    np.testing.assert_allclose(perte.mean_squared.numpy(), mean_squared_exact(CrosstalkSampler()), rtol=0.03)
 
 
-def test_sigma2_par_tirages_suit_la_formule_fermee_d_une_autre_loi():
+def test_m_par_tirages_suit_la_formule_fermee_d_une_autre_loi():
     loi = dict(crosstalk_db=(-30.0, -10.0), term_spread_db=2.0, alpha_module_db=(-1.0, 2.0),
                alpha_phase_deg=(-10.0, 40.0), no_injection_rate=0.0)
-    np.testing.assert_allclose(target_power(InjectionLaw(**loi), 50_000), sigma2_exact(InjectionLaw(**loi)), rtol=0.03)
+    np.testing.assert_allclose(mean_squared_parameters(CrosstalkSampler(**loi), 50_000), mean_squared_exact(CrosstalkSampler(**loi)), rtol=0.03)
 
 
 def test_le_predicteur_nul_coute_un_par_composante(perte):
@@ -80,8 +80,8 @@ def test_le_predicteur_nul_coute_un_par_composante(perte):
     assert valeur.item() == pytest.approx(5.0, rel=0.03)
 
 
-def test_sigma2_est_un_buffer_et_non_un_parametre_appris(perte):
-    assert "sigma2" in dict(perte.named_buffers())
+def test_m_est_un_buffer_et_non_un_parametre_appris(perte):
+    assert "mean_squared" in dict(perte.named_buffers())
     assert list(perte.parameters()) == []
 
 
@@ -91,7 +91,7 @@ def test_sigma2_est_un_buffer_et_non_un_parametre_appris(perte):
 def test_la_perte_suit_la_formule(perte):
     sorties, cibles = lot_aleatoire()
     valeur, _ = perte(sorties, cibles)
-    attendu = (np.abs(sorties.detach().numpy() - cibles.numpy()) ** 2 / perte.sigma2.numpy()).sum(axis=1).mean()
+    attendu = (np.abs(sorties.detach().numpy() - cibles.numpy()) ** 2 / perte.mean_squared.numpy()).sum(axis=1).mean()
     assert valeur.item() == pytest.approx(attendu, rel=1e-5)
 
 

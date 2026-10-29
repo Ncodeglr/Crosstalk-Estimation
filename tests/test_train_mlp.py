@@ -16,7 +16,7 @@ import torch
 import yaml
 
 from src.crosstalk.deep_learning import CrosstalkLoss, MLP
-from src.crosstalk.injection import InjectionLaw
+from src.crosstalk.crosstalk_sampler import CrosstalkSampler
 from src.train_mlp import CONFIG, evaluate, injection_law, main
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -36,7 +36,7 @@ def test_la_loi_lue_est_celle_de_la_transformation_sans_sa_graine():
     params = config["data"]["transforms"][0]["params"]
     loi = injection_law(config)
     assert "seed" not in loi and loi == {cle: valeur for cle, valeur in params.items() if cle != "seed"}
-    assert InjectionLaw(**loi) == InjectionLaw(**{cle: valeur for cle, valeur in params.items() if cle != "seed"})
+    assert CrosstalkSampler(**loi) == CrosstalkSampler(**{cle: valeur for cle, valeur in params.items() if cle != "seed"})
 
 
 def test_une_config_sans_la_transformation_est_refusee():

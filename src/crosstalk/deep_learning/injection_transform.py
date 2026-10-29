@@ -6,7 +6,7 @@ Rôle
 cvnn lit un patch réel (4, H, W) ; cette transformation en fait le couple (entrée, cible) du réseau :
     1. un patch contenant un zéro ou une valeur non finie (bord de fauchée) est écarté : entrée nulle, cible nan ;
        la perte et l'évaluation ignorent les cibles nan ;
-    2. theta_k = draw_injection(loi, patch_rng(patch, seed)), le même pour un patch donné à chaque époque ;
+    2. theta_k = loi.generate(patch_rng(patch, seed)), le même pour un patch donné à chaque époque ;
     3. C = covariance du patch, puis C_inj = D(theta_k) C D(theta_k)^H. Injecter le crosstalk dans les pixels puis
        calculer la covariance revient exactement au même, D agissant linéairement sur chaque pixel ;
     4. C_inj / trace(C_inj) : le crosstalk ne dépend pas de l'échelle du patch ;
@@ -39,7 +39,8 @@ from ..covariance import (
     normalize_by_trace,
     polarimetric_covariance,
 )
-from ..injection import InjectionLaw, draw_injection, patch_rng
+from ..crosstalk_sampler import CrosstalkSampler
+from ..patch_rng import patch_rng
 from ..matrix import distortion_matrix
 
 #: Nombre de valeurs complexes de l'entrée (les entrées distinctes de la covariance) et de la cible (u, v, w, z, log alpha).
@@ -52,12 +53,12 @@ class CrosstalkInjectionTransform:
     Patch réel (4, H, W) -> (entrée (10, 1, 1), cible (5,)), en complex64.
 
     Args:
-        seed: graine des injections (injection.patch_rng), entier positif ou nul. La changer change toutes les
+        seed: graine des injections (src/crosstalk/patch_rng.py), entier positif ou nul. La changer change toutes les
             injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
-        **loi: les champs de injection.InjectionLaw ; ceux qui manquent prennent leur valeur par défaut.
+        **loi: les champs de crosstalk_sampler.CrosstalkSampler ; ceux qui manquent prennent leur valeur par défaut.
 
     Raises:
-        TypeError: si seed n'est pas un entier, ou si loi contient un champ inconnu d'InjectionLaw.
+        TypeError: si seed n'est pas un entier, ou si loi contient un champ inconnu de CrosstalkSampler.
         ValueError: si seed est négatif, ou si la loi est invalide.
     """
 
@@ -67,7 +68,7 @@ class CrosstalkInjectionTransform:
         if seed < 0:
             raise ValueError(f"seed = {seed} : il doit être positif ou nul")
         self.seed = int(seed)
-        self.law = InjectionLaw(**loi)
+        self.sampler = CrosstalkSampler(**loi)
 
     def __call__(self, patch: torch.Tensor | np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -86,7 +87,7 @@ class CrosstalkInjectionTransform:
 
 
         #2ème cas : patch valide : on tire theta_k selon la loi et la graine, on injecte le crosstalk dans la covariance, on normalise par la trace, et on renvoie les entrées et la cible.
-        theta = draw_injection(self.law, patch_rng(patch, self.seed)) #Détermine les paramètres d'injection selon la loi et la graine.
+        theta = self.sampler.generate(patch_rng(patch, self.seed)) #Détermine les paramètres d'injection selon la loi et la graine.
         D = distortion_matrix(theta)
         covariance = D @ polarimetric_covariance(patch) @ D.conj().T
         covariance = (covariance + covariance.conj().T) / 2 #Les arrondis de D C D^H laissent des parties imaginaires de l'ordre de 1e-19 sur la diagonale : on rend la matrice exactement hermitienne, pour que les 4 puissances soient exactement réelles.
@@ -97,7 +98,7 @@ class CrosstalkInjectionTransform:
                 torch.from_numpy(cible.astype(np.complex64)))
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(seed={self.seed}, {self.law})"
+        return f"{type(self).__name__}(seed={self.seed}, {self.sampler})"
 
 
 def check_pipeline(loader) -> None:

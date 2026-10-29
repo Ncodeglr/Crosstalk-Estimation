@@ -18,7 +18,8 @@ import yaml
 
 from src.crosstalk.covariance import HERMITIAN_ENTRIES, covariance_entries, polarimetric_covariance
 from src.crosstalk.deep_learning import CrosstalkInjectionTransform, check_pipeline
-from src.crosstalk.injection import NEUTRE, InjectionLaw, draw_injection, patch_rng
+from src.crosstalk.crosstalk_sampler import NEUTRE, CrosstalkSampler
+from src.crosstalk.patch_rng import patch_rng
 from src.crosstalk.matrix import apply_distortion, distortion_matrix
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -35,7 +36,7 @@ def patch_injecte(transformation: CrosstalkInjectionTransform) -> torch.Tensor:
     """Le premier patch aléatoire qui reçoit une injection (non neutre)."""
     for graine in range(100):
         patch = patch_aleatoire(graine)
-        if draw_injection(transformation.law, patch_rng(patch.numpy(), transformation.seed)) != NEUTRE:
+        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed)) != NEUTRE:
             return patch
     raise AssertionError("aucun patch injecté sur 100 essais")
 
@@ -44,7 +45,7 @@ def patch_brut(transformation: CrosstalkInjectionTransform) -> torch.Tensor:
     """Le premier patch aléatoire laissé brut (theta_k neutre)."""
     for graine in range(100):
         patch = patch_aleatoire(graine)
-        if draw_injection(transformation.law, patch_rng(patch.numpy(), transformation.seed)) == NEUTRE:
+        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed)) == NEUTRE:
             return patch
     raise AssertionError("aucun patch brut sur 100 essais")
 
@@ -78,7 +79,7 @@ def test_une_autre_graine_donne_une_autre_injection():
 def test_la_cible_est_le_theta_k_de_patch_rng_avec_log_alpha():
     transformation = CrosstalkInjectionTransform(seed=5)
     patch = patch_injecte(transformation)
-    theta = draw_injection(transformation.law, patch_rng(patch.numpy(), 5)).to_vector()
+    theta = transformation.sampler.generate(patch_rng(patch.numpy(), 5)).to_vector()
     attendu = np.r_[theta[:4], np.log(theta[4])]
     np.testing.assert_allclose(transformation(patch)[1].numpy(), attendu, rtol=1e-6)
 
@@ -86,7 +87,7 @@ def test_la_cible_est_le_theta_k_de_patch_rng_avec_log_alpha():
 def test_l_entree_est_la_covariance_injectee_normalisee_par_sa_trace():
     transformation = CrosstalkInjectionTransform()
     patch = patch_injecte(transformation)
-    theta = draw_injection(transformation.law, patch_rng(patch.numpy(), 0))
+    theta = transformation.sampler.generate(patch_rng(patch.numpy(), 0))
     d = distortion_matrix(theta)
     covariance = d @ polarimetric_covariance(patch.numpy()) @ d.conj().T
     attendu = covariance_entries(covariance / np.trace(covariance).real)
@@ -97,7 +98,7 @@ def test_injecter_la_covariance_revient_a_injecter_les_pixels():
     """D agit linéairement sur chaque pixel : < (D k)(D k)^H > = D < k k^H > D^H."""
     transformation = CrosstalkInjectionTransform()
     patch = patch_injecte(transformation)
-    theta = draw_injection(transformation.law, patch_rng(patch.numpy(), 0))
+    theta = transformation.sampler.generate(patch_rng(patch.numpy(), 0))
     covariance = polarimetric_covariance(apply_distortion(patch.numpy().astype(np.complex128), theta))
     attendu = covariance_entries(covariance / np.trace(covariance).real)
     np.testing.assert_allclose(transformation(patch)[0].numpy().ravel(), attendu, rtol=1e-5, atol=1e-7)
@@ -143,7 +144,7 @@ def test_un_patch_mal_forme_est_refuse(forme):
     (dict(seed=1.5), TypeError),
     (dict(seed=True), TypeError),
     (dict(crosstalk_db=(-5.0, -40.0)), ValueError),     # loi invalide
-    (dict(crosstalk=(-40.0, -5.0)), TypeError),         # champ inconnu d'InjectionLaw
+    (dict(crosstalk=(-40.0, -5.0)), TypeError),         # champ inconnu de CrosstalkSampler
 ])
 def test_une_configuration_invalide_est_refusee_a_la_construction(reglages, erreur):
     with pytest.raises(erreur):
@@ -155,7 +156,7 @@ def test_les_parametres_du_yaml_construisent_la_loi_du_yaml():
     params = yaml.safe_load((RACINE / "configs" / "cvnn_injection.yaml").read_text())["data"]["transforms"][0]["params"]
     transformation = CrosstalkInjectionTransform(**params)
     assert transformation.seed == 0
-    assert transformation.law == InjectionLaw()
+    assert transformation.sampler == CrosstalkSampler()
 
 
 # ----------------------------------------------------------------- check_pipeline
