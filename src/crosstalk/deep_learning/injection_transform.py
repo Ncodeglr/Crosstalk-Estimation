@@ -70,18 +70,26 @@ class CrosstalkInjectionTransform:
         self.law = InjectionLaw(**loi)
 
     def __call__(self, patch: torch.Tensor | np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
-        donnees = patch.detach().cpu().numpy() if isinstance(patch, torch.Tensor) else patch
-        check_patch(donnees)
-        if np.any(donnees == 0) or not np.all(np.isfinite(donnees)):
+        """
+        Applique la transformation d'injection de crosstalk au patch.
+
+        Args: patch: le patch à transformer, soit un tenseur PyTorch, soit un tableau NumPy.
+        Returns: Un tuple (entrée, cible) où l'entrée est un tenseur PyTorch de forme (10, 1, 1) et la cible est un tenseur PyTorch de forme (5,).
+        """
+        patch = patch.detach().cpu().numpy() if isinstance(patch, torch.Tensor) else patch #Convertit en np.ndarray si c'est un tenseur, pour être compatible avec patch_rng et polarimetric_covariance
+        check_patch(patch)#Lève TypeError ou ValueError si le patch est mal formé : c'est une erreur de programmation (YAML, ordre des transformations), l'entraînement s'arrête.
+        
+        #1er cas : patch contenant un zéro ou une valeur non finie (bord de fauchée) : on écarte le patch, entrée nulle, cible nan.
+        if np.any(patch == 0) or not np.all(np.isfinite(patch)):
             return (torch.zeros((N_ENTREES, 1, 1), dtype=torch.complex64),
                     torch.full((N_CIBLES,), complex(np.nan, np.nan), dtype=torch.complex64))
 
-        theta = draw_injection(self.law, patch_rng(donnees, self.seed))
-        d = distortion_matrix(theta)
-        covariance = d @ polarimetric_covariance(donnees) @ d.conj().T
-        
-        # Les arrondis de D C D^H laissent des parties imaginaires de l'ordre de 1e-19 sur la diagonale : on rend la matrice exactement hermitienne, pour que les 4 puissances soient exactement réelles.
-        covariance = (covariance + covariance.conj().T) / 2
+
+        #2ème cas : patch valide : on tire theta_k selon la loi et la graine, on injecte le crosstalk dans la covariance, on normalise par la trace, et on renvoie les entrées et la cible.
+        theta = draw_injection(self.law, patch_rng(patch, self.seed)) #Détermine les paramètres d'injection selon la loi et la graine.
+        D = distortion_matrix(theta)
+        covariance = D @ polarimetric_covariance(patch) @ D.conj().T
+        covariance = (covariance + covariance.conj().T) / 2 #Les arrondis de D C D^H laissent des parties imaginaires de l'ordre de 1e-19 sur la diagonale : on rend la matrice exactement hermitienne, pour que les 4 puissances soient exactement réelles.
         covariance = normalize_by_trace(covariance)
         u, v, w, z, alpha = theta.to_vector()
         cible = np.array([u, v, w, z, np.log(alpha)])
@@ -111,8 +119,7 @@ def check_pipeline(loader) -> None:
     if not (isinstance(lot, (list, tuple)) and len(lot) == 2):
         raise RuntimeError(f"lot de type {type(lot).__name__}, couple (entrées, cibles) attendu : {aide}")
     for nom, tenseur, forme_attendue in (("entrées", lot[0], (N_ENTREES, 1, 1)), ("cibles", lot[1], (N_CIBLES,))):
-        if not (isinstance(tenseur, torch.Tensor) and tenseur.dtype == torch.complex64
-                and tuple(tenseur.shape[1:]) == forme_attendue):
+        if not (isinstance(tenseur, torch.Tensor) and tenseur.dtype == torch.complex64 and tuple(tenseur.shape[1:]) == forme_attendue):
             forme = tuple(tenseur.shape) if isinstance(tenseur, torch.Tensor) else type(tenseur).__name__
             raise RuntimeError(f"{nom} de forme {forme}, (B, {', '.join(map(str, forme_attendue))}) complex64 attendu : {aide}")
     if lot[0].shape[0] != lot[1].shape[0]:

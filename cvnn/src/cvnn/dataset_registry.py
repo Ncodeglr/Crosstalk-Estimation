@@ -1,4 +1,16 @@
 # src/cvnn/dataset_registry.py
+"""
+Registre des jeux de données de cvnn.
+
+Modification locale (projet crosstalk_estimation, 2026-10-29)
+-------------------------------------------------------------
+UavsarSLC : supports_full_image_reconstruction passe de True à False.
+get_full_image_dataloader (data.py) n'a pas de branche UavsarSLC : avec True,
+BaseExperiment.__init__ l'appelait et levait UnboundLocalError avant tout
+entraînement. À False, BaseExperiment ne construit pas de chargeur d'image
+entière (full_loader = None), comme pour Sethi. La reconstruction d'image
+entière n'existait de toute façon pas pour UavsarSLC.
+"""
 from typing import Dict, Any
 
 DATASET_TYPE_REGISTRY = {
@@ -26,7 +38,7 @@ DATASET_TYPE_REGISTRY = {
     },
     "UavsarSLC": {
         "type": "polsar",
-        "supports_full_image_reconstruction": True,
+        "supports_full_image_reconstruction": False,  # Modification locale : voir la docstring du module.
         "valid_layer_modes": ["complex", "split", "real"],
         "valid_real_pipelines": ["complex_amplitude_real", "complex_dual_real"],
         "invalid_real_pipelines": ["real_real"],
