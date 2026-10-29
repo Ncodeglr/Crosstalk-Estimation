@@ -203,12 +203,13 @@ sur_la_pile = pytest.mark.skipif(not PILE.is_dir(), reason="pile UAVSAR absente"
 
 
 def chargeurs(nom_yaml: str, **reglages_data):
-    """Les trois chargeurs de cvnn pour un YAML du projet, comme les construisent patchs.py et BaseExperiment."""
+    """Les trois chargeurs de cvnn pour un YAML du projet, comme les construisent patchs.py et train_cvnn.py."""
     from cvnn.data import get_dataloaders, validate_and_correct_config
     from cvnn.utils import set_seed
 
     config = yaml.safe_load((RACINE / "configs" / nom_yaml).read_text())
-    config["data"].update(num_workers=0, max_num_samples=2000, **reglages_data)
+    # Lots de 16 : ces tests n'examinent qu'un lot, inutile d'en transformer batch_size = 1024 comme l'entraînement.
+    config["data"].update(num_workers=0, max_num_samples=2000, batch_size=16, **reglages_data)
     set_seed(int(config["seed"]))
     return get_dataloaders(validate_and_correct_config(config), use_cuda=False)
 

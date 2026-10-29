@@ -1,13 +1,18 @@
-# Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04), servie par cvnn.
-#
-# Mêmes données, même graine globale et mêmes proportions que data_uavsar.yaml : le découpage
-# entraînement / validation / test est identique à celui de la chaîne A.
+# Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04).
+# Lancé par src/train_cvnn.py, depuis la racine du dépôt.
 
-task: crosstalk_injection
-seed: 300 # Graine globale de cvnn (découpage, mélange). Ne pas mettre 0 : cvnn la remplacerait par une graine au hasard.
+
+task: crosstalk_injection # Préfixe du dossier de sortie.
+seed: 300 # Graine globale de cvnn (découpage, mélange, initialisation), la même que data_uavsar.yaml.
+nepochs: 30
 
 model:
-  layer_mode: complex
+  class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
+  layer_mode: complex # Seul mode accepté : l'entrée est complexe.
+  num_layers: 3
+  channels_width: 128
+  activation: modReLU # Cherchée par nom dans torchcvnn : modReLU, CReLU, zReLU, Cardioid, etc.
+  normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de model.py).
 
 data:
   dataset:
@@ -16,11 +21,11 @@ data:
     patch_size: 64
     patch_stride: 64
 
-  batch_size: 16
+  batch_size: 1024
   num_workers: 8
   shuffle: True
   valid_ratio: 0.1
-  test_ratio: 0.1
+  test_ratio: 0.1 
   max_num_samples: null # null = toute la pile. La réduction a lieu AVANT le découpage : elle change aussi la partition de test.
   recompute_statistics: False
 
@@ -31,7 +36,30 @@ data:
       params:
         seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-40.0, -5.0] # La loi d'injection : valeurs et sources dans src/crosstalk/injection.py.
-        term_spread_db: 4.0
+        term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son σ².
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]
         no_injection_rate: 0.2
+
+optim:
+  algo: Adam 
+  params:
+    lr: 0.002
+  max_norm: 1.0 # Écrêtage de la norme des gradients, fait par train_model de cvnn.
+
+scheduler:
+  name: CosineAnnealingLR 
+  params:
+    T_max: 30 # = nepochs : le taux descend jusqu'à eta_min à la dernière époque.
+    eta_min: 0.00001
+  step_on: epoch
+
+warmup:
+  epochs: 0 # Section exigée par train_model de cvnn.
+
+logging:
+  logdir: ./logs # Chaque entraînement écrit dans logs/<task>_<nom du run wandb, ou date et heure>.
+  wandb: # Supprimer cette section pour entraîner sans wandb.
+    project: crosstalk_estimation
+    mode: online # offline sans connexion (synchroniser ensuite avec « wandb sync ») ; online demande « wandb login ».
+    tags: [mlp, injection]

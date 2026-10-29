@@ -19,7 +19,7 @@ def test_le_decoupage_est_rendu_reproductible():
     """`cvnn.data` découpe avec les générateurs globaux, jamais graines.
 
     Le script appelle `cvnn.utils.set_seed`, la même fonction que
-    `BaseExperiment` utilise pour le réseau : les deux voient donc la même
+    `src/train_cvnn.py` utilise pour le réseau : les deux voient donc la même
     partition. Sans ce réamorçage, deux exécutions évaluent deux partitions de
     test différentes.
     """

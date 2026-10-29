@@ -44,7 +44,7 @@ from ..matrix import distortion_matrix
 
 #: Nombre de valeurs complexes de l'entrée (les entrées distinctes de la covariance) et de la cible (u, v, w, z, log alpha).
 N_ENTREES: int = len(HERMITIAN_ENTRIES)
-N_CIBLES: int = 5
+CARD_THETA: int = 5
 
 
 class CrosstalkInjectionTransform:
@@ -82,7 +82,7 @@ class CrosstalkInjectionTransform:
         #1er cas : patch contenant un zéro ou une valeur non finie (bord de fauchée) : on écarte le patch, entrée nulle, cible nan.
         if np.any(patch == 0) or not np.all(np.isfinite(patch)):
             return (torch.zeros((N_ENTREES, 1, 1), dtype=torch.complex64),
-                    torch.full((N_CIBLES,), complex(np.nan, np.nan), dtype=torch.complex64))
+                    torch.full((CARD_THETA,), complex(np.nan, np.nan), dtype=torch.complex64))
 
 
         #2ème cas : patch valide : on tire theta_k selon la loi et la graine, on injecte le crosstalk dans la covariance, on normalise par la trace, et on renvoie les entrées et la cible.
@@ -118,7 +118,7 @@ def check_pipeline(loader) -> None:
     lot = next(iter(loader))
     if not (isinstance(lot, (list, tuple)) and len(lot) == 2):
         raise RuntimeError(f"lot de type {type(lot).__name__}, couple (entrées, cibles) attendu : {aide}")
-    for nom, tenseur, forme_attendue in (("entrées", lot[0], (N_ENTREES, 1, 1)), ("cibles", lot[1], (N_CIBLES,))):
+    for nom, tenseur, forme_attendue in (("entrées", lot[0], (N_ENTREES, 1, 1)), ("cibles", lot[1], (CARD_THETA,))):
         if not (isinstance(tenseur, torch.Tensor) and tenseur.dtype == torch.complex64 and tuple(tenseur.shape[1:]) == forme_attendue):
             forme = tuple(tenseur.shape) if isinstance(tenseur, torch.Tensor) else type(tenseur).__name__
             raise RuntimeError(f"{nom} de forme {forme}, (B, {', '.join(map(str, forme_attendue))}) complex64 attendu : {aide}")
