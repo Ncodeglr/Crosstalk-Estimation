@@ -16,7 +16,7 @@ if _CVNN not in sys.path:
 
 from cvnn.transform_registry import register_transform  # noqa: E402
 
-from .injection_transform import CrosstalkInjectionTransform, check_pipeline  # noqa: E402
+from .crosstalk_injection import CrosstalkInjectionTransform, check_pipeline  # noqa: E402
 from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py la construit lui-même)
 from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
 

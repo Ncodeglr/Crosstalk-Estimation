@@ -19,7 +19,7 @@ import torch
 from torch import nn
 from cvnn.models import register_model
 from cvnn.models.linear import SingleLinear
-from .injection_transform import CARD_THETA
+from .crosstalk_injection import CARD_THETA
 
 #: Facteur appliqué à la sortie. Mesure faite sur un patch réel : à l'initialisation par init_weights_mode_aware, la
 #: couche de sortie rend des valeurs dont l'écart quadratique va de 0,2 à 1,8 (médiane 0,7) selon la composante et la
@@ -33,7 +33,7 @@ ECHELLE_SORTIE: float = 0.1
 NORMALISATIONS: tuple[str | None, ...] = (None, "none", "layer", "batch")
 
 
-@register_model("MLP")
+@register_model("MLP") #Ajouté au registre de cvnn, pour que create_model("MLP", ...) le construise.
 class MLP(nn.Module):
     """
     Entrées de la covariance (B, 10, 1, 1) -> (u, v, w, z, log alpha) (B, 5), en complex64.

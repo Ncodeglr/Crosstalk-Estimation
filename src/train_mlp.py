@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 import torch
 import yaml
+from tqdm import tqdm
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
@@ -46,16 +47,17 @@ from cvnn.wandb_utils import finish_wandb_run, log_metrics, setup_wandb  # noqa:
 logger = logging.getLogger("train_mlp")
 
 #: Configuration par défaut : celle du banc d'essai par réinjection.
-CONFIG: Path = RACINE / "configs" / "cvnn_injection.yaml"
+CONFIG: Path = RACINE / "configs" / "cvnn_mlp.yaml"
 
 #: Tranches de crosstalk injecté, en dB, celles des simulations. Le niveau d'un patch est 20 log10 de la moyenne
 #: quadratique de |u|, |v|, |w|, |z| de sa cible ; un patch laissé sans injection forme la tranche « aucune ».
 TRANCHES_DB: tuple[tuple[int, int], ...] = ((-40, -30), (-30, -20), (-20, -15), (-15, -10), (-10, -5))
 
 
-def injection_law(cfg: dict[str, Any]) -> dict[str, Any]:
+def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
     """
-    Les paramètres de la loi d'injection, lus dans la transformation « crosstalk_injection » du YAML, sans sa graine.
+    Les paramètres de CrosstalkSampler (la loi d'injection), lus dans la transformation « crosstalk_injection » du YAML,
+    sans sa graine.
 
     Raises: ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection ».
     """
@@ -65,9 +67,10 @@ def injection_law(cfg: dict[str, Any]) -> dict[str, Any]:
     raise ValueError("data.transforms ne contient pas la transformation « crosstalk_injection »")
 
 
-def evaluate(model: torch.nn.Module, loader, device: torch.device) -> dict[str, float]:
+
+def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, device: torch.device) -> dict[str, float]:
     """
-    Erreurs médianes du réseau sur loader, comme dans les simulations. Les patchs écartés (cible nan) sont ignorés.
+    Erreurs médianes du réseau sur test_loader, comme dans les simulations. Les patchs écartés (cible nan) sont ignorés.
 
     Returns:
         pour la tranche « aucune » et chaque tranche de TRANCHES_DB (clé « -40/-30 », etc.) : la médiane, en dB, de
@@ -79,7 +82,7 @@ def evaluate(model: torch.nn.Module, loader, device: torch.device) -> dict[str, 
     model.eval()
     sorties, cibles = [], []
     with torch.no_grad():
-        for entrees, cible in loader:
+        for entrees, cible in tqdm(test_loader, desc="Test"):
             sorties.append(model(entrees.to(device)).cpu())
             cibles.append(cible)
     sorties, cibles = torch.cat(sorties).numpy(), torch.cat(cibles).numpy()
@@ -104,12 +107,17 @@ def evaluate(model: torch.nn.Module, loader, device: torch.device) -> dict[str, 
 
 def main(chemin_config: Path = CONFIG) -> dict[str, float]:
     """Déroule l'entraînement puis l'évaluation (étapes de la docstring du module) ; rend les résultats du test."""
-    #1. Configuration.
+    # ==========================================
+    # 1. CONFIGURATION
+    # ==========================================
     cfg = load_config(chemin_config)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    #2. Données. set_seed juste avant get_dataloaders, comme src/patchs.py : même découpage que la chaîne A.
+    # ==========================================
+    # 2. DONNÉES (train_loader, valid_loader, test_loader)
+    # ==========================================
+    # set_seed juste avant get_dataloaders, comme src/patchs.py : même découpage que la chaîne A.
     set_seed(int(cfg["seed"]))
     cfg = validate_and_correct_config(cfg)
     chargeurs = get_dataloaders(cfg, use_cuda)
@@ -119,35 +127,49 @@ def main(chemin_config: Path = CONFIG) -> dict[str, float]:
     for chargeur in chargeurs:
         check_pipeline(chargeur)
 
-    #3. wandb, après les données : la configuration envoyée contient ce que cvnn en a déduit.
+    # ==========================================
+    # 3. WANDB ET DOSSIER DE SORTIE
+    # ==========================================
+    # Après les données : la configuration envoyée à wandb contient ce que cvnn en a déduit.
     wandb_log, run_name = setup_wandb(cfg)
     logdir = Path(cfg["logging"]["logdir"]) / f"{cfg['task']}_{run_name or time.strftime('%Y%m%d_%H%M%S')}"
     logdir.mkdir(parents=True, exist_ok=True)
     (logdir / "config.yml").write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
     logger.info("dossier de sortie : %s", logdir)
 
-    #4. Modèle.
+    # ==========================================
+    # 4. INITIALISATION DU MODÈLE
+    # ==========================================
     model = create_model(cfg["model"]["class"], **get_model_params(cfg))
     model.apply(lambda m: init_weights_mode_aware(m, cfg["model"]["layer_mode"]))
     model.to(device)
 
-    #5. Perte et optimiseur.
-    loss_fn = CrosstalkLoss(**injection_law(cfg)).to(device)
+    # ==========================================
+    # 5. PERTE ET OPTIMISEUR
+    # ==========================================
+    loss_fn = CrosstalkLoss(**sampler_params_yaml(cfg)).to(device)
     optimizer = getattr(torch.optim, cfg["optim"]["algo"])(model.parameters(), **cfg["optim"]["params"])
 
-    #6. Entraînement.
+    # ==========================================
+    # 6. ENTRAÎNEMENT ET VALIDATION (train_model de cvnn)
+    # ==========================================
+    # À chaque époque : phase d'entraînement sur train_loader, puis phase de validation sur valid_loader.
+    # Le meilleur modèle en validation est sauvegardé dans best_model.pt.
     historique = train_model(model, train_loader, valid_loader, cfg, logdir, device, loss_fn, optimizer)
     (logdir / "historique.yaml").write_text(yaml.safe_dump(dict(historique), sort_keys=False))
 
-    #7. Évaluation du meilleur modèle en validation.
+    # ==========================================
+    # 7. ÉVALUATION FINALE (test_loader, une seule fois, sur best_model.pt)
+    # ==========================================
     model.load_state_dict(torch.load(logdir / "best_model.pt", map_location=device)["model_state_dict"])
     resultats = evaluate(model, test_loader, device)
     (logdir / "evaluation.yaml").write_text(yaml.safe_dump(resultats, sort_keys=False))
     log_metrics(wandb_log, resultats, prefix="test")
-    logger.info("test (%d patchs valides) : %s", resultats["patchs"],
-                " | ".join(f"{nom} {valeur:.2f}" for nom, valeur in resultats.items() if nom != "patchs"))
+    logger.info("test (%d patchs valides) : %s", resultats["patchs"]," | ".join(f"{nom} {valeur:.2f}" for nom, valeur in resultats.items() if nom != "patchs"))
 
-    #8. Fin du run wandb.
+    # ==========================================
+    # 8. FIN DU RUN WANDB
+    # ==========================================
     finish_wandb_run()
     return resultats
 

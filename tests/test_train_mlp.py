@@ -17,7 +17,7 @@ import yaml
 
 from src.crosstalk.deep_learning import CrosstalkLoss, MLP
 from src.crosstalk.crosstalk_sampler import CrosstalkSampler
-from src.train_mlp import CONFIG, evaluate, injection_law, main
+from src.train_mlp import CONFIG, evaluate, sampler_params_yaml, main
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -34,7 +34,7 @@ def config_du_banc() -> dict:
 def test_la_loi_lue_est_celle_de_la_transformation_sans_sa_graine():
     config = config_du_banc()
     params = config["data"]["transforms"][0]["params"]
-    loi = injection_law(config)
+    loi = sampler_params_yaml(config)
     assert "seed" not in loi and loi == {cle: valeur for cle, valeur in params.items() if cle != "seed"}
     assert CrosstalkSampler(**loi) == CrosstalkSampler(**{cle: valeur for cle, valeur in params.items() if cle != "seed"})
 
@@ -43,7 +43,7 @@ def test_une_config_sans_la_transformation_est_refusee():
     config = config_du_banc()
     config["data"]["transforms"] = []
     with pytest.raises(ValueError):
-        injection_law(config)
+        sampler_params_yaml(config)
 
 
 # ----------------------------------------------------------------- evaluate

@@ -52,7 +52,7 @@ import torch
 from torch import nn
 from torchcvnn.nn.modules import ComplexMSELoss
 from ..crosstalk_sampler import CrosstalkSampler
-from .injection_transform import CARD_THETA
+from .crosstalk_injection import CARD_THETA
 
 #: Noms des composantes de la cible, dans l'ordre de CrosstalkInjectionTransform. Ce sont les clés des métriques.
 COMPOSANTES: tuple[str, ...] = ("u", "v", "w", "z", "log_alpha")
@@ -93,11 +93,11 @@ class CrosstalkLoss(nn.Module):
         #Buffer et non paramètre : m suit le réseau sur le device (.to(device)) sans être appris.
         self.register_buffer("mean_squared", torch.from_numpy(mean_squared_parameters(CrosstalkSampler(**loi))).float())
 
-    def forward(self, sorties: torch.Tensor, cibles: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        if sorties.ndim != 2 or sorties.shape[1] != CARD_THETA or sorties.shape != cibles.shape:
-            raise ValueError(f"sorties {tuple(sorties.shape)} et cibles {tuple(cibles.shape)} : (B, {CARD_THETA}) attendu pour les deux")
+    def forward(self, theta_estimate: torch.Tensor, theta_true: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if theta_estimate.ndim != 2 or theta_estimate.shape[1] != CARD_THETA or theta_estimate.shape != theta_true.shape:
+            raise ValueError(f"sorties {tuple(theta_estimate.shape)} et cibles {tuple(theta_true.shape)} : (B, {CARD_THETA}) attendu pour les deux")
 
-        valides = torch.isfinite(cibles).all(dim=1)                                #Étape 1 : (B,), les patchs dont la cible est finie.
-        erreur = self.mse(sorties[valides], cibles[valides]) / self.mean_squared   #Étape 2 : (V, 5), |ŷ - y|² / m sur les seuls patchs valides.
-        termes = erreur.sum(dim=0) / valides.sum().clamp(min=1)                    #Étape 3 : (5,), moyenne sur les patchs valides ; 0 si V = 0.
+        valides = torch.isfinite(theta_true).all(dim=1) #Étape 1 : (B,), les patchs dont la cible est finie.
+        erreur = self.mse(theta_estimate[valides], theta_true[valides]) / self.mean_squared   #Étape 2 : (V, 5), |ŷ - y|² / m sur les seuls patchs valides.
+        termes = erreur.sum(dim=0) / valides.sum().clamp(min=1) #Étape 3 : (5,), moyenne sur les patchs valides ; 0 si V = 0.
         return termes.sum(), {nom: terme.detach() for nom, terme in zip(COMPOSANTES, termes)}

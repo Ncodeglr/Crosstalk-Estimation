@@ -153,7 +153,7 @@ def test_une_configuration_invalide_est_refusee_a_la_construction(reglages, erre
 
 def test_les_parametres_du_yaml_construisent_la_loi_du_yaml():
     """cvnn construit la transformation avec CrosstalkInjectionTransform(**params)."""
-    params = yaml.safe_load((RACINE / "configs" / "cvnn_injection.yaml").read_text())["data"]["transforms"][0]["params"]
+    params = yaml.safe_load((RACINE / "configs" / "cvnn_mlp.yaml").read_text())["data"]["transforms"][0]["params"]
     transformation = CrosstalkInjectionTransform(**params)
     assert transformation.seed == 0
     assert transformation.sampler == CrosstalkSampler()
@@ -217,13 +217,13 @@ def chargeurs(nom_yaml: str, **reglages_data):
 
 @sur_la_pile
 def test_les_chargeurs_de_cvnn_rendent_le_format_attendu():
-    for chargeur in chargeurs("cvnn_injection.yaml"):
+    for chargeur in chargeurs("cvnn_mlp.yaml"):
         check_pipeline(chargeur)
 
 
 @sur_la_pile
 def test_le_decoupage_est_identique_a_celui_de_la_chaine_a():
-    banc = chargeurs("cvnn_injection.yaml")
+    banc = chargeurs("cvnn_mlp.yaml")
     chaine_a = chargeurs("data_uavsar.yaml")
     for partition_banc, partition_a in zip(banc, chaine_a):
         assert list(partition_banc.dataset.indices) == list(partition_a.dataset.indices)
@@ -233,6 +233,6 @@ def test_le_decoupage_est_identique_a_celui_de_la_chaine_a():
 def test_une_loi_invalide_dans_le_yaml_est_detectee_par_check_pipeline():
     """cvnn ignore la transformation qu'il ne peut pas construire : check_pipeline doit s'en apercevoir."""
     transformations = [{"name": "crosstalk_injection", "params": {"crosstalk_db": [-5.0, -40.0]}}]
-    _, _, test = chargeurs("cvnn_injection.yaml", transforms=transformations)
+    _, _, test = chargeurs("cvnn_mlp.yaml", transforms=transformations)
     with pytest.raises(RuntimeError, match="crosstalk_injection"):
         check_pipeline(test)

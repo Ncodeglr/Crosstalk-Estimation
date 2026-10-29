@@ -2,7 +2,8 @@
 # Lancé par src/train_mlp.py, depuis la racine du dépôt.
 
 
-task: crosstalk_injection # Préfixe du dossier de sortie.
+
+task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 300 # Graine globale de cvnn (découpage, mélange, initialisation), la même que data_uavsar.yaml.
 nepochs: 30
 
@@ -32,7 +33,7 @@ data:
   # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
   # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/patch_rng.py) de ses constantes.
   transforms:
-    - name: crosstalk_injection # src/crosstalk/deep_learning/injection_transform.py : patch -> (10 entrées de C, theta_k)
+    - name: crosstalk_injection # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (10 entrées de C, theta_k)
       params:
         seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-40.0, -5.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
