@@ -203,7 +203,7 @@ sur_la_pile = pytest.mark.skipif(not PILE.is_dir(), reason="pile UAVSAR absente"
 
 
 def chargeurs(nom_yaml: str, **reglages_data):
-    """Les trois chargeurs de cvnn pour un YAML du projet, comme les construisent patchs.py et train_cvnn.py."""
+    """Les trois chargeurs de cvnn pour un YAML du projet, comme les construisent patchs.py et train_mlp.py."""
     from cvnn.data import get_dataloaders, validate_and_correct_config
     from cvnn.utils import set_seed
 

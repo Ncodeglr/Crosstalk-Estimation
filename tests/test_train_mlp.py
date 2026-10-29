@@ -1,5 +1,5 @@
 """
-Tests du script src/train_cvnn.py :
+Tests du script src/train_mlp.py :
 
 1. la loi d'injection lue dans le YAML, celle de la transformation ;
 2. evaluate : erreurs médianes par tranche sur un cas construit à la main ;
@@ -17,7 +17,7 @@ import yaml
 
 from src.crosstalk.deep_learning import CrosstalkLoss, MLP
 from src.crosstalk.injection import InjectionLaw
-from src.train_cvnn import CONFIG, evaluate, injection_law, main
+from src.train_mlp import CONFIG, evaluate, injection_law, main
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -89,7 +89,7 @@ def test_le_yaml_construit_le_mlp_des_simulations():
     config["data"].update(inferred_input_channels=10, inferred_input_size=1)  # ce que cvnn déduit du premier lot
     reseau = create_model(config["model"]["class"], **get_model_params(config))
     assert isinstance(reseau, MLP)
-    assert sum(p.numel() * (2 if p.is_complex() else 1) for p in reseau.parameters()) == 70_157
+    assert sum(p.numel() * (2 if p.is_complex() else 1) for p in reseau.parameters()) == 86_669
 
 
 def test_l_echeance_cosinus_finit_avec_l_entrainement():

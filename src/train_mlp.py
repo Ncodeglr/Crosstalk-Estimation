@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 """
-Entraîne le CVNN du banc d'essai par réinjection, puis l'évalue sur la partition de test.
-
-Usage, depuis la racine du dépôt (le trainpath du YAML est relatif à elle) :
-    python src/train_cvnn.py [configs/cvnn_injection.yaml]
-
 Le script enchaîne les briques de cvnn, sans BaseExperiment :
     1. configuration : le YAML (load_config de cvnn), le device ;
     2. données : les chargeurs de cvnn, puis check_pipeline sur chacun ;
@@ -30,7 +25,6 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
-
 import numpy as np
 import torch
 import yaml
@@ -49,7 +43,7 @@ from cvnn.train import train_model  # noqa: E402
 from cvnn.utils import set_seed  # noqa: E402
 from cvnn.wandb_utils import finish_wandb_run, log_metrics, setup_wandb  # noqa: E402
 
-logger = logging.getLogger("train_cvnn")
+logger = logging.getLogger("train_mlp")
 
 #: Configuration par défaut : celle du banc d'essai par réinjection.
 CONFIG: Path = RACINE / "configs" / "cvnn_injection.yaml"
@@ -63,8 +57,7 @@ def injection_law(cfg: dict[str, Any]) -> dict[str, Any]:
     """
     Les paramètres de la loi d'injection, lus dans la transformation « crosstalk_injection » du YAML, sans sa graine.
 
-    Raises:
-        ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection ».
+    Raises: ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection ».
     """
     for transformation in cfg["data"].get("transforms") or []:
         if transformation.get("name") == "crosstalk_injection":

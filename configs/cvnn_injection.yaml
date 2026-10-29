@@ -1,5 +1,5 @@
 # Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04).
-# Lancé par src/train_cvnn.py, depuis la racine du dépôt.
+# Lancé par src/train_mlp.py, depuis la racine du dépôt.
 
 
 task: crosstalk_injection # Préfixe du dossier de sortie.
@@ -10,9 +10,9 @@ model:
   class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
   num_layers: 3
-  channels_width: 128
-  activation: modReLU # Cherchée par nom dans torchcvnn : modReLU, CReLU, zReLU, Cardioid, etc.
-  normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de model.py).
+  channels_width: 64 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 64, 128, 256.
+  activation: modReLU # [modReLU, CReLU, zReLU, Cardioid]
+  normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de mlp_model.py).
 
 data:
   dataset:
