@@ -23,7 +23,7 @@ from .crosstalk_injection import (  # noqa: E402
     ResNetInjectionTransform,
     check_pipeline,
 )
-from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py la construit lui-même)
+from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py et src/train_resnet.py la construisent eux-mêmes)
 from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
 from .resnet_model import ResNet  # noqa: E402  (idem)
 

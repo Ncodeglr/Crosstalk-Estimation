@@ -50,8 +50,7 @@ class ResNet(CvnnResNet):
     Args:
         channels_width, num_layers, activation, normalization_layer: ceux de l'encodeur de cvnn, que la tête reprend.
         layer_mode: seul « complex » est accepté : l'entrée et la cible sont complexes.
-        upsampling_layer: rendu par get_model_params, sans objet pour un encodeur ; ignoré, comme dans build_resnet de
-            cvnn.
+        upsampling_layer: rendu par get_model_params, sans objet pour un encodeur ; ignoré, comme dans build_resnet de cvnn.
         **params: les autres paramètres du ResNet de cvnn, tirés de la section model du YAML par get_model_params
             (num_channels, input_size, num_blocks, downsampling_layer, residual, dropout, projection_layer,
             projection_config, gumbel_softmax). num_classes est fixé à CARD_THETA.
@@ -72,8 +71,7 @@ class ResNet(CvnnResNet):
         self.convnet.bottleneck = nn.Sequential(
             c_nn.AdaptiveAvgPool2d(1), #La moyenne spatiale de la tête de cvnn : (B, 256, 4, 4) -> (B, 256, 1, 1).
             nn.Flatten(1),
-            SingleLinear(largeur, largeur, linear_mode=layer_mode, activation=activation,
-                         normalization=normalization_layer),
+            SingleLinear(largeur, largeur, linear_mode=layer_mode, activation=activation, normalization=normalization_layer),
             SingleLinear(largeur, CARD_THETA, linear_mode=layer_mode, activation=None), #Sans activation : la sortie peut prendre toute valeur complexe.
         )
 

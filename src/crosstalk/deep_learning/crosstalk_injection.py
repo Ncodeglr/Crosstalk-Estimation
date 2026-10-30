@@ -4,19 +4,20 @@ et « crosstalk_injection_resnet ».
 
 Rôle
 ----
-cvnn lit un patch réel (4, H, W) ; ces transformations en font le couple (entrée, cible) du réseau. L'injection leur
-est commune (CrosstalkInjector.inject) :
+cvnn lit un patch réel (4, H, W) ; ces transformations en font le couple (entrée, cible) du réseau. 
+L'injection leur est commune (CrosstalkInjector.inject) :
     1. un patch contenant un zéro ou une valeur non finie (bord de fauchée) est écarté : entrée nulle, cible nan ;
        la perte et l'évaluation ignorent les cibles nan ;
     2. theta_k = loi.generate(patch_rng(patch, seed)), le même pour un patch donné à chaque époque ;
-    3. le crosstalk est injecté dans les pixels : le vecteur k de chaque pixel devient D(theta_k) k
-       (matrix.apply_distortion) ;
+    3. le crosstalk est injecté dans les pixels : le vecteur k de chaque pixel devient D(theta_k) k (matrix.apply_distortion) ;
     4. le patch injecté est divisé par la racine de la trace de sa covariance, qui vaut alors 1 : le crosstalk ne
        dépend pas de l'échelle du patch.
+
 Chaque transformation en tire l'entrée de son réseau, en complex64 :
     - « crosstalk_injection_mlp » (MLPInjectionTransform) : les 10 entrées distinctes de la covariance du patch injecté
       (covariance.covariance_entries), rangées comme les 10 canaux d'une image 1 x 1, soit (10, 1, 1) ;
     - « crosstalk_injection_resnet » (ResNetInjectionTransform) : le patch injecté lui-même, (4, H, W).
+
 La cible est la même pour les deux : (u, v, w, z, log alpha) de theta_k, (5,) en complex64. Le réseau prédit
 log alpha : alpha = exp(sortie) ne peut pas s'annuler. Pour un même patch, le MLP et le ResNet voient donc le même
 theta_k, et la covariance de l'entrée du ResNet est l'entrée du MLP : leurs erreurs se comparent patch par patch.
@@ -26,7 +27,8 @@ Le DataLoader de cvnn regroupe ces couples en lots ((B, 10, 1, 1) ou (B, 4, H, W
 d'entraînement reçoit sous la forme (inputs, targets).
 
 Les noms suivent la règle du projet : le nom d'une brique propre à un modèle contient ce modèle (MLPInjectionTransform,
-ResNetInjectionTransform) ; celui d'une brique commune n'en contient aucun (CrosstalkInjector, check_pipeline).
+ResNetInjectionTransform) ; celui d'une brique commune n'en contient aucun (CrosstalkInjector, check_pipeline,
+injection_transform_yaml).
 
 Pourquoi (10, 1, 1) et non (10,) pour le MLP : à la construction des chargeurs, cvnn lit un lot pour en déduire le
 nombre de canaux et la taille d'entrée, et il n'accepte que des images (B, C, H, W) (cvnn/src/cvnn/data.py,
@@ -42,6 +44,7 @@ check_pipeline vérifie qu'un lot a bien la forme que produit la transformation 
 """
 
 from __future__ import annotations
+from typing import Any
 import numpy as np
 import torch
 from ..covariance import (
@@ -81,13 +84,8 @@ class CrosstalkInjector:
     n'ajoute que la représentation du patch injecté qu'attend son réseau.
 
     Args:
-        seed: graine des injections (src/crosstalk/patch_rng.py), entier positif ou nul. La changer change toutes les
-            injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
+        seed: graine des injections (src/crosstalk/patch_rng.py). La changer change toutes les injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
         **loi: les champs de crosstalk_sampler.CrosstalkSampler ; ceux qui manquent prennent leur valeur par défaut.
-
-    Raises:
-        TypeError: si seed n'est pas un entier, ou si loi contient un champ inconnu de CrosstalkSampler.
-        ValueError: si seed est négatif, ou si la loi est invalide.
     """
 
     def __init__(self, seed: int = 0, **loi) -> None:
@@ -120,7 +118,7 @@ class CrosstalkInjector:
         injecte = apply_distortion(patch.astype(np.complex128), theta)   # complex128 : apply_distortion garde le type
         injecte /= np.sqrt(np.trace(polarimetric_covariance(injecte)).real)
         u, v, w, z, alpha = theta.to_vector()
-        return injecte, np.array([u, v, w, z, np.log(alpha)])
+        return injecte, np.array([u, v, w, z, np.log(alpha)]) #injecte est le patch avec le crosstalk injecté, normalisé pour que sa covariance soit de trace 1.
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(seed={self.seed}, {self.sampler})"
@@ -128,8 +126,8 @@ class CrosstalkInjector:
 
 class MLPInjectionTransform(CrosstalkInjector):
     """
-    Patch réel (4, H, W) -> (entrée du MLP (10, 1, 1), cible (5,)), en complex64 : les 10 entrées distinctes de la
-    covariance du patch injecté. Mêmes arguments que CrosstalkInjector.
+    Patch réel (4, H, W) -> (entrée du MLP (10, 1, 1), cible (5,)), en complex64.
+    Les 10 entrées distinctes de la covariance du patch injecté. Mêmes arguments que CrosstalkInjector.
     """
 
     def __call__(self, patch: torch.Tensor | np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
@@ -149,7 +147,7 @@ class MLPInjectionTransform(CrosstalkInjector):
 
 class ResNetInjectionTransform(CrosstalkInjector):
     """
-    Patch réel (4, H, W) -> (entrée du ResNet (4, H, W), cible (5,)), en complex64 : le patch injecté lui-même.
+    Patch réel (4, H, W) -> (entrée du ResNet (4, H, W), cible (5,)), en complex64.
     Mêmes arguments que CrosstalkInjector. Pour un même patch, la covariance de l'entrée est l'entrée du MLP.
     """
 
@@ -178,9 +176,7 @@ def check_pipeline(loader, forme_entree: tuple[int, ...] = (N_ENTREES, 1, 1)) ->
         forme_entree: la forme d'une entrée sans l'axe du lot : (N_ENTREES, 1, 1) pour le MLP (par défaut), (4, H, W)
             pour le ResNet.
 
-    Raises:
-        RuntimeError: si le premier lot n'est pas un couple (entrées (B, *forme_entree), cibles (B, 5)) de tenseurs
-            complex64.
+    Raises: Si le premier lot n'est pas un couple (entrées (B, *forme_entree), cibles (B, 5)) de tenseurs de type complex64.
     """
     aide = ("la transformation d'injection (« crosstalk_injection_mlp » ou « crosstalk_injection_resnet ») n'a pas été "
             "appliquée. cvnn ignore une transformation qu'il ne peut pas construire (avertissement « Failed to add "
@@ -195,3 +191,19 @@ def check_pipeline(loader, forme_entree: tuple[int, ...] = (N_ENTREES, 1, 1)) ->
             raise RuntimeError(f"{nom} de forme {forme}, (B, {', '.join(map(str, forme_attendue))}) complex64 attendu : {aide}")
     if lot[0].shape[0] != lot[1].shape[0]:
         raise RuntimeError(f"{lot[0].shape[0]} entrées pour {lot[1].shape[0]} cibles dans un même lot")
+
+
+def injection_transform_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
+    """
+    La transformation d'injection du YAML, quel que soit le modèle : l'entrée de data.transforms dont le nom commence
+    par « crosstalk_injection » (« crosstalk_injection_mlp » ou « crosstalk_injection_resnet »), avec son nom et ses
+    paramètres. Le cache (cache_name) et la perte (sampler_params_yaml) la trouvent ainsi par la même règle.
+
+    Raises: ValueError: si data.transforms ne contient pas exactement une transformation d'injection.
+    """
+    injections = [transformation for transformation in cfg["data"].get("transforms") or []
+                  if str(transformation.get("name")).startswith("crosstalk_injection")]
+    if len(injections) != 1:
+        raise ValueError(f"data.transforms contient {len(injections)} transformations d'injection, une attendue "
+                         f"(crosstalk_injection_mlp ou crosstalk_injection_resnet)")
+    return injections[0]

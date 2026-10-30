@@ -22,6 +22,9 @@ dépôt, comme data.dataset.trainpath ; les fichiers de wandb vont dans <racine>
     evaluation.yaml  les erreurs médianes sur le test, par tranche de crosstalk injecté (voir evaluate).
 Le cache, lui, est écrit dans cache/<transformation>_<empreinte>/ (src/crosstalk/deep_learning/cache.py), et réutilisé
 tant que les réglages des données ne changent pas.
+
+Le script du ResNet, src/train_resnet.py, suit les mêmes étapes. Les fonctions communes aux deux scripts (evaluate,
+sampler_params_yaml, from_repo_root, resolve_trainpath) sont dans src/crosstalk/deep_learning/experiment.py.
 """
 
 from __future__ import annotations
@@ -31,11 +34,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
-import numpy as np
 import torch
 import yaml
-from tqdm import tqdm
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
@@ -43,6 +43,7 @@ sys.path.insert(0, str(RACINE))
 # Importer ce paquet ajoute cvnn au chemin et enregistre la transformation et le réseau dans ses registres.
 from src.crosstalk.deep_learning import CrosstalkLoss, cached_loaders, check_pipeline  # noqa: E402
 from src.crosstalk.deep_learning.cache import DOSSIER_CACHE  # noqa: E402
+from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, resolve_trainpath, sampler_params_yaml  # noqa: E402
 from cvnn.config import load_config  # noqa: E402
 from cvnn.config_utils import get_model_params  # noqa: E402
 from cvnn.data import get_dataloaders, validate_and_correct_config  # noqa: E402
@@ -56,84 +57,6 @@ logger = logging.getLogger("train_mlp")
 
 #: Configuration par défaut : celle du banc d'essai par réinjection.
 CONFIG: Path = RACINE / "configs" / "cvnn_mlp.yaml"
-
-#: Tranches de crosstalk injecté, en dB, celles des simulations. Le niveau d'un patch est 20 log10 de la moyenne
-#: quadratique de |u|, |v|, |w|, |z| de sa cible ; un patch laissé sans injection forme la tranche « aucune ».
-TRANCHES_DB: tuple[tuple[int, int], ...] = ((-40, -30), (-30, -20), (-20, -15), (-15, -10), (-10, -5))
-
-
-def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
-    """
-    Les paramètres de CrosstalkSampler (la loi d'injection), lus dans la transformation « crosstalk_injection_mlp » du
-    YAML, sans sa graine.
-
-    Raises: ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection_mlp ».
-    """
-    for transformation in cfg["data"].get("transforms") or []:
-        if transformation.get("name") == "crosstalk_injection_mlp":
-            return {cle: valeur for cle, valeur in (transformation.get("params") or {}).items() if cle != "seed"}
-    raise ValueError("data.transforms ne contient pas la transformation « crosstalk_injection_mlp »")
-
-
-def from_repo_root(chemin: str | Path) -> Path:
-    """
-    Un chemin du YAML : relatif, il se lit depuis la racine du dépôt, et non depuis le dossier de lancement, pour que
-    le script marche aussi bien lancé depuis la racine que depuis src/ ; absolu, il est gardé tel quel.
-    """
-    chemin = Path(chemin)
-    return chemin if chemin.is_absolute() else RACINE / chemin
-
-
-def resolve_trainpath(cfg: dict[str, Any]) -> Path:
-    """
-    Le dossier de la pile (data.dataset.trainpath du YAML), lu par from_repo_root.
-
-    Raises: FileNotFoundError: si le dossier ne contient aucun fichier .slc. Sans ce contrôle, torchcvnn construirait un
-        jeu de données vide, et cvnn échouerait plus loin sur une erreur obscure (« num_samples=0 »).
-    """
-    pile = from_repo_root(cfg["data"]["dataset"]["trainpath"])
-    if not any(pile.glob("*.slc")):
-        raise FileNotFoundError(f"aucun fichier .slc dans {pile} (data.dataset.trainpath du YAML)")
-    return pile
-
-
-def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, device: torch.device) -> dict[str, float]:
-    """
-    Erreurs médianes du réseau sur test_loader, comme dans les simulations. Les patchs écartés (cible nan) sont ignorés.
-
-    Returns:
-        pour la tranche « aucune » et chaque tranche de TRANCHES_DB (clé « -40/-30 », etc.) : la médiane, en dB, de
-        10 log10 de la moyenne de |ŷ - y|² sur u, v, w, z ; nan si la tranche est vide.
-        « n_<tranche> » (« n_aucune », « n_-40/-30 », etc.) : le nombre de patchs de chaque tranche.
-        « log_alpha » : la médiane de |ŷ - y| sur log alpha, sur tous les patchs valides.
-        « patchs » : le nombre de patchs valides.
-    """
-    #Étape 1 : prédictions et cibles de tout le chargeur, sur CPU.
-    model.eval()
-    sorties, cibles = [], []
-    with torch.no_grad():
-        for entrees, cible in tqdm(test_loader, desc="Test"):
-            sorties.append(model(entrees.to(device)).cpu())
-            cibles.append(cible)
-    sorties, cibles = torch.cat(sorties).numpy(), torch.cat(cibles).numpy()
-
-    #Étape 2 : Filtre les patchs avec des valeurs NaN dans la cible
-    valides = np.isfinite(cibles).all(axis=1) #Renvoie un tableau booléen (B,). Les patchs invalides sont ceux qui contiennent un zéro ou une valeur non finie dans la covariance, et qui ont été écartés par MLPInjectionTransform.
-    sorties, cibles = sorties[valides], cibles[valides] #Applique le filtre aux prédictions et aux cibles. Exemple : si 10 % des patchs sont invalides, sorties et cibles passent de (1000, 5) à (900, 5).
-
-    #Étape 3 : erreur et niveau de crosstalk injecté de chaque patch, en dB ; un patch sans injection a un niveau -inf.
-    erreur_db = 10 * np.log10(np.mean(np.abs(sorties[:, :4] - cibles[:, :4]) ** 2, axis=1))
-    with np.errstate(divide="ignore"): #Si un patch n'a pas de crosstalk injecté, sa cible vaut zéro et son niveau est -inf. La médiane de la tranche « aucune » est donc -inf, ce qui est correct.
-        niveau_db = 10 * np.log10(np.mean(np.abs(cibles[:, :4]) ** 2, axis=1)) #Calcul du niveau de crosstalk injecté, en dB, pour chaque patch. Un patch sans injection a un niveau -inf.
-
-    #Étape 4 : médiane par tranche.
-    tranches = {"aucune": niveau_db == -np.inf} #Création d'un dictionnaire à une seule entrée. La clé est "aucune". La valeur est un masque, cad un tableau de booléens avec une case par patch
-    tranches.update({f"{a}/{b}": (niveau_db >= a) & (niveau_db < b) for a, b in TRANCHES_DB})
-    resultats = {nom: float(np.median(erreur_db[dans])) if dans.any() else float("nan") for nom, dans in tranches.items()}
-    resultats.update({f"n_{nom}": int(dans.sum()) for nom, dans in tranches.items()}) #Effectif de chaque tranche : le nombre de True de son masque. Une médiane sur 3 000 patchs pèse moins qu'une médiane sur 20 000.
-    resultats["log_alpha"] = float(np.median(np.abs(sorties[:, 4] - cibles[:, 4])))
-    resultats["patchs"] = int(valides.sum())
-    return resultats
 
 
 def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> dict[str, float]:
@@ -160,7 +83,7 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
         raise ValueError("data.test_ratio doit être > 0 : l'évaluation se fait sur la partition de test")
     for chargeur in chargeurs:
         check_pipeline(chargeur)
-    # Les mêmes couples (entrée, cible), servis depuis le cache plutôt que relus dans la pile à chaque époque.
+    # Les mêmes couples (entrées (B, 10, 1, 1), cibles (B, 5)), servis depuis le cache plutôt que relus dans la pile à chaque époque.
     train_loader, valid_loader, test_loader = cached_loaders(chargeurs, cfg, dossier_cache)
 
     # ==========================================

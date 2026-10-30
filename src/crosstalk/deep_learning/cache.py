@@ -57,6 +57,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, Subset, TensorDataset
 from tqdm import tqdm
+from .crosstalk_injection import injection_transform_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -90,17 +91,12 @@ def fingerprint(cfg: dict[str, Any]) -> str:
 
 def cache_name(cfg: dict[str, Any]) -> str:
     """
-    Le nom du dossier du cache : le nom de la transformation d'injection du YAML, puis l'empreinte, par exemple
-    crosstalk_injection_mlp_7738040492d537fa.
+    Le nom du dossier du cache : le nom de la transformation d'injection du YAML (injection_transform_yaml), puis
+    l'empreinte, par exemple crosstalk_injection_mlp_8d53430c7aecbff4.
 
     Raises: ValueError: si data.transforms ne contient pas exactement une transformation d'injection.
     """
-    noms = [t.get("name") for t in cfg["data"].get("transforms") or []
-            if str(t.get("name")).startswith("crosstalk_injection")]
-    if len(noms) != 1:
-        raise ValueError(f"data.transforms contient {len(noms)} transformations d'injection, une attendue "
-                         f"(crosstalk_injection_mlp ou crosstalk_injection_resnet)")
-    return f"{noms[0]}_{fingerprint(cfg)}"
+    return f"{injection_transform_yaml(cfg)['name']}_{fingerprint(cfg)}"
 
 
 def _partitions(chargeurs, cfg: dict[str, Any]) -> list[tuple[str, DataLoader, Dataset, list[int]]]:
