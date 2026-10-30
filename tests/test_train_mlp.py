@@ -151,7 +151,7 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
     monkeypatch.delenv("WANDB_DIR")      # absent pendant le test, rétabli ensuite par monkeypatch
     resultats = main(petite_config(tmp_path), dossier_cache=tmp_path / "cache")
 
-    assert len(list((tmp_path / "cache").glob("mlp_*.pt"))) == 1
+    assert len(list((tmp_path / "cache").glob("crosstalk_injection_mlp_*"))) == 1
     assert os.environ["WANDB_DIR"] == str(RACINE)   # wandb écrit à la racine, et non dans src/
 
     (sortie,) = (tmp_path / "logs").iterdir()
@@ -180,7 +180,7 @@ def test_la_graine_d_entrainement_change_l_entrainement_mais_pas_le_decoupage(tm
     assert all(meme[cle] == pytest.approx(meme_bis[cle], rel=1e-6) for cle in meme)
     assert meme["train_loss"] != pytest.approx(autre["train_loss"], rel=1e-6)
     # Un seul cache, relu par les trois runs : il vérifie le découpage à chaque relecture, qui n'a donc pas changé.
-    assert len(list((tmp_path / "cache").glob("mlp_*.pt"))) == 1
+    assert len(list((tmp_path / "cache").glob("crosstalk_injection_mlp_*"))) == 1
 
 
 @sur_la_pile

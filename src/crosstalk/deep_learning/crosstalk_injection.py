@@ -58,6 +58,14 @@ from ..matrix import apply_distortion
 N_ENTREES: int = len(HERMITIAN_ENTRIES)
 CARD_THETA: int = 5
 
+#: Facteur appliqué à la sortie des deux réseaux. Mesures sur un patch réel, à l'initialisation par
+#: init_weights_mode_aware : la couche de sortie rend des valeurs dont l'écart quadratique va de 0,2 à 1,8 (médiane 0,7)
+#: pour le MLP (64, 128, 256 comme 128, 128, 128), et de 0,06 à 0,88 (médiane 0,28) pour le ResNet (largeur 16,
+#: 4 blocs, CReLU), selon la composante et la graine. Sous la loi par défaut, les cibles valent 0,14 (u, v, w, z) et
+#: 0,33 (log alpha). Avec ce facteur, les premières prédictions sont proches de zéro, c'est-à-dire de la prédiction
+#: « sans crosstalk », plutôt qu'un décalage aléatoire plus grand que les cibles.
+ECHELLE_SORTIE: float = 0.1
+
 
 def _couple_ecarte(forme_entree: tuple[int, ...]) -> tuple[torch.Tensor, torch.Tensor]:
     """Le couple d'un patch écarté : entrée nulle de la forme demandée, cible nan, que la perte et l'évaluation ignorent."""

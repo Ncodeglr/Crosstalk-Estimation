@@ -2,8 +2,8 @@
 Ce qui relie le banc d'essai par réinjection à cvnn.
 
 Importer ce paquet enregistre ses briques dans les registres de cvnn, comme cvnn le fait pour les siennes : les
-transformations « crosstalk_injection_mlp » et « crosstalk_injection_resnet », et le réseau « MLP ». Il doit donc être
-importé avant que cvnn ne construise les chargeurs et le modèle.
+transformations « crosstalk_injection_mlp » et « crosstalk_injection_resnet », et les réseaux « MLP » et « ResNet ». Il
+doit donc être importé avant que cvnn ne construise les chargeurs et le modèle.
 """
 
 import sys
@@ -25,10 +25,11 @@ from .crosstalk_injection import (  # noqa: E402
 )
 from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py la construit lui-même)
 from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
+from .resnet_model import ResNet  # noqa: E402  (idem)
 
 # Sous « complex » : cvnn y cherche les transformations de toute donnée polarimétrique, quel que soit le mode du réseau.
 register_transform("complex", "crosstalk_injection_mlp", MLPInjectionTransform)
 register_transform("complex", "crosstalk_injection_resnet", ResNetInjectionTransform)
 
-__all__ = ["CrosstalkInjector", "CrosstalkLoss", "MLP", "MLPInjectionTransform", "ResNetInjectionTransform",
+__all__ = ["CrosstalkInjector", "CrosstalkLoss", "MLP", "MLPInjectionTransform", "ResNet", "ResNetInjectionTransform",
            "cached_loaders", "check_pipeline"]

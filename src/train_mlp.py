@@ -20,7 +20,8 @@ dépôt, comme data.dataset.trainpath ; les fichiers de wandb vont dans <racine>
     best_model.pt    le meilleur modèle en validation, et last_model.pt le dernier, écrits par train_model ;
     historique.yaml  la perte et le terme de chaque composante, à chaque époque ;
     evaluation.yaml  les erreurs médianes sur le test, par tranche de crosstalk injecté (voir evaluate).
-Le cache, lui, est écrit dans cache/mlp_<empreinte>.pt, et réutilisé tant que les réglages des données ne changent pas.
+Le cache, lui, est écrit dans cache/<transformation>_<empreinte>/ (src/crosstalk/deep_learning/cache.py), et réutilisé
+tant que les réglages des données ne changent pas.
 """
 
 from __future__ import annotations

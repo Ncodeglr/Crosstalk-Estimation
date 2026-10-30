@@ -19,15 +19,7 @@ import torch
 from torch import nn
 from cvnn.models import register_model
 from cvnn.models.linear import SingleLinear
-from .crosstalk_injection import CARD_THETA
-
-#: Facteur appliqué à la sortie. Mesure faite sur un patch réel : à l'initialisation par init_weights_mode_aware, la
-#: couche de sortie rend des valeurs dont l'écart quadratique va de 0,2 à 1,8 (médiane 0,7) selon la composante et la
-#: graine, pour 64, 128, 256 comme pour 128, 128, 128. Sous la loi par
-#: défaut, les cibles valent 0,14 (u, v, w, z) et 0,33 (log alpha). Avec ce facteur, les premières prédictions sont
-#: proches de zéro, c'est-à-dire de la prédiction « sans crosstalk », plutôt qu'un décalage aléatoire plus grand que
-#: les cibles.
-ECHELLE_SORTIE: float = 0.1
+from .crosstalk_injection import CARD_THETA, ECHELLE_SORTIE  # ECHELLE_SORTIE : commune au MLP et au ResNet
 
 #: Les valeurs acceptées pour normalization_layer
 NORMALISATIONS: tuple[str | None, ...] = (None, "none", "layer", "batch")

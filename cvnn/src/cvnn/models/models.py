@@ -608,7 +608,19 @@ class ConvNet(nn.Module):
         standard_reparam: bool = False,
         latent_tensor:  bool = False,
     ) -> None:
-        """ConvNet with downsampling and upsampling layers using complex convolutions."""
+        """ConvNet with downsampling and upsampling layers using complex convolutions.
+
+        Correction apportée par le projet crosstalk_estimation (2026-10-30), dans la tête des classifieurs (la branche
+        sans upsampling, celle de ResNet) : l'appel à FullyConnected ne correspondait plus à sa signature
+        (cvnn/src/cvnn/models/blocks.py). Aucun ResNet ne pouvait donc être construit, et le test de cvnn
+        tests/test_models_smoke.py::test_resnet_forward_basic échouait. Deux arguments ont changé :
+            1. input_size n'est plus transmis : FullyConnected ne l'accepte pas (TypeError « unexpected keyword
+               argument 'input_size' »), et n'en a pas besoin, puisqu'il réduit les cartes de caractéristiques par une
+               moyenne adaptative (AdaptiveAvgPool2d(1)), quelle que soit leur taille ;
+            2. dropout est désormais transmis : sans lui, FullyConnected recevait sa valeur par défaut, None, sur
+               laquelle get_dropout échoue (comparaison None < 0.0).
+        La variable bottleneck_input_size, qui ne servait qu'à input_size, a été retirée de cette branche.
+        """
         super().__init__()
         assert bottleneck or upsampling, "Either dense or upsampling must be provided"
 
@@ -690,16 +702,17 @@ class ConvNet(nn.Module):
         self.bridge: Any = nn.Sequential(*bridge_layers)
 
         if not upsampling:
-            bottleneck_input_size = input_size // (DOWNSAMPLING_FACTOR ** num_layers)
+            # Correction (crosstalk_estimation, 2026-10-30), détaillée dans la docstring : pas d'input_size, que
+            # FullyConnected n'accepte pas ; dropout transmis, car sa valeur par défaut None fait échouer get_dropout.
             bottleneck_layers.append(FullyConnected(
                 in_channels=current_channels,
                 num_classes=num_classes,
-                input_size=bottleneck_input_size,
                 activation=activation,
                 layer_mode=layer_mode,
                 normalization=normalization_layer,
                 projection="amplitude" if projection_layer is None else projection_layer,
                 projection_config=projection_config,
+                dropout=dropout,
             ))
 
         else:
