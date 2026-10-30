@@ -1,7 +1,7 @@
 """
 class MLP
 
-Il reçoit l'entrée produite par CrosstalkInjectionTransform : les 10 entrées distinctes de la covariance normalisée par
+Il reçoit l'entrée produite par MLPInjectionTransform : les 10 entrées distinctes de la covariance normalisée par
 sa trace, rangées en (B, 10, 1, 1). Il prédit (u, v, w, z, log alpha), soit (B, 5) en complex64. C'est une estimation
 par patch, à information égale avec Quegan, qui ne voit lui aussi que la covariance.
 

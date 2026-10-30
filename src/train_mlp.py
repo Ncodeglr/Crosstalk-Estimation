@@ -63,15 +63,15 @@ TRANCHES_DB: tuple[tuple[int, int], ...] = ((-40, -30), (-30, -20), (-20, -15), 
 
 def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
     """
-    Les paramètres de CrosstalkSampler (la loi d'injection), lus dans la transformation « crosstalk_injection » du YAML,
-    sans sa graine.
+    Les paramètres de CrosstalkSampler (la loi d'injection), lus dans la transformation « crosstalk_injection_mlp » du
+    YAML, sans sa graine.
 
-    Raises: ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection ».
+    Raises: ValueError: si data.transforms ne contient pas la transformation « crosstalk_injection_mlp ».
     """
     for transformation in cfg["data"].get("transforms") or []:
-        if transformation.get("name") == "crosstalk_injection":
+        if transformation.get("name") == "crosstalk_injection_mlp":
             return {cle: valeur for cle, valeur in (transformation.get("params") or {}).items() if cle != "seed"}
-    raise ValueError("data.transforms ne contient pas la transformation « crosstalk_injection »")
+    raise ValueError("data.transforms ne contient pas la transformation « crosstalk_injection_mlp »")
 
 
 def from_repo_root(chemin: str | Path) -> Path:
@@ -117,7 +117,7 @@ def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, d
     sorties, cibles = torch.cat(sorties).numpy(), torch.cat(cibles).numpy()
 
     #Étape 2 : Filtre les patchs avec des valeurs NaN dans la cible
-    valides = np.isfinite(cibles).all(axis=1) #Renvoie un tableau booléen (B,). Les patchs invalides sont ceux qui contiennent un zéro ou une valeur non finie dans la covariance, et qui ont été écartés par CrosstalkInjectionTransform. 
+    valides = np.isfinite(cibles).all(axis=1) #Renvoie un tableau booléen (B,). Les patchs invalides sont ceux qui contiennent un zéro ou une valeur non finie dans la covariance, et qui ont été écartés par MLPInjectionTransform.
     sorties, cibles = sorties[valides], cibles[valides] #Applique le filtre aux prédictions et aux cibles. Exemple : si 10 % des patchs sont invalides, sorties et cibles passent de (1000, 5) à (900, 5).
 
     #Étape 3 : erreur et niveau de crosstalk injecté de chaque patch, en dB ; un patch sans injection a un niveau -inf.

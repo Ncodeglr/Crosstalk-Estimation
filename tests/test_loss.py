@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.crosstalk.deep_learning import CrosstalkInjectionTransform, MLP
+from src.crosstalk.deep_learning import MLPInjectionTransform, MLP
 from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss, mean_squared_parameters
 from src.crosstalk.crosstalk_sampler import CrosstalkSampler
 
@@ -46,7 +46,7 @@ def mean_squared_exact(sampler: CrosstalkSampler) -> np.ndarray:
 
 
 def cibles_de_la_loi(n: int, graine: int, sampler: CrosstalkSampler = CrosstalkSampler()) -> torch.Tensor:
-    """n cibles (u, v, w, z, log alpha) tirées de la loi, comme CrosstalkInjectionTransform les construit."""
+    """n cibles (u, v, w, z, log alpha) tirées de la loi, comme CrosstalkInjector.inject les construit."""
     rng = np.random.default_rng(graine)
     cibles = np.array([sampler.generate(rng).to_vector() for _ in range(n)])
     cibles[:, 4] = np.log(cibles[:, 4])
@@ -137,7 +137,7 @@ def test_un_lot_sans_patch_valide_donne_zero_et_un_gradient_nul(perte):
 
 
 def test_les_patchs_ecartes_par_la_transformation_sont_ignores(perte):
-    transformation = CrosstalkInjectionTransform()
+    transformation = MLPInjectionTransform()
     patch_ecarte = np.zeros((4, 8, 8), dtype=np.complex64)
     _, cible = transformation(patch_ecarte)
     valeur, _ = perte(torch.zeros(1, 5, dtype=torch.complex64, requires_grad=True), cible[None])

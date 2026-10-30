@@ -54,7 +54,7 @@ from torchcvnn.nn.modules import ComplexMSELoss
 from ..crosstalk_sampler import CrosstalkSampler
 from .crosstalk_injection import CARD_THETA
 
-#: Noms des composantes de la cible, dans l'ordre de CrosstalkInjectionTransform. Ce sont les clés des métriques.
+#: Noms des composantes de la cible, dans l'ordre de CrosstalkInjector.inject. Ce sont les clés des métriques.
 COMPOSANTES: tuple[str, ...] = ("u", "v", "w", "z", "log_alpha")
 
 #: Nombre de tirages et graine de l'estimation de m. Avec 200 000 tirages, l'estimation prend 1,4 s, et deux graines
@@ -66,7 +66,7 @@ GRAINE_MOYENNE: int = 0
 def mean_squared_parameters(sampler: CrosstalkSampler, n_tirages: int = N_TIRAGES, seed: int = GRAINE_MOYENNE) -> np.ndarray:
     """
     m_j = E[|y_j|²] pour chaque composante de la cible (u, v, w, z, log alpha), estimé sur n_tirages tirages de sampler.
-    La cible est construite comme dans CrosstalkInjectionTransform : log alpha est le logarithme complexe de alpha.
+    La cible est construite comme dans CrosstalkInjector.inject : log alpha est le logarithme complexe de alpha.
 
     Returns:
         tableau (5,) de réels positifs.
@@ -83,7 +83,7 @@ class CrosstalkLoss(nn.Module):
 
     Args:
         **loi: les champs de crosstalk_sampler.CrosstalkSampler, c'est-à-dire les paramètres de la transformation
-            « crosstalk_injection » du YAML, sans sa graine. Ceux qui manquent prennent leur valeur par défaut.
+            d'injection du YAML, sans sa graine. Ceux qui manquent prennent leur valeur par défaut.
     """
 
     def __init__(self, **loi) -> None:

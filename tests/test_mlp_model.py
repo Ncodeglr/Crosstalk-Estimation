@@ -12,7 +12,7 @@ import torch
 import torchcvnn.nn.modules as c_nn
 from torchcvnn.nn.modules import modReLU
 
-from src.crosstalk.deep_learning import CrosstalkInjectionTransform, MLP
+from src.crosstalk.deep_learning import MLPInjectionTransform, MLP
 from src.crosstalk.deep_learning.mlp_model import ECHELLE_SORTIE
 
 #: Les réglages de la section model du YAML, tels que get_model_params les transmet, avec ce que cvnn déduit du
@@ -22,9 +22,9 @@ REGLAGES = dict(num_channels=10, input_size=1, num_layers=3, channels_width=64, 
 
 
 def lot_de_la_transformation(taille: int = 8) -> torch.Tensor:
-    """Un lot (B, 10, 1, 1) tel que le DataLoader de cvnn l'assemble à partir de CrosstalkInjectionTransform."""
+    """Un lot (B, 10, 1, 1) tel que le DataLoader de cvnn l'assemble à partir de MLPInjectionTransform."""
     rng = np.random.default_rng(0)
-    transformation = CrosstalkInjectionTransform()
+    transformation = MLPInjectionTransform()
     patchs = rng.normal(size=(taille, 4, 16, 16)) + 1j * rng.normal(size=(taille, 4, 16, 16))
     return torch.stack([transformation(patch)[0] for patch in patchs])
 

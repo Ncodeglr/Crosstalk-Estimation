@@ -1,5 +1,5 @@
 """
-Le cache du banc d'essai par réinjection : les couples (entrée, cible) de CrosstalkInjectionTransform, calculés une
+Le cache du banc d'essai par réinjection : les couples (entrée, cible) de MLPInjectionTransform, calculés une
 seule fois.
 
 Pourquoi
