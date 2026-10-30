@@ -16,6 +16,7 @@ if _CVNN not in sys.path:
 
 from cvnn.transform_registry import register_transform  # noqa: E402
 
+from .cache import cached_loaders  # noqa: E402
 from .crosstalk_injection import CrosstalkInjectionTransform, check_pipeline  # noqa: E402
 from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py la construit lui-même)
 from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
@@ -23,4 +24,4 @@ from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registr
 # Sous « complex » : cvnn y cherche les transformations de toute donnée polarimétrique, quel que soit le mode du réseau.
 register_transform("complex", "crosstalk_injection", CrosstalkInjectionTransform)
 
-__all__ = ["CrosstalkInjectionTransform", "CrosstalkLoss", "MLP", "check_pipeline"]
+__all__ = ["CrosstalkInjectionTransform", "CrosstalkLoss", "MLP", "cached_loaders", "check_pipeline"]

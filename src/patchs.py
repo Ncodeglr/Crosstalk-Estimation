@@ -1,8 +1,6 @@
 """
 Patchs de test servis par cvnn.
 
-Le seul module du projet qui dépende de cvnn et de torchcvnn : il construit le
-chargeur de la partition de test, puis déplie ses lots en patchs.
 """
 
 from __future__ import annotations

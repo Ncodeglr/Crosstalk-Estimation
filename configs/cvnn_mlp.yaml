@@ -1,24 +1,27 @@
 # Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04).
-# Lancé par src/train_mlp.py, depuis la racine du dépôt.
-
+# Lancé par src/train_mlp.py, depuis la racine du dépôt ou depuis src/.
 
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
-seed: 300 # Graine globale de cvnn (découpage, mélange, initialisation), la même que data_uavsar.yaml.
-nepochs: 30
+seed: 300 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
+train_seed: 3 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+nepochs: 60
 
 model:
   class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
   num_layers: 3
-  channels_width: 64 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 64, 128, 256.
-  activation: modReLU # [modReLU, CReLU, zReLU, Cardioid]
+  channels_width: 128 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 128, 256, 512.
+  activation: CReLU # [modReLU, CReLU, zReLU, Cardioid]
   normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de mlp_model.py).
 
+# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/cache.py) : la première
+# exécution parcourt la pile une fois (environ 1 h), les suivantes relisent le cache tant que cette section data et la
+# graine ne changent pas.
 data:
   dataset:
     name: UavsarSLC
-    trainpath: data/Rosamd_35012_04 # Répertoire des .slc 1x1 et de leurs .ann.
+    trainpath: data/Rosamd_35012_04 # Répertoire des .slc 1x1 et de leurs .ann, relatif à la racine du dépôt.
     patch_size: 64
     patch_stride: 64
 
@@ -51,7 +54,7 @@ optim:
 scheduler:
   name: CosineAnnealingLR 
   params:
-    T_max: 30 # = nepochs : le taux descend jusqu'à eta_min à la dernière époque.
+    T_max: 60 # = nepochs : le taux descend jusqu'à eta_min à la dernière époque.
     eta_min: 0.00001
   step_on: epoch
 
@@ -59,8 +62,8 @@ warmup:
   epochs: 0 # Section exigée par train_model de cvnn.
 
 logging:
-  logdir: ./logs # Chaque entraînement écrit dans logs/<task>_<nom du run wandb, ou date et heure>.
+  logdir: ./logs # Relatif à la racine du dépôt. Chaque entraînement écrit dans logs/<task>_<nom du run wandb, ou date et heure>.
   wandb: # Supprimer cette section pour entraîner sans wandb.
-    project: crosstalk_estimation
+    project: mlp_crosstalk_estimation
     mode: online # offline sans connexion (synchroniser ensuite avec « wandb sync ») ; online demande « wandb login ».
     tags: [mlp, injection]
