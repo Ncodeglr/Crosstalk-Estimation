@@ -7,13 +7,13 @@
 
 task: resnet_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 300 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
-train_seed: 2 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
-nepochs: 40 # Comme dans la simulation du ResNet.
+train_seed: 3 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+nepochs: 50 # Comme dans la simulation du ResNet.
 
 model:
   class: ResNet # src/crosstalk/deep_learning/resnet_model.py : le ResNet de cvnn avec une tête de régression, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
-  num_layers: 4 # Blocs Down de cvnn : chacun double les canaux et divise la taille par deux (64 x 64 -> 4 x 4).
+  num_layers: 5 # Blocs Down de cvnn : chacun double les canaux et divise la taille par deux (64 x 64 -> 4 x 4).
   channels_width: 16 # Canaux après la première convolution ; ils doublent à chaque bloc : 16, 32, 64, 128, 256.
   num_blocks: 1 # Convolutions doubles (DoubleConv) par bloc Down.
   residual: true # Blocs résiduels.
@@ -63,7 +63,7 @@ optim:
 scheduler:
   name: CosineAnnealingLR
   params:
-    T_max: 35 # = nepochs : le taux descend jusqu'à eta_min à la dernière époque.
+    T_max: 50 # = nepochs : le taux descend jusqu'à eta_min à la dernière époque.
     eta_min: 0.00001
   step_on: epoch
 

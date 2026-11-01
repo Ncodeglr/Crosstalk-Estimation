@@ -4,14 +4,14 @@
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 300 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
-train_seed: 3 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+train_seed: 2 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 60
 
 model:
   class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
-  num_layers: 3
-  channels_width: 128 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 128, 256, 512.
+  num_layers: 4
+  channels_width: 64 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 128, 256, 512.
   activation: CReLU # [modReLU, CReLU, zReLU, Cardioid]
   normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de mlp_model.py).
 
@@ -25,13 +25,13 @@ data:
     patch_size: 64
     patch_stride: 64
 
-  batch_size: 1024
+  batch_size: 256
   num_workers: 8
   shuffle: True
   valid_ratio: 0.1
   test_ratio: 0.1 
-  max_num_samples: null # null = toute la pile. La réduction a lieu AVANT le découpage : elle change aussi la partition de test.
-  max_train_samples: 300000 # Les 100 000 premiers patchs d'entraînement, comme dans la simulation ; validation et test complets. null = tous.
+  max_num_samples: null # null = toute la pile. Dans cvnn, la réduction a lieu AVANT le découpage : elle change aussi la partition de test.
+  max_train_samples: 300000 # Les 100 000 premiers patchs d'entraînement. null = tous.
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
@@ -47,9 +47,10 @@ data:
         no_injection_rate: 0.1
 
 optim:
-  algo: Adam 
+  algo: AdamW
   params:
-    lr: 0.002
+    lr: 0.001
+    weight_decay: 0.05
   max_norm: 1.0 # Écrêtage de la norme des gradients, fait par train_model de cvnn.
 
 scheduler:
