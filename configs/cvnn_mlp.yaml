@@ -3,7 +3,7 @@
 
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
-seed: 42 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
+seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
 seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 50
 

@@ -6,8 +6,8 @@
 
 
 task: resnet_crosstalk_injection # Préfixe du dossier de sortie.
-seed: 42 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
-seed_train: 2 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
+seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 50 # Comme dans la simulation du ResNet.
 
 model:
@@ -39,7 +39,7 @@ data:
   valid_ratio: 0.1
   test_ratio: 0.1
   max_num_samples: null # null = toute la pile. La réduction a lieu AVANT le découpage : elle change aussi la partition de test.
-  max_train_samples: 300000 # Les 100 000 premiers patchs d'entraînement, comme dans la simulation ; validation et test complets. null = tous.
+  max_train_samples: null # null = tous.
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque patch est normalisé dans la transformation, pour que sa covariance soit de
