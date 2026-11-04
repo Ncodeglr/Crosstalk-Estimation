@@ -11,9 +11,12 @@ des hypothèses de Quegan) ; seule la cible est connue, exactement.
 Ce que la cible représente
 --------------------------
 Le patch injecté vaut D(theta_k) D(theta_0) S : theta_k est le crosstalk AJOUTÉ par-dessus celui de l'instrument, pas
-le crosstalk total. Composer deux distorsions redonne une distorsion de même forme, au second ordre près, ce qui rend
-la cible bien définie. Un estimateur entraîné à retrouver theta_k mesure donc un écart au crosstalk typique des
-données : sur un patch brut, il doit rendre environ 0. Il ne calibre pas les données à lui seul.
+le crosstalk total. Composer deux distorsions redonne exactement une distorsion de même forme :
+    D(theta_k) D(theta_0) = g D(theta_tot) K, avec K = diag(1, racine(kappa), racine(kappa), kappa).
+Le scalaire g n'a pas d'effet après la normalisation par la trace, et K passe du côté de la scène sans y changer la
+réciprocité ni la symétrie de réflexion : la cible est donc bien définie. En revanche, theta_tot n'est pas
+theta_0 + theta_k. Un estimateur entraîné à retrouver theta_k mesure donc un écart au crosstalk typique des données :
+sur un patch brut, il doit rendre environ 0. Il ne calibre pas les données à lui seul.
 
 
 L'injection elle-même est matrix.apply_distortion(patch, theta_k).
@@ -58,6 +61,11 @@ class CrosstalkSampler:
             chaque terme s'écarte du niveau commun de -3,6 à +3,1 dB (quantiles 5 et 95 %), et de -4,9 à +4,5 dB aux
             extrêmes. Des termes indépendants dans toute l'enveloppe pourraient s'écarter de 25 dB, ce qui n'est jamais
             observé.
+        -phases de u, v, w, z : uniformes, par choix de méthode et non par mesure.
+            Nos mesures les trouvent presque fixes : u ≈ -4°, v ≈ -163°, w ≈ -173°, z ≈ -22°, avec une longueur
+            résultante d'au moins 0,988 (1 pour une phase unique, 0 pour une phase uniforme). Une loi resserrée laisserait
+            le réseau apprendre les phases de cet instrument au lieu de les estimer, un avantage que les méthodes
+            statistiques n'ont pas. Shi et al. (2020, annexe A) tirent aussi une phase aléatoire par terme.
         -alpha_module_db = (-3, 3) dB, soit |alpha| de 0,71 à 1,41.
             C'est la plage d'injection de Shi et al. (2020, annexe A) sur des données réelles calibrées, et non une
             mesure de alpha. Elle couvre |alpha| ≈ 1 après la calibration du JPL (Fore et al., 2015, légende de la
