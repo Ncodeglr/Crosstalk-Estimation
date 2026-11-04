@@ -18,7 +18,6 @@ experiments/
 
 # Entraînements : cache des couples (entrée, cible), sorties de src/train_mlp.py, runs wandb
 cache/
-logs/
 wandb/
 
 # IDE / OS

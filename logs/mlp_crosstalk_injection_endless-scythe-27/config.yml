@@ -1,0 +1,72 @@
+data:
+  dataset:
+    name: UavsarSLC
+    trainpath: /home/nicolas/Computer_Vision/crosstalk_estimation/data/Rosamd_35012_04
+    patch_size: 64
+    patch_stride: 64
+  batch_size: 1024
+  num_workers: 8
+  shuffle: true
+  valid_ratio: 0.1
+  test_ratio: 0.1
+  max_num_samples: null
+  max_train_samples: 300000
+  recompute_statistics: false
+  transforms:
+  - name: crosstalk_injection_mlp
+    params:
+      seed: 0
+      crosstalk_db:
+      - -40.0
+      - -5.0
+      term_spread_db: 4.0
+      alpha_module_db:
+      - -3.0
+      - 3.0
+      alpha_phase_deg:
+      - -30.0
+      - 30.0
+      no_injection_rate: 0.1
+  has_labels: false
+  supports_full_image_reconstruction: true
+  type: polsar
+  num_channels: 4
+  inferred_input_size: 1
+  inferred_input_channels: 10
+model:
+  class: MLP
+  layer_mode: complex
+  num_layers: 4
+  channels_width: 64
+  activation: CReLU
+  normalization_layer: none
+train: null
+task: mlp_crosstalk_injection
+seed: 300
+train_seed: 3
+nepochs: 60
+optim:
+  algo: AdamW
+  params:
+    lr: 0.002
+    weight_decay: 0.05
+  max_norm: 1.0
+scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 60
+    eta_min: 1.0e-05
+  step_on: epoch
+warmup:
+  epochs: 0
+logging:
+  logdir: /home/nicolas/Computer_Vision/crosstalk_estimation/logs
+  wandb:
+    project: mlp_crosstalk_estimation
+    mode: online
+    tags:
+    - mlp
+    - injection
+    run_id: ftx3d7ej
+evaluation:
+  domain: spatial
