@@ -2,7 +2,7 @@
 #
 
 task: reconstruction #IMPORTANT : À CHANGER 
-seed: 42
+seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
 
 model:
   layer_mode: complex # CVNN : les 4 canaux restent complexes de bout en bout.
@@ -11,10 +11,10 @@ data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 #Répertoire des .slc 1x1 et de leurs .ann.
-    patch_size: 64
-    patch_stride: 64
+    patch_size: 128
+    patch_stride: 128
 
-  batch_size: 16
+  batch_size: 256
   num_workers: 8 # Nombre de processus parallèles que le DataLoader de PyTorch utilise pour préparer les batcb
   shuffle: True
   valid_ratio: 0.1

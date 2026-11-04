@@ -4,8 +4,8 @@
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
-seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
-nepochs: 40
+seed_train: 3 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+nepochs: 50
 
 model:
   class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
@@ -48,7 +48,7 @@ data:
 optim:
   algo: AdamW
   params:
-    lr: 0.001
+    lr: 0.002
     weight_decay: 0.05
   max_norm: 1.0 # Écrêtage de la norme des gradients, fait par train_model de cvnn.
 

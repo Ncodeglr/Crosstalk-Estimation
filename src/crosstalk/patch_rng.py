@@ -44,4 +44,9 @@ def patch_rng(patch: np.ndarray, seed: int) -> np.random.Generator:
     empreinte = hashlib.blake2b(digest_size=8) #Empreinte du patch, pour que le même patch donne toujours le même générateur, donc le même theta_k, quel que soit le processus ou l'époch.
     empreinte.update(f"{patch.dtype.str}{patch.shape}".encode()) #patch.dtype.str = '<c8' pour complex64 ou '<c16' pour complex128,  patch.shape = (4, H, W). On encode en bytes pour que hashlib puisse traiter la chaîne.
     empreinte.update(patch.tobytes(order='C')) #tobytes() écrit les octets dans l'ordre des index (ordre C), quelle que soit la disposition du tableau en mémoire : 8 octets par complexe en complex64, soit 8 x (Nb_channels x H_patch x W_patch) octets. On met à jour l'empreinte avec le contenu du patch.
-    return np.random.default_rng([int(seed), int.from_bytes(empreinte.digest(), "little")])
+    
+    #empreinte.digest() rend les 8 octets de l'empreinte, qu'on convertit en entier avec int.from_bytes(..., "little") pour que le même patch donne toujours le même générateur. 
+    #On combine avec seed pour que la graine globale change toutes les injections.
+    #La méthode default_rng rend un générateur aléatoire indépendant, initialisé avec la graine combinée. 
+    #Si on pose g = np.random.default_rng([13, 5601977483896678385]) alors g.random() rend toujours le même nombre aléatoire, quel que soit le processus ou l'époch.
+    return np.random.default_rng([int(seed), int.from_bytes(empreinte.digest(), "little")]) #exemple : [13, 5601977483896678385] 
