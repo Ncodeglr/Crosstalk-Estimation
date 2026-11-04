@@ -41,32 +41,34 @@ class CrosstalkSampler:
         arg(alpha) : uniforme en degrés dans alpha_phase_deg.
 
     Valeurs par défaut. « Nos mesures » désignent le theta estimé par résolution exacte des contraintes de Quegan
-    sur chaque colonne de patchs et chaque date de la pile Rosamond (765 couples, partition d'entraînement).
+    sur la covariance moyenne de chaque colonne de patchs et de chaque date de la pile Rosamond (patchs 128 x 128,
+    380 couples, partition d'entraînement, mesure du 2026-11-04). Ce sont des valeurs apparentes, pas une vérité terrain.
 
         -crosstalk_db = (-35, -10) dB, l'enveloppe des quatre termes.
             Le haut couvre le crosstalk de l'instrument : au plus -15 dB environ chez Fore et al. (2015, fig. 7) sur UAVSAR ;
             rarement plus de 0,1 (-20 dB) sur MAESTRO chez Quegan (1994, après les éq. 22 à 25) ; moins de -20 dB
-            pour les systèmes modernes selon Shi et al. (2020) ; de -18,6 à -23,4 dB aux réflecteurs de Rosamond
-            chez Babu et al. (2022, §4.6). Nos mesures : le terme le plus fort va de -20,7 à -10,7 dB (médiane
-            -16,7 dB).
-            Le bas s'arrête là où le banc ne mesure plus grand-chose : entre -40 et -30 dB, le MLP et le ResNet ne font
-            qu'environ 3 dB de mieux que le prédicteur nul (mesure du 2026-11-04).
+            pour les systèmes modernes selon Shi et al. (2020, annexe A), qui le pose sans le mesurer ; de -15,4 à
+            -24,3 dB selon la date et le réflecteur à Rosamond chez Babu et al. (2022, §4.6), mesure au trièdre et non
+            sur u, v, w, z. Nos mesures : le terme le plus fort va de -20,0 à -10,3 dB (médiane -16,3 dB).
+            Le bas est un choix pratique, là où le banc ne mesure plus grand-chose : le MLP atteint -35,8 dB sur la
+            tranche -35/-30 (validation, patchs 128 x 128, mesure du 2026-11-04) ; entre -40 et -30 dB, le MLP et le
+            ResNet ne font qu'environ 3 dB de mieux que le prédicteur nul (loi (-40, -5), patchs 64 x 64).
         -term_spread_db = 4 dB, l'écart de chaque terme au niveau commun.
-            Les quatre termes d'un instrument sont du même ordre de grandeur (Fore et al., 2015, fig. 7) ; Shi et
-            al. (2020) les injectent même avec une amplitude identique. Nos mesures : chaque terme s'écarte du
-            niveau commun de -3,9 à +3,3 dB (quantiles 5 et 95 %). Des termes indépendants dans toute l'enveloppe
-            pourraient s'écarter de 25 dB, ce qui n'est jamais observé.
+            Les quatre termes d'un instrument sont du même ordre de grandeur (Fore et al., 2015, fig. 7). Nos mesures :
+            chaque terme s'écarte du niveau commun de -3,6 à +3,1 dB (quantiles 5 et 95 %), et de -4,9 à +4,5 dB aux
+            extrêmes. Des termes indépendants dans toute l'enveloppe pourraient s'écarter de 25 dB, ce qui n'est jamais
+            observé.
         -alpha_module_db = (-3, 3) dB, soit |alpha| de 0,71 à 1,41.
-            C'est la plage d'injection de Shi et al. (2020) sur des données réelles calibrées. Elle couvre
-            |alpha| ≈ 1 après la calibration du JPL (Fore et al., 2015, légende de la fig. 7), le déséquilibre
-            croisé g = 1,128 mesuré sur UAVSAR par Babu et al. (2022, tab. 3), et nos mesures : |alpha| de -0,9 à
-            +1,5 dB.
+            C'est la plage d'injection de Shi et al. (2020, annexe A) sur des données réelles calibrées, et non une
+            mesure de alpha. Elle couvre |alpha| ≈ 1 après la calibration du JPL (Fore et al., 2015, légende de la
+            fig. 7), le déséquilibre croisé g = 1,128 mesuré sur UAVSAR par Babu et al. (2022, tab. 3), et nos
+            mesures : |alpha| de -0,9 à +1,5 dB.
         -alpha_phase_deg = (-30, 30) degrés.
             Les données sont calibrées (Polarimetrically Calibrated = Yes) : la phase de alpha y est quasi nulle
             (Fore et al., 2015, légende de la fig. 7), le biais de phase vaut -1,14° chez Babu et al. (2022,
-            tab. 3), et nos mesures vont de -7° à +18°. Une phase quelconque, comme les +-180° de Shi et al. (2020),
-            ne vaut que pour un système non calibré : 42,5° en bande L, 102,5° en bande C et -70° en bande P sur
-            MAESTRO chez Quegan (1994).
+            tab. 3), et nos mesures vont de -5° à +18°. Nous ne reprenons donc pas les +-180° de l'injection de Shi et
+            al. (2020, annexe A) : selon nous, une phase quelconque ne se justifie que pour un système non calibré,
+            comme les 42,5° en bande L, 102,5° en bande C et -70° en bande P sur MAESTRO chez Quegan (1994).
         -no_injection_rate = 0 : choix d'apprentissage, pas une valeur physique. Des patchs laissés bruts mettraient
             dans la loi un pic à zéro, que le réseau apprend : sur un patch brut, le ResNet rend -58,7 dB avec un taux
             de 0,1, contre -40,3 dB avec un taux de 0, sans rien gagner sur les patchs injectés (0,03 à 0,14 dB de mieux
