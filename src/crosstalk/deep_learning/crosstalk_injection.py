@@ -8,7 +8,7 @@ cvnn lit un patch réel (4, H, W) ; ces transformations en font le couple (entr�
 L'injection leur est commune (CrosstalkInjector.inject) :
     1. un patch contenant un zéro ou une valeur non finie (bord de fauchée) est écarté : entrée nulle, cible nan ;
        la perte et l'évaluation ignorent les cibles nan ;
-    2. theta_k = loi.generate(patch_rng(patch, seed)), le même pour un patch donné à chaque époque ;
+    2. theta_k = loi.generate(patch_rng(patch, seed_injection)), le même pour un patch donné à chaque époque ;
     3. le crosstalk est injecté dans les pixels : le vecteur k de chaque pixel devient D(theta_k) k (matrix.apply_distortion) ;
     4. le patch injecté est divisé par la racine de la trace de sa covariance, qui vaut alors 1 : le crosstalk ne
        dépend pas de l'échelle du patch.
@@ -64,8 +64,8 @@ CARD_THETA: int = 5
 #: Facteur appliqué à la sortie des deux réseaux. Mesures sur un patch réel, à l'initialisation par
 #: init_weights_mode_aware : la couche de sortie rend des valeurs dont l'écart quadratique va de 0,2 à 1,8 (médiane 0,7)
 #: pour le MLP (64, 128, 256 comme 128, 128, 128), et de 0,06 à 0,88 (médiane 0,28) pour le ResNet (largeur 16,
-#: 4 blocs, CReLU), selon la composante et la graine. Sous la loi par défaut, les cibles valent 0,14 (u, v, w, z) et
-#: 0,33 (log alpha). Avec ce facteur, les premières prédictions sont proches de zéro, c'est-à-dire de la prédiction
+#: 4 blocs, CReLU), selon la composante et la graine. Sous la loi par défaut, les cibles valent 0,11 (u, v, w, z) et
+#: 0,36 (log alpha). Avec ce facteur, les premières prédictions sont proches de zéro, c'est-à-dire de la prédiction
 #: « sans crosstalk », plutôt qu'un décalage aléatoire plus grand que les cibles.
 ECHELLE_SORTIE: float = 0.1
 
@@ -84,16 +84,16 @@ class CrosstalkInjector:
     n'ajoute que la représentation du patch injecté qu'attend son réseau.
 
     Args:
-        seed: graine des injections (src/crosstalk/patch_rng.py). La changer change toutes les injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
+        seed_injection: graine des injections (src/crosstalk/patch_rng.py). La changer change toutes les injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
         **loi: les champs de crosstalk_sampler.CrosstalkSampler ; ceux qui manquent prennent leur valeur par défaut.
     """
 
-    def __init__(self, seed: int = 0, **loi) -> None:
-        if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)):
-            raise TypeError(f"seed de type {type(seed).__name__} : entier attendu")
-        if seed < 0:
-            raise ValueError(f"seed = {seed} : il doit être positif ou nul")
-        self.seed = int(seed)
+    def __init__(self, seed_injection: int = 0, **loi) -> None:
+        if isinstance(seed_injection, bool) or not isinstance(seed_injection, (int, np.integer)):
+            raise TypeError(f"seed_injection de type {type(seed_injection).__name__} : entier attendu")
+        if seed_injection < 0:
+            raise ValueError(f"seed_injection = {seed_injection} : il doit être positif ou nul")
+        self.seed_injection = int(seed_injection)
         self.sampler = CrosstalkSampler(**loi)
 
     def inject(self, patch: torch.Tensor | np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
@@ -114,14 +114,14 @@ class CrosstalkInjector:
             return None
 
         #2ème cas : patch valide : on tire theta_k selon la loi et la graine, on l'injecte dans les pixels, on normalise.
-        theta = self.sampler.generate(patch_rng(patch, self.seed)) #Détermine les paramètres d'injection selon la loi et la graine.
+        theta = self.sampler.generate(patch_rng(patch, self.seed_injection)) #Détermine les paramètres d'injection selon la loi et la graine.
         injecte = apply_distortion(patch.astype(np.complex128), theta)   # complex128 : apply_distortion garde le type
         injecte /= np.sqrt(np.trace(polarimetric_covariance(injecte)).real)
         u, v, w, z, alpha = theta.to_vector()
         return injecte, np.array([u, v, w, z, np.log(alpha)]) #injecte est le patch avec le crosstalk injecté, normalisé pour que sa covariance soit de trace 1.
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(seed={self.seed}, {self.sampler})"
+        return f"{type(self).__name__}(seed_injection={self.seed_injection}, {self.sampler})"
 
 
 class MLPInjectionTransform(CrosstalkInjector):

@@ -1,6 +1,7 @@
 """
 Ce que partagent les scripts d'entraînement du MLP (src/train_mlp.py) et du ResNet (src/train_resnet.py) : les chemins
-du YAML lus depuis la racine du dépôt, la loi d'injection lue dans le YAML, et l'évaluation sur la partition de test.
+du YAML lus depuis la racine du dépôt, la loi d'injection lue dans le YAML, l'initialisation du réseau, et l'évaluation
+sur la partition de test.
 
 Les deux réseaux sont ainsi évalués de la même façon. Quand leurs YAML ont le même découpage et la même loi
 d'injection, ils le sont aussi sur les mêmes patchs de test, avec les mêmes theta_k : leurs evaluation.yaml se
@@ -12,15 +13,27 @@ from pathlib import Path
 from typing import Any
 import numpy as np
 import torch
+import torchcvnn.nn.modules as c_nn
+from cvnn.models.utils import init_weights_mode_aware
 from tqdm import tqdm
 from .crosstalk_injection import injection_transform_yaml
 
 #: Racine du dépôt, d'où se lisent les chemins relatifs du YAML.
 RACINE: Path = Path(__file__).resolve().parents[3]
 
-#: Tranches de crosstalk injecté, en dB, celles des simulations. Le niveau d'un patch est 20 log10 de la moyenne
-#: quadratique de |u|, |v|, |w|, |z| de sa cible ; un patch laissé sans injection forme la tranche « aucune ».
-TRANCHES_DB: tuple[tuple[int, int], ...] = ((-40, -30), (-30, -20), (-20, -15), (-15, -10), (-10, -5))
+#: Tranches de crosstalk injecté, en dB : elles découpent par pas de 5 dB l'enveloppe crosstalk_db = [-35, -10] des YAML.
+#: Le niveau d'un patch est 20 log10 de la moyenne quadratique de |u|, |v|, |w|, |z| de sa cible ; un patch laissé sans
+#: injection forme la tranche « aucune ».
+TRANCHES_DB: tuple[tuple[int, int], ...] = ((-35, -30), (-30, -25), (-25, -20), (-20, -15), (-15, -10))
+
+#: Les valeurs acceptées pour model.init_weights, et la fonction de torchcvnn qui remplace les poids tirés par cvnn
+#: (None : ceux de cvnn sont gardés).
+INITIALISATIONS: dict[str, Any] = {
+    "kaiming_normal": None,
+    "kaiming_uniform": c_nn.init.complex_kaiming_uniform_,
+    "xavier_normal": c_nn.init.complex_xavier_normal_,
+    "xavier_uniform": c_nn.init.complex_xavier_uniform_,
+}
 
 
 def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -32,7 +45,7 @@ def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
         (injection_transform_yaml).
     """
     params = injection_transform_yaml(cfg).get("params") or {}
-    return {cle: valeur for cle, valeur in params.items() if cle != "seed"}
+    return {cle: valeur for cle, valeur in params.items() if cle != "seed_injection"}
 
 
 def from_repo_root(chemin: str | Path) -> Path:
@@ -57,14 +70,34 @@ def resolve_trainpath(cfg: dict[str, Any]) -> Path:
     return pile
 
 
+def init_weights(model: torch.nn.Module, cfg: dict[str, Any]) -> None:
+    """
+    Initialise le réseau selon model.init_weights du YAML.
+
+    cvnn n'offre aucun choix : init_weights_mode_aware tire les poids en Kaiming normal, met les biais à 0,01 et le seuil
+    de modReLU à 0,25. Elle est donc toujours appliquée, ce qui garde ces deux derniers réglages ; pour une autre
+    initialisation, seuls les poids sont ensuite retirés, par la fonction de torchcvnn et pour la même activation (ReLU).
+
+    Raises: ValueError: si model.init_weights est absent ou inconnu.
+    """
+    nom = cfg["model"].get("init_weights")
+    if nom not in INITIALISATIONS:
+        raise ValueError(f"model.init_weights = {nom!r} : valeurs acceptées {list(INITIALISATIONS)}")
+    model.apply(lambda module: init_weights_mode_aware(module, cfg["model"]["layer_mode"]))
+    if INITIALISATIONS[nom] is not None:
+        for module in model.modules():
+            if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.ConvTranspose2d)):
+                INITIALISATIONS[nom](module.weight, nonlinearity="relu")
+
+
 def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, device: torch.device) -> dict[str, float]:
     """
     Erreurs médianes du réseau sur test_loader, comme dans les simulations. Les patchs écartés (cible nan) sont ignorés.
 
     Returns:
-        pour la tranche « aucune » et chaque tranche de TRANCHES_DB (clé « -40/-30 », etc.) : la médiane, en dB, de
+        pour la tranche « aucune » et chaque tranche de TRANCHES_DB (clé « -35/-30 », etc.) : la médiane, en dB, de
         10 log10 de la moyenne de |ŷ - y|² sur u, v, w, z ; nan si la tranche est vide.
-        « n_<tranche> » (« n_aucune », « n_-40/-30 », etc.) : le nombre de patchs de chaque tranche.
+        « n_<tranche> » (« n_aucune », « n_-35/-30 », etc.) : le nombre de patchs de chaque tranche.
         « log_alpha » : la médiane de |ŷ - y| sur log alpha, sur tous les patchs valides.
         « patchs » : le nombre de patchs valides.
     """

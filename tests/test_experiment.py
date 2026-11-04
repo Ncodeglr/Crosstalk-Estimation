@@ -15,7 +15,7 @@ import torch
 import yaml
 
 from src.crosstalk.crosstalk_sampler import CrosstalkSampler
-from src.crosstalk.deep_learning.experiment import RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, resolve_trainpath, sampler_params_yaml
+from src.crosstalk.deep_learning.experiment import INITIALISATIONS, RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, init_weights, resolve_trainpath, sampler_params_yaml
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -34,8 +34,8 @@ def test_la_loi_lue_est_celle_de_la_transformation_sans_sa_graine():
     config = config_du_banc()
     params = config["data"]["transforms"][0]["params"]
     loi = sampler_params_yaml(config)
-    assert "seed" not in loi and loi == {cle: valeur for cle, valeur in params.items() if cle != "seed"}
-    assert CrosstalkSampler(**loi) == CrosstalkSampler(**{cle: valeur for cle, valeur in params.items() if cle != "seed"})
+    assert "seed_injection" not in loi and loi == {cle: valeur for cle, valeur in params.items() if cle != "seed_injection"}
+    assert CrosstalkSampler(**loi) == CrosstalkSampler(**{cle: valeur for cle, valeur in params.items() if cle != "seed_injection"})
 
 
 def test_la_loi_lue_dans_le_yaml_du_resnet_est_celle_du_mlp():
@@ -106,18 +106,115 @@ def lot(predictions: list[list[complex]], cibles: list[list[complex]]):
 
 
 def test_evaluate_rend_la_mediane_par_tranche_et_ignore_les_patchs_ecartes():
-    a_25 = 10 ** (-25 / 20)   # crosstalk injecté à -25 dB : tranche -30/-20
+    a_22 = 10 ** (-22 / 20)   # crosstalk injecté à -22 dB : tranche -25/-20
     e_30 = 10 ** (-30 / 20)   # erreur de -30 dB sur chaque terme
     nan = complex(np.nan, np.nan)
     chargeur = [
         lot([[0.01] * 4 + [0.2]], [[0.0] * 4 + [0.0]]),                                  # sans injection, erreur -40 dB
-        lot([[a_25 + e_30] * 4 + [0.1j], [5.0] * 5], [[a_25] * 4 + [0.0], [nan] * 5]),    # -30 dB ; puis un patch écarté
+        lot([[a_22 + e_30] * 4 + [0.1j], [5.0] * 5], [[a_22] * 4 + [0.0], [nan] * 5]),    # -30 dB ; puis un patch écarté
     ]
     resultats = evaluate(Recopie(), chargeur, torch.device("cpu"))
     assert resultats["patchs"] == 2
     assert resultats["aucune"] == pytest.approx(-40.0, abs=1e-4)
-    assert resultats["-30/-20"] == pytest.approx(-30.0, abs=1e-4)
-    assert all(np.isnan(resultats[t]) for t in ("-40/-30", "-20/-15", "-15/-10", "-10/-5"))
+    assert resultats["-25/-20"] == pytest.approx(-30.0, abs=1e-4)
+    assert all(np.isnan(resultats[t]) for t in ("-35/-30", "-30/-25", "-20/-15", "-15/-10"))
     assert resultats["log_alpha"] == pytest.approx(0.15, abs=1e-6)
-    assert resultats["n_aucune"] == resultats["n_-30/-20"] == 1
-    assert all(resultats[f"n_{t}"] == 0 for t in ("-40/-30", "-20/-15", "-15/-10", "-10/-5"))
+    assert resultats["n_aucune"] == resultats["n_-25/-20"] == 1
+    assert all(resultats[f"n_{t}"] == 0 for t in ("-35/-30", "-30/-25", "-20/-15", "-15/-10"))
+
+
+# ----------------------------------------------------------------- l'initialisation
+
+
+def petit_reseau(nom_yaml: str, **modele):
+    """(configuration, réseau) : le réseau du YAML, réduit, construit comme par create_model de cvnn, sans initialisation."""
+    from cvnn.config_utils import get_model_params
+    from cvnn.models import create_model
+
+    config = config_du_banc(nom_yaml)
+    canaux, taille = (10, 1) if "mlp" in nom_yaml else (4, 16)
+    config["data"].update(inferred_input_channels=canaux, inferred_input_size=taille)
+    config["model"].update(num_layers=2, channels_width=4, **modele)
+    return config, create_model(config["model"]["class"], **get_model_params(config))
+
+
+LES_DEUX_YAML = ["cvnn_mlp.yaml", "cvnn_resnet.yaml"]
+AUTRES_INITIALISATIONS = [nom for nom, fonction in INITIALISATIONS.items() if fonction is not None]
+
+
+def couches_a_poids(reseau: torch.nn.Module) -> list[torch.nn.Module]:
+    return [m for m in reseau.modules() if isinstance(m, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.ConvTranspose2d))]
+
+
+@pytest.mark.parametrize("nom_yaml", LES_DEUX_YAML)
+def test_les_yaml_declarent_une_initialisation_acceptee(nom_yaml):
+    assert config_du_banc(nom_yaml)["model"]["init_weights"] in INITIALISATIONS
+
+
+@pytest.mark.parametrize("nom_yaml", LES_DEUX_YAML)
+def test_kaiming_normal_est_exactement_l_initialisation_de_cvnn(nom_yaml):
+    """Le résultat des entraînements déjà faits ne dépend donc pas du passage par model.init_weights."""
+    from cvnn.models.utils import init_weights_mode_aware
+    from cvnn.utils import set_seed
+
+    set_seed(1)
+    config, par_le_yaml = petit_reseau(nom_yaml, init_weights="kaiming_normal")
+    init_weights(par_le_yaml, config)
+    set_seed(1)
+    _, par_cvnn = petit_reseau(nom_yaml)
+    par_cvnn.apply(lambda m: init_weights_mode_aware(m, "complex"))
+    a, b = par_le_yaml.state_dict(), par_cvnn.state_dict()
+    assert a.keys() == b.keys() and all(torch.equal(a[cle], b[cle]) for cle in a)
+
+
+@pytest.mark.parametrize("nom_yaml", LES_DEUX_YAML)
+@pytest.mark.parametrize("nom", AUTRES_INITIALISATIONS)
+def test_une_autre_initialisation_retire_les_poids_et_garde_les_biais(nom_yaml, nom):
+    from cvnn.utils import set_seed
+
+    set_seed(1)
+    config, reference = petit_reseau(nom_yaml, init_weights="kaiming_normal")
+    init_weights(reference, config)
+    set_seed(1)
+    config, reseau = petit_reseau(nom_yaml, init_weights=nom)
+    init_weights(reseau, config)
+    assert len(couches_a_poids(reseau)) >= 3
+    for couche, couche_reference in zip(couches_a_poids(reseau), couches_a_poids(reference)):
+        assert torch.isfinite(torch.view_as_real(couche.weight)).all() and not torch.equal(couche.weight, couche_reference.weight)
+        if couche.bias is not None:
+            assert torch.equal(couche.bias, couche_reference.bias)
+
+
+@pytest.mark.parametrize("nom", AUTRES_INITIALISATIONS)
+def test_une_autre_initialisation_garde_le_seuil_de_modrelu(nom):
+    config, reseau = petit_reseau("cvnn_mlp.yaml", init_weights=nom, activation="modReLU")
+    init_weights(reseau, config)
+    seuils = [m.b for m in reseau.modules() if type(m).__name__.lower() == "modrelu"]
+    assert seuils and all(torch.all(b == 0.25) for b in seuils)
+
+
+@pytest.mark.parametrize("nom", list(INITIALISATIONS))
+def test_meme_graine_meme_initialisation(nom):
+    from cvnn.utils import set_seed
+
+    etats = []
+    for _ in range(2):
+        set_seed(3)
+        config, reseau = petit_reseau("cvnn_mlp.yaml", init_weights=nom)
+        init_weights(reseau, config)
+        etats.append(reseau.state_dict())
+    assert all(torch.equal(etats[0][cle], etats[1][cle]) for cle in etats[0])
+
+
+@pytest.mark.parametrize("valeur", ["xavier", "Kaiming_Normal", None])
+def test_une_initialisation_inconnue_est_refusee(valeur):
+    config, reseau = petit_reseau("cvnn_mlp.yaml", init_weights=valeur)
+    with pytest.raises(ValueError, match="init_weights"):
+        init_weights(reseau, config)
+
+
+def test_une_initialisation_absente_est_refusee():
+    config, reseau = petit_reseau("cvnn_mlp.yaml")
+    del config["model"]["init_weights"]
+    with pytest.raises(ValueError, match="init_weights"):
+        init_weights(reseau, config)

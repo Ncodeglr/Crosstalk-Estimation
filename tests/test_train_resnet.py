@@ -74,11 +74,11 @@ def test_le_resnet_et_le_mlp_ont_le_meme_decoupage_et_la_meme_injection():
 # ----------------------------------------------------------------- sur la vraie pile
 
 
-def petite_config(dossier: Path, train_seed: int = 1) -> Path:
+def petite_config(dossier: Path, seed_train: int = 1) -> Path:
     """Le YAML du banc d'essai réduit à 400 patchs, dont 200 d'entraînement, deux époques et la graine d'entraînement
-    train_seed, sans wandb, écrit dans dossier."""
+    seed_train, sans wandb, écrit dans dossier."""
     config = config_du_banc()
-    config["train_seed"] = train_seed
+    config["seed_train"] = seed_train
     config["data"].update(max_num_samples=400, max_train_samples=200, num_workers=0, batch_size=64)
     config["nepochs"] = config["scheduler"]["params"]["T_max"] = 2
     config["logging"] = {"logdir": str(dossier / "logs")}
@@ -113,7 +113,7 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
 
 @sur_la_pile
 def test_deux_entrainements_de_meme_graine_sont_identiques(tmp_path, monkeypatch):
-    """À train_seed égale, les convolutions sur GPU ne doivent introduire aucun hasard : mêmes historiques et mêmes
+    """À seed_train égale, les convolutions sur GPU ne doivent introduire aucun hasard : mêmes historiques et mêmes
     résultats de test, au bit près (les fichiers YAML sont identiques)."""
     monkeypatch.setenv("WANDB_DIR", str(tmp_path))   # main ne le pose alors pas pour les tests suivants
     sorties = []

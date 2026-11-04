@@ -9,8 +9,8 @@ par patch, à information égale avec Quegan, qui ne voit lui aussi que la covar
 Choix par nom
 -------------
 
-L'initialisation n'est pas faite ici : src/train_mlp.py applique init_weights_mode_aware de cvnn (Kaiming complexe)
-après la construction.
+L'initialisation n'est pas faite ici : src/train_mlp.py applique init_weights (experiment.py) après la construction,
+selon model.init_weights du YAML.
 
 """
 

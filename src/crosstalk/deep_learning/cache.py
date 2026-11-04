@@ -74,7 +74,7 @@ def fingerprint(cfg: dict[str, Any]) -> str:
     """
     Empreinte de tout ce qui détermine le contenu du cache : la pile, la taille des patchs, le découpage (graine,
     proportions, max_num_samples), le sous-ensemble d'entraînement (max_train_samples) et les transformations (dont la
-    loi d'injection et sa graine). Le modèle, l'optimiseur, nepochs et train_seed n'y entrent pas : les changer
+    loi d'injection et sa graine). Le modèle, l'optimiseur, nepochs et seed_train n'y entrent pas : les changer
     réutilise le même cache.
     """
     donnees = cfg["data"]

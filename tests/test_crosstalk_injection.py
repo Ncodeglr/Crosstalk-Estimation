@@ -39,7 +39,7 @@ def patch_injecte(transformation: CrosstalkInjector) -> torch.Tensor:
     """Le premier patch aléatoire qui reçoit une injection (non neutre)."""
     for graine in range(100):
         patch = patch_aleatoire(graine)
-        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed)) != NEUTRE:
+        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed_injection)) != NEUTRE:
             return patch
     raise AssertionError("aucun patch injecté sur 100 essais")
 
@@ -48,7 +48,7 @@ def patch_brut(transformation: CrosstalkInjector) -> torch.Tensor:
     """Le premier patch aléatoire laissé brut (theta_k neutre)."""
     for graine in range(100):
         patch = patch_aleatoire(graine)
-        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed)) == NEUTRE:
+        if transformation.sampler.generate(patch_rng(patch.numpy(), transformation.seed_injection)) == NEUTRE:
             return patch
     raise AssertionError("aucun patch brut sur 100 essais")
 
@@ -63,7 +63,7 @@ def test_forme_et_type_du_couple():
 
 
 def test_le_meme_patch_donne_toujours_le_meme_couple():
-    transformation = MLPInjectionTransform(seed=3)
+    transformation = MLPInjectionTransform(seed_injection=3)
     premier, second = transformation(patch_aleatoire()), transformation(patch_aleatoire())
     assert torch.equal(premier[0], second[0]) and torch.equal(premier[1], second[1])
 
@@ -75,12 +75,12 @@ def test_un_tableau_numpy_donne_le_meme_couple_qu_un_tenseur():
 
 
 def test_une_autre_graine_donne_une_autre_injection():
-    patch = patch_injecte(MLPInjectionTransform(seed=0))
-    assert not torch.equal(MLPInjectionTransform(seed=0)(patch)[1], MLPInjectionTransform(seed=1)(patch)[1])
+    patch = patch_injecte(MLPInjectionTransform(seed_injection=0))
+    assert not torch.equal(MLPInjectionTransform(seed_injection=0)(patch)[1], MLPInjectionTransform(seed_injection=1)(patch)[1])
 
 
 def test_la_cible_est_le_theta_k_de_patch_rng_avec_log_alpha():
-    transformation = MLPInjectionTransform(seed=5)
+    transformation = MLPInjectionTransform(seed_injection=5)
     patch = patch_injecte(transformation)
     theta = transformation.sampler.generate(patch_rng(patch.numpy(), 5)).to_vector()
     attendu = np.r_[theta[:4], np.log(theta[4])]
@@ -114,7 +114,7 @@ def test_les_quatre_puissances_somment_a_un():
 
 
 def test_un_patch_brut_a_une_cible_neutre_et_sa_covariance_seule():
-    transformation = MLPInjectionTransform()
+    transformation = MLPInjectionTransform(no_injection_rate=0.2)
     patch = patch_brut(transformation)
     entree, cible = transformation(patch)
     assert torch.all(cible == 0)
@@ -128,7 +128,7 @@ def test_un_patch_brut_a_une_cible_neutre_et_sa_covariance_seule():
 
 def test_inject_rend_le_patch_injecte_normalise_et_la_cible():
     """Le patch injecté est D(theta_k) appliqué à chaque pixel, divisé par la racine de la trace de sa covariance."""
-    injecteur = CrosstalkInjector(seed=5)
+    injecteur = CrosstalkInjector(seed_injection=5)
     patch = patch_injecte(injecteur)
     injecte, cible = injecteur.inject(patch)
     theta = injecteur.sampler.generate(patch_rng(patch.numpy(), 5))
@@ -154,7 +154,7 @@ def test_les_deux_transformations_sont_soeurs_et_partagent_l_injection():
 
 
 def test_l_entree_du_resnet_est_le_patch_injecte():
-    transformation = ResNetInjectionTransform(seed=5)
+    transformation = ResNetInjectionTransform(seed_injection=5)
     patch = patch_injecte(transformation)
     entree, cible = transformation(patch)
     injecte, cible_injectee = transformation.inject(patch)
@@ -166,7 +166,7 @@ def test_l_entree_du_resnet_est_le_patch_injecte():
 
 def test_pour_un_meme_patch_le_mlp_et_le_resnet_voient_les_memes_donnees():
     """La garantie de l'appariement : même cible, et la covariance de l'entrée du ResNet est l'entrée du MLP."""
-    mlp, resnet = MLPInjectionTransform(seed=2), ResNetInjectionTransform(seed=2)
+    mlp, resnet = MLPInjectionTransform(seed_injection=2, no_injection_rate=0.2), ResNetInjectionTransform(seed_injection=2, no_injection_rate=0.2)
     for patch in (patch_injecte(mlp), patch_brut(mlp)):
         (entree_mlp, cible_mlp), (entree_resnet, cible_resnet) = mlp(patch), resnet(patch)
         assert torch.equal(cible_resnet, cible_mlp)
@@ -202,9 +202,9 @@ def test_un_patch_mal_forme_est_refuse(forme):
 
 
 @pytest.mark.parametrize("reglages, erreur", [
-    (dict(seed=-1), ValueError),
-    (dict(seed=1.5), TypeError),
-    (dict(seed=True), TypeError),
+    (dict(seed_injection=-1), ValueError),
+    (dict(seed_injection=1.5), TypeError),
+    (dict(seed_injection=True), TypeError),
     (dict(crosstalk_db=(-5.0, -40.0)), ValueError),     # loi invalide
     (dict(crosstalk=(-40.0, -5.0)), TypeError),         # champ inconnu de CrosstalkSampler
 ])
@@ -217,7 +217,7 @@ def test_les_parametres_du_yaml_construisent_la_loi_du_yaml():
     """cvnn construit la transformation avec MLPInjectionTransform(**params)."""
     params = yaml.safe_load((RACINE / "configs" / "cvnn_mlp.yaml").read_text())["data"]["transforms"][0]["params"]
     transformation = MLPInjectionTransform(**params)
-    assert transformation.seed == 0
+    assert transformation.seed_injection == 0
     assert transformation.sampler == CrosstalkSampler()
 
 

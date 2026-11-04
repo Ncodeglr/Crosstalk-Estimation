@@ -28,8 +28,8 @@ l'encodeur vers elle-même (avec activation et normalisation), puis un SingleLin
 normalisation, comme la dernière couche du MLP. Le nombre de paramètres ne change pas.
 La sortie est enfin multipliée par ECHELLE_SORTIE, comme celle du MLP.
 
-L'initialisation n'est pas faite ici : comme pour le MLP, le script d'entraînement applique init_weights_mode_aware de
-cvnn (Kaiming complexe) après la construction, à tout le réseau, nouvelle tête comprise.
+L'initialisation n'est pas faite ici : comme pour le MLP, le script d'entraînement applique init_weights (experiment.py) après
+la construction, selon model.init_weights du YAML, à tout le réseau, nouvelle tête comprise.
 """
 
 from __future__ import annotations

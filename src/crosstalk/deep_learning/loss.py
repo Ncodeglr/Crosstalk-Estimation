@@ -18,9 +18,9 @@ par défaut.
 
 Pourquoi diviser par m_j
 ------------------------
-Les composantes n'ont pas la même échelle. Sous la loi par défaut, m vaut 0,0186 pour chaque terme de crosstalk et
-0,105 pour log alpha : avec la MSE complexe seule, log alpha pèserait 5,6 fois plus que chaque terme de crosstalk.
-Mesure faite le 2026-10-29 (MLP, 580 000 patchs, deux graines) : la MSE complexe seule perd 0,6, 1,0 et 1,3 dB sur
+Les composantes n'ont pas la même échelle. Sous la loi par défaut, m vaut 0,0114 pour chaque terme de crosstalk et
+0,131 pour log alpha : avec la MSE complexe seule, log alpha pèserait 11,5 fois plus que chaque terme de crosstalk.
+Mesure faite le 2026-10-29 (MLP, 580 000 patchs, deux graines, loi (-40, -5) dB) : la MSE complexe seule perd 0,6, 1,0 et 1,3 dB sur
 les tranches -20/-15, -15/-10 et -10/-5 dB, pour un écart entre graines d'au plus 0,16 dB.
 Une fois divisée par m_j, chaque composante coûte exactement 1 au prédicteur nul, qui prédit « sans crosstalk,
 alpha = 1 » : ce prédicteur a donc L = 5. C'est la raison de diviser par le moment d'ordre 2 plutôt que par la

@@ -46,7 +46,7 @@ def test_la_meme_configuration_donne_la_meme_empreinte():
     lambda c: c["data"].update(max_num_samples=1000),
     lambda c: c["data"].update(max_train_samples=100_000),
     lambda c: c["data"]["transforms"][0]["params"].update(crosstalk_db=[-30.0, -5.0]),
-    lambda c: c["data"]["transforms"][0]["params"].update(seed=1),
+    lambda c: c["data"]["transforms"][0]["params"].update(seed_injection=1),
     lambda c: c["data"]["transforms"][0].update(name="crosstalk_injection_resnet"),
 ])
 def test_ce_qui_determine_les_couples_change_l_empreinte(modification):
@@ -60,7 +60,7 @@ def test_ce_qui_determine_les_couples_change_l_empreinte(modification):
     lambda c: c["optim"]["params"].update(lr=0.001),
     lambda c: c.update(nepochs=30),
     lambda c: c["data"].update(batch_size=256, num_workers=16),
-    lambda c: c.update(train_seed=2),
+    lambda c: c.update(seed_train=2),
 ])
 def test_le_modele_l_optimiseur_et_le_chargement_ne_changent_pas_l_empreinte(modification):
     config = config_du_banc()
@@ -89,7 +89,7 @@ def chargeurs_de_cvnn(**reglages_data):
     from cvnn.utils import set_seed
 
     config = config_du_banc()
-    config["data"].update({"num_workers": 0, "max_num_samples": 200, "batch_size": 16, **reglages_data})
+    config["data"].update({"num_workers": 0, "max_num_samples": 200, "max_train_samples": None, "batch_size": 16, **reglages_data})
     set_seed(int(config["seed"]))
     config = validate_and_correct_config(config)
     return get_dataloaders(config, use_cuda=False), config

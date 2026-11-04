@@ -43,17 +43,19 @@ class CrosstalkSampler:
     Valeurs par défaut. « Nos mesures » désignent le theta estimé par résolution exacte des contraintes de Quegan
     sur chaque colonne de patchs et chaque date de la pile Rosamond (765 couples, partition d'entraînement).
 
-        -crosstalk_db = (-40, -5) dB, l'enveloppe des quatre termes.
-            Le crosstalk de l'instrument : au plus -15 dB environ chez Fore et al. (2015, fig. 7) sur UAVSAR ;
+        -crosstalk_db = (-35, -10) dB, l'enveloppe des quatre termes.
+            Le haut couvre le crosstalk de l'instrument : au plus -15 dB environ chez Fore et al. (2015, fig. 7) sur UAVSAR ;
             rarement plus de 0,1 (-20 dB) sur MAESTRO chez Quegan (1994, après les éq. 22 à 25) ; moins de -20 dB
             pour les systèmes modernes selon Shi et al. (2020) ; de -18,6 à -23,4 dB aux réflecteurs de Rosamond
             chez Babu et al. (2022, §4.6). Nos mesures : le terme le plus fort va de -20,7 à -10,7 dB (médiane
             -16,7 dB).
+            Le bas s'arrête là où le banc ne mesure plus grand-chose : entre -40 et -30 dB, le MLP et le ResNet ne font
+            qu'environ 3 dB de mieux que le prédicteur nul (mesure du 2026-11-04).
         -term_spread_db = 4 dB, l'écart de chaque terme au niveau commun.
             Les quatre termes d'un instrument sont du même ordre de grandeur (Fore et al., 2015, fig. 7) ; Shi et
             al. (2020) les injectent même avec une amplitude identique. Nos mesures : chaque terme s'écarte du
             niveau commun de -3,9 à +3,3 dB (quantiles 5 et 95 %). Des termes indépendants dans toute l'enveloppe
-            pourraient s'écarter de 35 dB, ce qui n'est jamais observé.
+            pourraient s'écarter de 25 dB, ce qui n'est jamais observé.
         -alpha_module_db = (-3, 3) dB, soit |alpha| de 0,71 à 1,41.
             C'est la plage d'injection de Shi et al. (2020) sur des données réelles calibrées. Elle couvre
             |alpha| ≈ 1 après la calibration du JPL (Fore et al., 2015, légende de la fig. 7), le déséquilibre
@@ -65,15 +67,17 @@ class CrosstalkSampler:
             tab. 3), et nos mesures vont de -7° à +18°. Une phase quelconque, comme les +-180° de Shi et al. (2020),
             ne vaut que pour un système non calibré : 42,5° en bande L, 102,5° en bande C et -70° en bande P sur
             MAESTRO chez Quegan (1994).
-        -no_injection_rate = 0,2 : choix d'apprentissage, pas une valeur physique. Un patch sur cinq reste brut, pour
-            que l'estimateur apprenne qu'un patch sans injection n'a pas de crosstalk ajouté.
+        -no_injection_rate = 0 : choix d'apprentissage, pas une valeur physique. Des patchs laissés bruts mettraient
+            dans la loi un pic à zéro, que le réseau apprend : sur un patch brut, le ResNet rend -58,7 dB avec un taux
+            de 0,1, contre -40,3 dB avec un taux de 0, sans rien gagner sur les patchs injectés (0,03 à 0,14 dB de mieux
+            avec un taux de 0, loi (-40, -5), mesure du 2026-11-04). Les patchs bruts s'évaluent donc à part.
     """
 
-    crosstalk_db: tuple[float, float] = (-40.0, -5.0)
+    crosstalk_db: tuple[float, float] = (-35.0, -10.0)
     term_spread_db: float = 4.0
     alpha_module_db: tuple[float, float] = (-3.0, 3.0)
     alpha_phase_deg: tuple[float, float] = (-30.0, 30.0)
-    no_injection_rate: float = 0.2
+    no_injection_rate: float = 0.0
 
     def __post_init__(self) -> None:
         for nom in ("crosstalk_db", "alpha_module_db", "alpha_phase_deg"):
@@ -103,7 +107,7 @@ class CrosstalkSampler:
             raise ValueError(f"no_injection_rate = {self.no_injection_rate} : il doit être dans [0, 1[")
 
     def generate(self, rng: np.random.Generator) -> CrosstalkParameters:
-        """Tire un theta_k selon la loi, permet d'avoir des valeurs pas trop extrêmes, et de laisser un patch sur cinq sans injection pour l'apprentissage."""
+        """Tire un theta_k selon la loi, permet d'avoir des valeurs pas trop extrêmes, et laisse la proportion no_injection_rate de patchs sans injection."""
         if rng.random() < self.no_injection_rate:
             return NEUTRE
         ecart = self.term_spread_db

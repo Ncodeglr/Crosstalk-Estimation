@@ -1,30 +1,7 @@
 #!/usr/bin/env python3
 """
 Entraîne le ResNet sur le patch brut, puis l'évalue sur la partition de test, comme src/train_mlp.py le fait pour le MLP.
-
-Le ResNet (src/crosstalk/deep_learning/resnet_model.py) reçoit le patch injecté (4, H, W), là où le MLP reçoit sa
-covariance. Le script enchaîne les mêmes briques de cvnn, sans BaseExperiment :
-    1. configuration : le YAML (load_config de cvnn), le device ;
-    2. données : les chargeurs de cvnn, découpés selon la graine seed, puis check_pipeline sur chacun, pour des entrées
-       (4, H, W), puis le cache des couples (entrée, cible) (src/crosstalk/deep_learning/cache.py), dont la partition
-       d'entraînement est réduite à ses data.max_train_samples premiers patchs : la première exécution lit ces patchs
-       dans la pile une fois, les suivantes relisent le cache ;
-    3. wandb : setup_wandb de cvnn, qui ne fait rien si la section logging.wandb est absente ;
-    4. modèle : la classe nommée par model.class, construite par create_model de cvnn, initialisée comme dans cvnn à
-       partir de la graine d'entraînement train_seed, qui fixe aussi l'ordre des lots ;
-    5. perte et optimiseur : CrosstalkLoss, qui lit la loi d'injection de la transformation ; l'optimiseur de torch.optim
-       nommé par optim.algo ;
-    6. entraînement : train_model de cvnn (échéance, écrêtage, sauvegarde du meilleur modèle, envoi à wandb) ;
-    7. évaluation : le meilleur modèle en validation, sur la partition de test ;
-    8. fin du run wandb.
-
-Sorties : les mêmes que celles de src/train_mlp.py (config.yml, best_model.pt et last_model.pt, historique.yaml,
-evaluation.yaml), dans logging.logdir/<task>_<nom du run wandb, ou date et heure>. Avec le même découpage et la même
-loi d'injection que le YAML du MLP, evaluation.yaml porte sur les mêmes patchs de test que celui du MLP.
-Le cache est écrit dans cache/crosstalk_injection_resnet_<empreinte>/ : environ 32 Go avec configs/cvnn_resnet.yaml
-(100 000 patchs d'entraînement, validation et test complets).
-Les fonctions communes aux deux scripts (evaluate, sampler_params_yaml, from_repo_root, resolve_trainpath) sont dans
-src/crosstalk/deep_learning/experiment.py.
+Le ResNet (src/crosstalk/deep_learning/resnet_model.py) reçoit le patch injecté (4, H, W). Le script enchaîne les mêmes briques de cvnn, sans BaseExperiment :
 """
 
 from __future__ import annotations
@@ -43,13 +20,12 @@ sys.path.insert(0, str(RACINE))
 # Importer ce paquet ajoute cvnn au chemin et enregistre la transformation et le réseau dans ses registres.
 from src.crosstalk.deep_learning import CrosstalkLoss, cached_loaders, check_pipeline  # noqa: E402
 from src.crosstalk.deep_learning.cache import DOSSIER_CACHE  # noqa: E402
-from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, resolve_trainpath, sampler_params_yaml  # noqa: E402
+from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, init_weights, resolve_trainpath, sampler_params_yaml  # noqa: E402
 from src.crosstalk.matrix import POL_ORDER  # noqa: E402
 from cvnn.config import load_config  # noqa: E402
 from cvnn.config_utils import get_model_params  # noqa: E402
 from cvnn.data import get_dataloaders, validate_and_correct_config  # noqa: E402
 from cvnn.models import create_model  # noqa: E402
-from cvnn.models.utils import init_weights_mode_aware  # noqa: E402
 from cvnn.train import train_model  # noqa: E402
 from cvnn.utils import set_seed  # noqa: E402
 from cvnn.wandb_utils import finish_wandb_run, log_metrics, setup_wandb  # noqa: E402
@@ -107,9 +83,9 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
     # ==========================================
     # La graine d'entraînement fixe l'initialisation des poids, puis l'ordre des lots à chaque époque. Posée ici, après
     # les données et wandb, elle ne dépend pas de ce que ces étapes ont tiré dans les générateurs aléatoires.
-    set_seed(int(cfg["train_seed"])) #set_seed ne passe dans aucune fonction parce qu'elle n'en a pas besoin : elle agit sur un objet global, le générateur aléatoire de torch, que toutes les fonctions qui tirent au hasard consultent ensuite d'elles-mêmes.
+    set_seed(int(cfg["seed_train"])) #set_seed ne passe dans aucune fonction parce qu'elle n'en a pas besoin : elle agit sur un objet global, le générateur aléatoire de torch, que toutes les fonctions qui tirent au hasard consultent ensuite d'elles-mêmes.
     model = create_model(cfg["model"]["class"], **get_model_params(cfg))
-    model.apply(lambda m: init_weights_mode_aware(m, cfg["model"]["layer_mode"]))
+    init_weights(model, cfg)
     model.to(device)
 
     # ==========================================
@@ -124,7 +100,7 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
     # À chaque époque : phase d'entraînement sur train_loader, puis phase de validation sur valid_loader.
     # Le meilleur modèle en validation est sauvegardé dans best_model.pt.
     historique = train_model(model, train_loader, valid_loader, cfg, logdir, device, loss_fn, optimizer)
-    (logdir / "historique.yaml").write_text(yaml.safe_dump(dict(historique), sort_keys=False))
+    (logdir / "historique.yaml").write_text(yaml.safe_dump(dict(historique), sort_keys=False)) #historique est un dictionnaire de listes, avec les clés « train_loss », « valid_loss » et « valid_<composante> » pour chaque composante de la perte. Chaque liste contient la valeur de la métrique à chaque époque.
 
     # ==========================================
     # 7. ÉVALUATION FINALE (test_loader, une seule fois, sur best_model.pt)

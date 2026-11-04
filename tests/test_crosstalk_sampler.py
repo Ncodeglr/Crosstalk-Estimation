@@ -44,11 +44,11 @@ def patch_de(graine: int = 0) -> np.ndarray:
 
 def test_valeurs_par_defaut():
     sampler = CrosstalkSampler()
-    assert sampler.crosstalk_db == (-40.0, -5.0)
+    assert sampler.crosstalk_db == (-35.0, -10.0)
     assert sampler.term_spread_db == 4.0
     assert sampler.alpha_module_db == (-3.0, 3.0)
     assert sampler.alpha_phase_deg == (-30.0, 30.0)
-    assert sampler.no_injection_rate == 0.2
+    assert sampler.no_injection_rate == 0.0
 
 
 def test_les_types_sont_normalises():
@@ -116,16 +116,16 @@ def test_les_quatre_termes_restent_autour_d_un_niveau_commun():
     """Deux termes d'un même tirage sont chacun à +-4 dB du niveau commun : ils diffèrent d'au plus 8 dB."""
     niveaux = niveaux_db(injectes(CrosstalkSampler()))
     assert np.all(niveaux.max(axis=1) - niveaux.min(axis=1) <= 2 * 4.0 + 1e-9)
-    assert np.all((niveaux >= -40.0 - 1e-9) & (niveaux <= -5.0 + 1e-9))
+    assert np.all((niveaux >= -35.0 - 1e-9) & (niveaux <= -10.0 + 1e-9))
 
 
 def test_les_niveaux_des_termes_sont_correles_par_le_niveau_commun():
     """
-    Variance du niveau commun (uniforme sur 27 dB) : 27^2 / 12 = 60,75 ; variance de l'écart propre à un terme
-    (uniforme sur +-4 dB) : 8^2 / 12 = 5,33. Corrélation attendue entre deux termes : 60,75 / 66,08 = 0,92.
+    Variance du niveau commun (uniforme sur 17 dB) : 17^2 / 12 = 24,08 ; variance de l'écart propre à un terme
+    (uniforme sur +-4 dB) : 8^2 / 12 = 5,33. Corrélation attendue entre deux termes : 24,08 / 29,42 = 0,82.
     """
     correlations = np.corrcoef(niveaux_db(injectes(CrosstalkSampler())).T)[np.triu_indices(4, k=1)]
-    np.testing.assert_allclose(correlations, 0.92, atol=0.02)
+    np.testing.assert_allclose(correlations, 0.82, atol=0.02)
 
 
 def test_un_ecart_nul_donne_quatre_termes_de_meme_amplitude():
@@ -137,16 +137,16 @@ def test_un_ecart_nul_donne_quatre_termes_de_meme_amplitude():
 
 def test_le_niveau_commun_est_uniforme_en_db():
     """
-    La moyenne en dB des quatre termes suit le niveau commun, uniforme sur [-36, -9] : quartiles -29,25, -22,5 et
-    -15,75 dB. L'écart propre aux termes, moyenné sur quatre, ne les déplace que de quelques centièmes de dB.
+    La moyenne en dB des quatre termes suit le niveau commun, uniforme sur [-31, -14] : quartiles -26,75, -22,5 et
+    -18,25 dB. L'écart propre aux termes, moyenné sur quatre, ne les déplace que de quelques centièmes de dB.
     """
     moyennes = niveaux_db(injectes(CrosstalkSampler())).mean(axis=1)
-    np.testing.assert_allclose(np.quantile(moyennes, [0.25, 0.5, 0.75]), [-29.25, -22.5, -15.75], atol=0.8)
+    np.testing.assert_allclose(np.quantile(moyennes, [0.25, 0.5, 0.75]), [-26.75, -22.5, -18.25], atol=0.8)
 
 
 def test_la_proportion_de_patchs_bruts_est_respectee():
     """p = 0,2 sur 5000 tirages : écart-type de la proportion 0,006 ; tolérance 0,02, soit plus de 3 écarts-types."""
-    neutres = sum(theta == NEUTRE for theta in tirages(CrosstalkSampler(), n=5000))
+    neutres = sum(theta == NEUTRE for theta in tirages(CrosstalkSampler(no_injection_rate=0.2), n=5000))
     assert neutres / 5000 == pytest.approx(0.2, abs=0.02)
 
 

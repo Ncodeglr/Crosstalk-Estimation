@@ -4,26 +4,26 @@
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 42 # Graine du découpage de cvnn (entraînement / validation / test), la même que data_uavsar.yaml. La changer change la partition de test et reconstruit le cache.
-train_seed: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 50
 
 model:
   class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
-  layer_mode: complex # Seul mode accepté : l'entrée est complexe.
-  num_layers: 4
-  channels_width: 32 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant : 128, 256, 512.
+  layer_mode: complex
+  num_layers: 3
+  channels_width: 128 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant
+  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/experiment.py.
   activation: CReLU # [modReLU, CReLU, zReLU, Cardioid]
-  normalization_layer: none # none, layer ou batch (limites de batch dans la docstring de mlp_model.py).
+  normalization_layer: batch # [none, batch, layer] : à l'évaluation, batch utilise les statistiques mémorisées, chaque patch est traité seul. Ne pas utiliser layer : celle de torchcvnn calcule ses statistiques sur les autres patchs du lot, même à l'évaluation.
 
-# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/cache.py) : la première
-# exécution parcourt la pile une fois (environ 1 h), les suivantes relisent le cache tant que cette section data et la
-# graine ne changent pas.
+# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/cache.py).
+# La première exécution parcourt la pile une fois (environ 1 h), les suivantes relisent le cache tant que cette section data et la graine ne changent pas.
 data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 # Répertoire des .slc 1x1 et de leurs .ann, relatif à la racine du dépôt.
-    patch_size: 64
-    patch_stride: 64
+    patch_size: 128
+    patch_stride: 128
 
   batch_size: 256
   num_workers: 8
@@ -31,7 +31,7 @@ data:
   valid_ratio: 0.1
   test_ratio: 0.1 
   max_num_samples: null # null = toute la pile. Dans cvnn, la réduction a lieu AVANT le découpage : elle change aussi la partition de test.
-  max_train_samples: 300000 # Les 100 000 premiers patchs d'entraînement. null = tous.
+  max_train_samples: null # null = tous.
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
@@ -39,7 +39,7 @@ data:
   transforms:
     - name: crosstalk_injection_mlp # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (10 entrées de C, theta_k)
       params:
-        seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
+        seed_injection: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-35.0, -10.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
         term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son moment d'ordre 2 m.
         alpha_module_db: [-3.0, 3.0]

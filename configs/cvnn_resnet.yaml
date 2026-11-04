@@ -7,16 +7,17 @@
 
 task: resnet_crosstalk_injection # Préfixe du dossier de sortie.
 seed: 42 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
-train_seed: 2 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
+seed_train: 2 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 50 # Comme dans la simulation du ResNet.
 
 model:
   class: ResNet # src/crosstalk/deep_learning/resnet_model.py : le ResNet de cvnn avec une tête de régression, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
   num_layers: 5 # Blocs Down de cvnn : chacun double les canaux et divise la taille par deux (128 x 128 -> 4 x 4).
-  channels_width: 32 # Canaux après la première convolution ; ils doublent à chaque bloc : 16, 32, 64, 128, 256.
+  channels_width: 32 # Canaux après la première convolution ; ils doublent à chaque bloc 
   num_blocks: 1 # Convolutions doubles (DoubleConv) par bloc Down.
   residual: true # Blocs résiduels.
+  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/experiment.py.
   activation: CReLU # [modReLU, CReLU, zReLU, Cardioid] 
   normalization_layer: "batch"
   downsampling_layer: null # null : chaque bloc réduit la taille par sa première convolution, de pas 2.
@@ -29,8 +30,8 @@ data:
   dataset:
     name: UavsarSLC
     trainpath: data/Rosamd_35012_04 # Répertoire des .slc 1x1 et de leurs .ann, relatif à la racine du dépôt.
-    patch_size: 64
-    patch_stride: 64
+    patch_size: 128
+    patch_stride: 128
 
   batch_size: 256
   num_workers: 8
@@ -46,12 +47,12 @@ data:
   transforms:
     - name: crosstalk_injection_resnet # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (patch injecté (4, H, W), theta_k)
       params:
-        seed: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
+        seed_injection: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-35.0, -10.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
         term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son moment d'ordre 2 m.
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]
-        no_injection_rate: 0.1
+        no_injection_rate: 0.0
 
 optim:
   algo: AdamW

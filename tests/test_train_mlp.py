@@ -51,12 +51,12 @@ def test_l_echeance_cosinus_finit_avec_l_entrainement():
 # ----------------------------------------------------------------- sur la vraie pile
 
 
-def petite_config(dossier: Path, train_seed: int = 1, **reglages_data) -> Path:
-    """Le YAML du banc d'essai réduit à 400 patchs, deux époques et la graine d'entraînement train_seed, sans wandb,
+def petite_config(dossier: Path, seed_train: int = 1, **reglages_data) -> Path:
+    """Le YAML du banc d'essai réduit à 400 patchs, deux époques et la graine d'entraînement seed_train, sans wandb,
     écrit dans dossier."""
     config = config_du_banc()
-    config["train_seed"] = train_seed
-    config["data"].update(max_num_samples=400, num_workers=0, batch_size=64, **reglages_data)
+    config["seed_train"] = seed_train
+    config["data"].update({"max_num_samples": 400, "max_train_samples": None, "num_workers": 0, "batch_size": 64, **reglages_data})
     config["nepochs"] = config["scheduler"]["params"]["T_max"] = 2
     config["logging"] = {"logdir": str(dossier / "logs")}
     chemin = dossier / "config.yaml"
@@ -87,12 +87,12 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
 
 @sur_la_pile
 def test_la_graine_d_entrainement_change_l_entrainement_mais_pas_le_decoupage(tmp_path, monkeypatch):
-    """Même train_seed : le même entraînement ; une autre : un autre entraînement, sur les mêmes couples."""
+    """Même seed_train : le même entraînement ; une autre : un autre entraînement, sur les mêmes couples."""
     monkeypatch.setenv("WANDB_DIR", str(tmp_path))   # main ne le pose alors pas pour les tests suivants
     historiques = []
     for nom, graine in (("a", 1), ("b", 1), ("c", 2)):
         (tmp_path / nom).mkdir()
-        main(petite_config(tmp_path / nom, train_seed=graine), dossier_cache=tmp_path / "cache")
+        main(petite_config(tmp_path / nom, seed_train=graine), dossier_cache=tmp_path / "cache")
         (sortie,) = (tmp_path / nom / "logs").iterdir()
         historiques.append(yaml.safe_load((sortie / "historique.yaml").read_text()))
 

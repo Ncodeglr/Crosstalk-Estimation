@@ -2,7 +2,7 @@
 #
 
 task: reconstruction #IMPORTANT : À CHANGER 
-seed: 300
+seed: 42
 
 model:
   layer_mode: complex # CVNN : les 4 canaux restent complexes de bout en bout.
