@@ -39,13 +39,12 @@ data:
   transforms:
     - name: crosstalk_injection_mlp # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (10 entrées de C, theta_k)
       params:
-        seed_injection: 0 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
+        seed_injection: 13 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-35.0, -10.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
         term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son moment d'ordre 2 m.
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]
         no_injection_rate: 0.0
-
 optim:
   algo: AdamW
   params:
