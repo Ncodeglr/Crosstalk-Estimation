@@ -74,8 +74,7 @@ def normalize_by_trace(cov: np.ndarray) -> np.ndarray:
     La covariance divisée par sa trace, la puissance totale des 4 canaux : la trace de la covariance rendue vaut 1.
 
     Le crosstalk ne dépend pas de l'échelle du patch : multiplier C par un réel positif ne change ni les contraintes
-    de Quegan, ni theta. La normalisation met un patch sombre et un patch brillant à la même échelle, pour le solveur
-    exact comme pour le réseau du banc d'essai.
+    de Quegan, ni theta. La normalisation met un patch sombre et un patch brillant à la même échelle.
 
     Args: cov: (..., 4, 4). Les dimensions de tête éventuelles (lot) sont conservées.
     Returns: (..., 4, 4) complex128. Une matrice dont la trace est nulle, négative ou non finie (patch vide ou

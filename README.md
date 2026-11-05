@@ -7,8 +7,7 @@ utilisent des fenêtres glissantes 5×5.
 
 Le dépôt contient :
 
-- les **baselines statistiques** : Quegan (formes fermées) et un solveur exact, qui
-  garde les hypothèses de Quegan sans son approximation au premier ordre ;
+- la **baseline statistique** : la méthode de Quegan, en formes fermées ;
 - le **banc d'essai par réinjection** : un crosstalk connu `theta_k` est ajouté à
   des patchs réels, et deux CVNN apprennent à le retrouver, un MLP sur la covariance
   du patch et un ResNet sur ses pixels.
@@ -33,7 +32,7 @@ pip install -r requirements.txt
 ## Lancer
 
 ```bash
-python src/run_baselines.py   # chaîne A : baselines sur les patchs de test bruts
+python src/run_baselines.py   # chaîne A : Quegan sur les patchs de test bruts
 python src/train_mlp.py       # banc d'essai : MLP (accepte un autre YAML en argument)
 python src/train_resnet.py    # banc d'essai : ResNet (idem)
 pytest tests
@@ -108,11 +107,6 @@ données réelles. Le banc d'essai le fait volontairement, pour créer une cible
 | A10d | ré-estimation et réciprocité | `estimate(patch_corrige)`, `metrics.reciprocity` | `ResidualReport` : `theta_initial`, `theta` résiduel, réciprocité avant et après ; `evaluate_patches` le reçoit sous le nom `residual_report_patch` |
 | A11 | synthèse | `run_baselines.aggregate`, `summarize` | la médiane des 18 440 lignes → tableau affiché ; rien n'est écrit sur disque |
 
-Le solveur exact (`estimators/exact.py`) est enregistré sous le nom `exact` mais
-absent du YAML : ajouter `- name: exact` à `baselines.estimators` pour l'évaluer. Il
-résout par moindres carrés, patch par patch, les 10 contraintes de symétrie de
-réflexion et de réciprocité, en partant de la solution de Quegan.
-
 ### Banc d'essai — `python src/train_mlp.py`, `python src/train_resnet.py`
 
 Les deux scripts suivent les mêmes étapes et s'appuient sur les briques de `cvnn`,
@@ -154,7 +148,7 @@ sur les patchs valides, sans normalisation. Les patchs écartés sont retirés a
 soustraction. La docstring de
 [loss.py](src/crosstalk/deep_learning/loss.py) donne le poids relatif de `alpha`.
 
-**La loi d'injection.** Ses valeurs sont justifiées, avec leurs sources, dans
+**La loi d'injection.** Elle est définie dans
 [crosstalk_sampler.py](src/crosstalk/crosstalk_sampler.py).
 
 | champ | valeur | sens |
@@ -228,20 +222,19 @@ le précèdent.
 | 7 | [src/crosstalk/covariance.py](src/crosstalk/covariance.py) | une seule `C` par patch, forme `(4, 4)` ; convention `C_ij = <S'_i S'_j*>` |
 | 8 | [src/crosstalk/estimators/estimator.py](src/crosstalk/estimators/estimator.py), puis [registry.py](src/crosstalk/estimators/registry.py) | interface abstraite, enregistrement par décorateur |
 | 9 | [src/crosstalk/estimators/quegan.py](src/crosstalk/estimators/quegan.py) | formes fermées, sans validation de la covariance |
-| 10 | [src/crosstalk/estimators/exact.py](src/crosstalk/estimators/exact.py) | les 10 contraintes, le départ depuis Quegan, les `nan` en cas d'échec |
-| 11 | [src/crosstalk/metrics.py](src/crosstalk/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas |
-| 12 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn`, lots dépliés en patchs |
-| 13 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
-| 14 | [src/crosstalk/crosstalk_sampler.py](src/crosstalk/crosstalk_sampler.py) | la loi de `theta_k`, ses sources ; `theta_k` n'est pas le crosstalk total |
-| 15 | [src/crosstalk/patch_rng.py](src/crosstalk/patch_rng.py) | même patch, même `theta_k`, quel que soit le processus ou l'époque |
-| 16 | [src/crosstalk/deep_learning/crosstalk_injection.py](src/crosstalk/deep_learning/crosstalk_injection.py) | l'injection commune, les deux entrées, `check_pipeline` |
-| 17 | [src/crosstalk/deep_learning/loss.py](src/crosstalk/deep_learning/loss.py) | patchs écartés retirés avant la soustraction, aucune normalisation |
-| 18 | [src/crosstalk/deep_learning/cache.py](src/crosstalk/deep_learning/cache.py) | ce qui entre dans l'empreinte, le contrôle à chaque chargement |
-| 19 | [src/crosstalk/deep_learning/mlp_model.py](src/crosstalk/deep_learning/mlp_model.py), puis [resnet_model.py](src/crosstalk/deep_learning/resnet_model.py) | sortie sans activation, multipliée par `ECHELLE_SORTIE` |
-| 20 | [src/crosstalk/deep_learning/experiment.py](src/crosstalk/deep_learning/experiment.py) | `init_weights`, `TRANCHES_DB`, `evaluate` |
-| 21 | [configs/cvnn_mlp.yaml](configs/cvnn_mlp.yaml), [configs/cvnn_resnet.yaml](configs/cvnn_resnet.yaml) | même découpage et même loi dans les deux |
-| 22 | [src/train_mlp.py](src/train_mlp.py), [src/train_resnet.py](src/train_resnet.py) | assemblage du banc d'essai ; moment où chaque graine est posée |
-| 23 | [tests/](tests/), dont l'outil [tests/synthetic.py](tests/synthetic.py) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
+| 10 | [src/crosstalk/metrics.py](src/crosstalk/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas |
+| 11 | [src/patchs.py](src/patchs.py) | patchs de test servis par `cvnn`, lots dépliés en patchs |
+| 12 | [src/run_baselines.py](src/run_baselines.py) | assemblage de la chaîne A |
+| 13 | [src/crosstalk/crosstalk_sampler.py](src/crosstalk/crosstalk_sampler.py) | la loi de `theta_k` ; `theta_k` n'est pas le crosstalk total |
+| 14 | [src/crosstalk/patch_rng.py](src/crosstalk/patch_rng.py) | même patch, même `theta_k`, quel que soit le processus ou l'époque |
+| 15 | [src/crosstalk/deep_learning/crosstalk_injection.py](src/crosstalk/deep_learning/crosstalk_injection.py) | l'injection commune, les deux entrées, `check_pipeline` |
+| 16 | [src/crosstalk/deep_learning/loss.py](src/crosstalk/deep_learning/loss.py) | patchs écartés retirés avant la soustraction, aucune normalisation |
+| 17 | [src/crosstalk/deep_learning/cache.py](src/crosstalk/deep_learning/cache.py) | ce qui entre dans l'empreinte, le contrôle à chaque chargement |
+| 18 | [src/crosstalk/deep_learning/mlp_model.py](src/crosstalk/deep_learning/mlp_model.py), puis [resnet_model.py](src/crosstalk/deep_learning/resnet_model.py) | sortie sans activation, multipliée par `ECHELLE_SORTIE` |
+| 19 | [src/crosstalk/deep_learning/experiment.py](src/crosstalk/deep_learning/experiment.py) | `init_weights`, `TRANCHES_DB`, `evaluate` |
+| 20 | [configs/cvnn_mlp.yaml](configs/cvnn_mlp.yaml), [configs/cvnn_resnet.yaml](configs/cvnn_resnet.yaml) | même découpage et même loi dans les deux |
+| 21 | [src/train_mlp.py](src/train_mlp.py), [src/train_resnet.py](src/train_resnet.py) | assemblage du banc d'essai ; moment où chaque graine est posée |
+| 22 | [tests/](tests/), dont l'outil [tests/synthetic.py](tests/synthetic.py) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
 
 ### Points à garder en tête
 
@@ -254,8 +247,8 @@ le précèdent.
 - **`theta_k` n'est pas le crosstalk total.** Le patch injecté vaut
   `D(theta_k) D(theta_0) S`, et `D(theta_k) D(theta_0) = g D(theta_tot) K`, où
   `theta_tot` n'est pas `theta_0 + theta_k`. Un réseau estime donc un écart au
-  crosstalk typique des données, alors que Quegan et le solveur exact visent
-  `theta_tot` ; il ne calibre pas les données à lui seul.
+  crosstalk typique des données, alors que Quegan vise `theta_tot` ; il ne calibre
+  pas les données à lui seul.
 - **cvnn peut ignorer une transformation en silence** : s'il ne peut pas la
   construire, il émet un simple avertissement et le réseau recevrait des patchs
   bruts. `check_pipeline` sert de parade.

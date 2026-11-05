@@ -48,7 +48,7 @@ data:
     - name: crosstalk_injection_resnet # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (patch injecté (4, H, W), theta_k)
       params:
         seed_injection: 13 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
-        crosstalk_db: [-35.0, -10.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
+        crosstalk_db: [-35.0, -10.0] # La loi d'injection : src/crosstalk/crosstalk_sampler.py.
         term_spread_db: 4.0
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]

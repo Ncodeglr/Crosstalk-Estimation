@@ -4,8 +4,8 @@ Un générateur aléatoire par patch, pour le banc d'essai par réinjection : pa
 Rôle
 ----
 Chaque patch doit recevoir le même theta_k à chaque époque et dans chaque processus du DataLoader, et le banc
-comparatif doit pouvoir refaire exactement le même tirage pour évaluer Quegan et le solveur exact sur les mêmes patchs
-injectés que le réseau. patch_rng rend pour cela un générateur dont la graine combine seed et le contenu du patch :
+comparatif doit pouvoir refaire exactement le même tirage pour évaluer Quegan sur les mêmes patchs injectés que le
+réseau. patch_rng rend pour cela un générateur dont la graine combine seed et le contenu du patch :
 
     theta_k = CrosstalkSampler(**loi).generate(patch_rng(patch, seed))
 
