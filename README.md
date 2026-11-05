@@ -13,9 +13,6 @@ Le dépôt contient :
   des patchs réels, et deux CVNN apprennent à le retrouver, un MLP sur la covariance
   du patch et un ResNet sur ses pixels.
 
-La comparaison directe n'a pas encore de script : voir
-[État du dépôt](#état-du-dépôt-au-2026-11-05).
-
 ## Installation
 
 ```bash
@@ -265,29 +262,3 @@ le précèdent.
 - **`patch_stride` doit rester égal à `patch_size`** : cvnn groupe les patchs par
   emplacement exact, et des patchs qui se recouvrent passeraient d'une partition à
   l'autre sans aucune erreur.
-
-## État du dépôt au 2026-11-05
-
-**Ce qui est en place**
-
-- Les trois YAML donnent la même partition (`seed` 16, patchs de 128 px, aucun
-  emplacement partagé entre l'entraînement et le test). La chaîne A évalue toutefois
-  des patchs bruts, et le banc d'essai des patchs injectés.
-- `cvnn_mlp.yaml` et `cvnn_resnet.yaml` ont le même découpage et la même loi, ce que
-  vérifie un test : le MLP et le ResNet voient les mêmes `theta_k`.
-- Le run `mlp_crosstalk_injection_sage-frost-60` (`seed_train` 3) correspond au
-  `cvnn_mlp.yaml` actuel.
-
-**Ce qui manque pour la comparaison Quegan / CVNN**
-
-- Aucun script n'évalue Quegan et le solveur exact sur les patchs injectés des
-  réseaux. La composition `D(theta_k) D(theta_0) = g D(theta_tot) K`, nécessaire pour
-  les juger sur `theta_k`, n'est pas codée dans `src/`.
-- `evaluate` ne rend que des agrégats, aucune erreur par patch.
-- Le ResNet n'a aucun run à la configuration actuelle : les 8 de `logs/` sont en
-  64 px, avec une autre graine de découpage.
-
-**Tests.** `pytest tests` donne 437 réussites et 6 échecs. Les 6 échecs viennent de
-tests qui attendent encore d'anciennes valeurs des YAML, pas d'un défaut du code
-mesuré : patchs de 64 px, `seed_injection` 0, anciens nombres de paramètres. Les tests
-qui lisent la pile sont ignorés si elle est absente.
