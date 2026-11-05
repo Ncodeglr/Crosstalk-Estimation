@@ -40,7 +40,6 @@ from .estimators import (
 )
 from .metrics import (
     ResidualReport,
-    corner_reflector_crosstalk,
     parameter_errors,
     reciprocity,
     residual_crosstalk,
@@ -62,7 +61,6 @@ __all__ = [
     "CrosstalkEstimator",
     "CrosstalkParameters",
     "ResidualReport",
-    "corner_reflector_crosstalk",
     "parameter_errors",
     "reciprocity",
     "residual_crosstalk",

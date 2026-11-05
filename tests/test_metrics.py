@@ -6,13 +6,12 @@ import pytest
 from src.crosstalk.estimators.quegan import QueganEstimator
 from src.crosstalk.metrics import (
     ResidualReport,
-    corner_reflector_crosstalk,
     parameter_errors,
     reciprocity,
     residual_crosstalk,
 )
 from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_correction, apply_distortion, distortion_matrix
+from src.crosstalk.matrix import apply_correction, apply_distortion
 from synthetic import ScatteringParameters, sample_scattering
 
 THETA = CrosstalkParameters(
@@ -178,80 +177,13 @@ def test_canal_croise_eteint_rend_nan():
     assert np.isnan(reciprocity(patch))
 
 
-# ------------------------------------- réflecteurs en coin (Babu, §4.6)
-
-
-def test_triedre_parfait_rend_moins_l_infini():
-    """`S = sqrt(sigma) I` : canaux croisés nuls, donc aucune fuite."""
-    assert corner_reflector_crosstalk(1.0, 0.0, 0.0, 1.0) == float("-inf")
-
-
-def test_une_fuite_connue_est_rendue_en_db():
-    assert corner_reflector_crosstalk(1.0, 0.1, 0.0, 1.0) == pytest.approx(-20.0)
-    assert corner_reflector_crosstalk(1.0, 0.0, 0.1, 1.0) == pytest.approx(-20.0)
-    assert corner_reflector_crosstalk(1.0, 0.03, 0.1, 1.0) == pytest.approx(-20.0), (
-        "c'est le pire des deux canaux croisés qui compte"
-    )
-
-
-def test_la_reference_copolaire_est_la_moyenne_geometrique():
-    """`sqrt(|hh| |vv|)` et non `|hh|` : insensible au déséquilibre HH/VV."""
-    assert corner_reflector_crosstalk(4.0, 0.2, 0.0, 1.0) == pytest.approx(
-        corner_reflector_crosstalk(2.0, 0.2, 0.0, 2.0)
-    )
-
-
-def test_la_fuite_mesuree_vaut_max_z_plus_w_et_u_plus_v():
-    """Ancre la métrique sur le modèle : `O = D I` donne `O_HV/O_HH = z + w`.
-
-    C'est ce qui rend la mesure interprétable — elle porte sur des **sommes**
-    de paramètres, pas sur les paramètres isolés. Les deux peuvent différer
-    nettement par compensation entre termes.
-    """
-    observe = distortion_matrix(THETA) @ np.array([1, 0, 0, 1], dtype=np.complex128)
-    attendu = 20 * np.log10(
-        max(abs(THETA.z + THETA.w), abs(THETA.u + THETA.v))
-    )
-    assert corner_reflector_crosstalk(*observe) == pytest.approx(attendu, abs=0.05)
-
-
-def test_canal_copolaire_eteint_rend_une_valeur_non_finie():
-    """Un réflecteur absent ou masqué ne doit pas produire un chiffre exploitable.
-
-    Deux cas distincts, tous deux non finis : `inf` si les canaux croisés
-    subsistent, `nan` si tout est éteint. C'est `np.isfinite` qui filtre les
-    deux, pas un test sur `nan`.
-    """
-    assert not np.isfinite(corner_reflector_crosstalk(0.0, 0.1, 0.1, 1.0))
-    assert not np.isfinite(corner_reflector_crosstalk(0.0, 0.0, 0.0, 0.0))
-
-
-def test_la_correction_fait_chuter_la_fuite_au_reflecteur():
-    """Validation de bout en bout, indépendante de l'estimateur.
-
-    On distord un trièdre par un `theta` connu, on corrige, et la fuite doit
-    retomber au niveau numérique. Aucune ré-estimation n'intervient.
-    """
-    triedre = np.ones((4, 8, 8), dtype=np.complex128)
-    triedre[1] = 0.0
-    triedre[2] = 0.0
-    observe = apply_distortion(triedre, THETA)
-    avant = corner_reflector_crosstalk(*observe[:, 0, 0])
-    apres = corner_reflector_crosstalk(
-        *apply_correction(observe, THETA)[:, 0, 0]
-    )
-    assert avant > -25.0, "le cas de test doit présenter une fuite mesurable"
-    assert apres < -250.0, f"fuite résiduelle {apres:.1f} dB, attendue négligeable"
-
-
 def test_la_phase_de_alpha_ne_change_aucune_metrique_comparable_a_babu():
     """Corriger avec `alpha` complexe (Fore, éq. 25) ou réel (Babu, éq. 15).
 
     Les deux corrections ne diffèrent que par `diag(1, e^{-i phi/2}, e^{+i phi/2}, 1)` :
     une rotation de phase de HV et VH, sans effet sur le retrait du crosstalk.
-    Fuite au réflecteur, réciprocité et modules du résiduel doivent donc être
-    identiques — ce qui garantit que passer à la phase de Fore n'a pas déplacé
-    l'écart avec Babu.
+    Réciprocité et modules du résiduel doivent donc être identiques — ce qui
+    garantit que passer à la phase de Fore n'a pas déplacé l'écart avec Babu.
     """
     sans_phase = CrosstalkParameters(THETA.u, THETA.v, THETA.w, THETA.z, abs(THETA.alpha))
     observe = apply_distortion(
@@ -263,12 +195,4 @@ def test_la_phase_de_alpha_ne_change_aucune_metrique_comparable_a_babu():
     estimateur = QueganEstimator()
     assert estimateur.estimate(avec).crosstalk_db() == pytest.approx(
         estimateur.estimate(sans).crosstalk_db(), abs=1e-9
-    )
-
-    triedre = distortion_matrix(THETA) @ np.array([40.0, 0.3 + 0.2j, 0.1 - 0.3j, 38.0])
-    assert corner_reflector_crosstalk(
-        *apply_correction(triedre, THETA, channel_axis=0)
-    ) == pytest.approx(
-        corner_reflector_crosstalk(*apply_correction(triedre, sans_phase, channel_axis=0)),
-        abs=1e-9,
     )

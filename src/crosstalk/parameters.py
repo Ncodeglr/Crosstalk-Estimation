@@ -23,7 +23,7 @@ class CrosstalkParameters:
     frozen = True : Permet l'immuabilité et la sécurité
     slots = True : Permet de réduire la mémoire et d'accélérer l'accès aux attributs, mais empêche l'ajout d'attributs dynamiques.
     
-    Jeu immuable (u, v, w, z, alpha) pour un patch, ou pour la bande de distance d'un réflecteur.
+    Jeu immuable (u, v, w, z, alpha) pour un patch.
 
     Attributes:
         u, v, w, z: termes de crosstalk complexes, petits devant 1 (~ -20 dB sur UAVSAR bande L).
