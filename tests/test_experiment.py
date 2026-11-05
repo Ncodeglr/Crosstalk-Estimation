@@ -1,7 +1,7 @@
 """
 Tests de src/crosstalk/deep_learning/experiment.py, ce que partagent les scripts d'entraînement du MLP et du ResNet :
 
-1. la loi d'injection lue dans le YAML, celui du MLP comme celui du ResNet, sans la graine de la transformation ;
+1. la transformation d'injection du YAML : la même loi et la même graine pour le MLP et le ResNet ;
 2. les chemins du YAML, lus depuis la racine du dépôt ;
 3. evaluate : erreurs médianes par tranche sur un cas construit à la main.
 Les tests qui lisent la pile sont sautés si elle est absente.
@@ -14,8 +14,8 @@ import pytest
 import torch
 import yaml
 
-from src.crosstalk.crosstalk_sampler import CrosstalkSampler
-from src.crosstalk.deep_learning.experiment import INITIALISATIONS, RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, init_weights, resolve_trainpath, sampler_params_yaml
+from src.crosstalk.deep_learning.crosstalk_injection import injection_transform_yaml
+from src.crosstalk.deep_learning.experiment import INITIALISATIONS, RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, init_weights, resolve_trainpath
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -27,28 +27,20 @@ def config_du_banc(nom: str = "cvnn_mlp.yaml") -> dict:
     return yaml.safe_load((RACINE / "configs" / nom).read_text())
 
 
-# ----------------------------------------------------------------- la loi d'injection
+# ----------------------------------------------------------------- la transformation d'injection du YAML
 
 
-def test_la_loi_lue_est_celle_de_la_transformation_sans_sa_graine():
-    config = config_du_banc()
-    params = config["data"]["transforms"][0]["params"]
-    loi = sampler_params_yaml(config)
-    assert "seed_injection" not in loi and loi == {cle: valeur for cle, valeur in params.items() if cle != "seed_injection"}
-    assert CrosstalkSampler(**loi) == CrosstalkSampler(**{cle: valeur for cle, valeur in params.items() if cle != "seed_injection"})
-
-
-def test_la_loi_lue_dans_le_yaml_du_resnet_est_celle_du_mlp():
-    resnet = config_du_banc("cvnn_resnet.yaml")
-    assert resnet["data"]["transforms"][0]["name"] == "crosstalk_injection_resnet"
-    assert sampler_params_yaml(resnet) == sampler_params_yaml(config_du_banc())
+def test_le_yaml_du_resnet_a_la_loi_et_la_graine_d_injection_du_mlp():
+    resnet = injection_transform_yaml(config_du_banc("cvnn_resnet.yaml"))
+    assert resnet["name"] == "crosstalk_injection_resnet"
+    assert resnet["params"] == injection_transform_yaml(config_du_banc())["params"]
 
 
 def test_une_config_sans_la_transformation_est_refusee():
     config = config_du_banc()
     config["data"]["transforms"] = []
     with pytest.raises(ValueError, match="0 transformations d'injection"):
-        sampler_params_yaml(config)
+        injection_transform_yaml(config)
 
 
 def test_une_config_avec_deux_transformations_d_injection_est_refusee():
@@ -56,7 +48,7 @@ def test_une_config_avec_deux_transformations_d_injection_est_refusee():
     mlp = config["data"]["transforms"][0]
     config["data"]["transforms"] = [mlp, {**mlp, "name": "crosstalk_injection_resnet"}]
     with pytest.raises(ValueError, match="2 transformations d'injection"):
-        sampler_params_yaml(config)
+        injection_transform_yaml(config)
 
 
 # ----------------------------------------------------------------- les chemins du YAML
@@ -110,17 +102,26 @@ def test_evaluate_rend_la_mediane_par_tranche_et_ignore_les_patchs_ecartes():
     e_30 = 10 ** (-30 / 20)   # erreur de -30 dB sur chaque terme
     nan = complex(np.nan, np.nan)
     chargeur = [
-        lot([[0.01] * 4 + [0.2]], [[0.0] * 4 + [0.0]]),                                  # sans injection, erreur -40 dB
-        lot([[a_22 + e_30] * 4 + [0.1j], [5.0] * 5], [[a_22] * 4 + [0.0], [nan] * 5]),    # -30 dB ; puis un patch écarté
+        lot([[0.01] * 4 + [1.2]], [[0.0] * 4 + [1.0]]),                                      # sans injection, erreur -40 dB ; alpha à 0,2 près
+        lot([[a_22 + e_30] * 4 + [1.0 + 0.1j], [5.0] * 5], [[a_22] * 4 + [1.0], [nan] * 5]),  # -30 dB, alpha à 0,1 près ; puis un patch écarté
     ]
     resultats = evaluate(Recopie(), chargeur, torch.device("cpu"))
     assert resultats["patchs"] == 2
     assert resultats["aucune"] == pytest.approx(-40.0, abs=1e-4)
     assert resultats["-25/-20"] == pytest.approx(-30.0, abs=1e-4)
     assert all(np.isnan(resultats[t]) for t in ("-35/-30", "-30/-25", "-20/-15", "-15/-10"))
-    assert resultats["log_alpha"] == pytest.approx(0.15, abs=1e-6)
+    assert resultats["alpha"] == pytest.approx(0.15, abs=1e-6)
+    assert resultats["alpha_aucune"] == pytest.approx(20 * np.log10(0.2), abs=1e-4)
+    assert resultats["alpha_-25/-20"] == pytest.approx(-20.0, abs=1e-4)
+    assert all(np.isnan(resultats[f"alpha_{t}"]) for t in ("-35/-30", "-30/-25", "-20/-15", "-15/-10"))
     assert resultats["n_aucune"] == resultats["n_-25/-20"] == 1
     assert all(resultats[f"n_{t}"] == 0 for t in ("-35/-30", "-30/-25", "-20/-15", "-15/-10"))
+
+
+def test_evaluate_rend_une_erreur_finie_si_alpha_estime_est_nul():
+    """Le prédicteur nul : son erreur sur alpha vaut |alpha|."""
+    resultats = evaluate(Recopie(), [lot([[0.01] * 4 + [0.0]], [[0.0] * 4 + [1.0]])], torch.device("cpu"))
+    assert resultats["alpha"] == pytest.approx(1.0)
 
 
 # ----------------------------------------------------------------- l'initialisation

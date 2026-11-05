@@ -35,6 +35,10 @@ COLONNES: tuple[tuple[str, str, int, str], ...] = (
     ("residual_db", "résiduel dB", 12, ".1f"),
     ("reduction_db", "réduction dB", 13, ".1f"),
     ("alpha_abs", "|alpha|", 8, ".3f"),
+    ("alpha_db_before", "alpha_db_before", 15, ".2f"),
+    ("alpha_db_after", "alpha_db_after", 14, ".2f"),
+    ("alpha_phase_deg_before", "alpha_phase_deg_before", 22, ".2f"),
+    ("alpha_phase_deg_after", "alpha_phase_deg_after", 21, ".2f"),
     ("reciprocity_before", "reciprocity_before", 13, ".3f"),
     ("reciprocity_after", "reciprocity_after", 13, ".3f"),
 )

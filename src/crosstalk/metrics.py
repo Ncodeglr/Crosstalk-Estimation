@@ -143,14 +143,19 @@ class ResidualReport:
 
     def to_metrics_row(self) -> dict[str, float]:
         """
-        Les six grandeurs résumées du rapport, en un dictionnaire plat : une ligne
+        Les dix grandeurs résumées du rapport, en un dictionnaire plat : une ligne
         de résultats, dont `run_baselines.aggregate` prend la médiane.
+        « before » lit alpha sur le patch d'origine (theta_initial), « after » le lit sur le patch corrigé (theta_residual).
         """
         return {
             "initial_db": self.initial_db,
             "residual_db": self.residual_db,
             "reduction_db": self.reduction_db,
             "alpha_abs": float(abs(self.theta_initial.alpha)),
+            "alpha_db_before": self.theta_initial.alpha_db(),
+            "alpha_db_after": self.theta_residual.alpha_db(),
+            "alpha_phase_deg_before": self.theta_initial.alpha_phase_deg(),
+            "alpha_phase_deg_after": self.theta_residual.alpha_phase_deg(),
             "reciprocity_before": self.reciprocity_before,
             "reciprocity_after": self.reciprocity_after,
         }

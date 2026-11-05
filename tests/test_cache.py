@@ -68,6 +68,13 @@ def test_le_modele_l_optimiseur_et_le_chargement_ne_changent_pas_l_empreinte(mod
     assert fingerprint(config) == fingerprint(config_du_banc())
 
 
+def test_les_composantes_de_la_cible_changent_l_empreinte(monkeypatch):
+    """Les caches de l'ancienne cible (log alpha) restent sur le disque, sans être relus."""
+    actuelle = fingerprint(config_du_banc())
+    monkeypatch.setattr(module_cache, "PARAMETER_NAMES", ("u", "v", "w", "z", "log_alpha"))
+    assert fingerprint(config_du_banc()) != actuelle
+
+
 def test_le_nom_du_cache_est_celui_de_la_transformation_suivi_de_l_empreinte():
     config = config_du_banc()
     assert module_cache.cache_name(config) == f"crosstalk_injection_mlp_{fingerprint(config)}"

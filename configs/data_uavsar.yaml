@@ -2,7 +2,7 @@
 #
 
 task: reconstruction #IMPORTANT : À CHANGER 
-seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
+seed: 16 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
 
 model:
   layer_mode: complex # CVNN : les 4 canaux restent complexes de bout en bout.

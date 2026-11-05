@@ -79,12 +79,11 @@ def test_une_autre_graine_donne_une_autre_injection():
     assert not torch.equal(MLPInjectionTransform(seed_injection=0)(patch)[1], MLPInjectionTransform(seed_injection=1)(patch)[1])
 
 
-def test_la_cible_est_le_theta_k_de_patch_rng_avec_log_alpha():
+def test_la_cible_est_le_theta_k_de_patch_rng():
     transformation = MLPInjectionTransform(seed_injection=5)
     patch = patch_injecte(transformation)
     theta = transformation.sampler.generate(patch_rng(patch.numpy(), 5)).to_vector()
-    attendu = np.r_[theta[:4], np.log(theta[4])]
-    np.testing.assert_allclose(transformation(patch)[1].numpy(), attendu, rtol=1e-6)
+    np.testing.assert_allclose(transformation(patch)[1].numpy(), theta, rtol=1e-6)
 
 
 def test_l_entree_est_la_covariance_injectee_normalisee_par_sa_trace():
@@ -117,7 +116,7 @@ def test_un_patch_brut_a_une_cible_neutre_et_sa_covariance_seule():
     transformation = MLPInjectionTransform(no_injection_rate=0.2)
     patch = patch_brut(transformation)
     entree, cible = transformation(patch)
-    assert torch.all(cible == 0)
+    assert torch.all(cible[:4] == 0) and cible[4] == 1
     covariance = polarimetric_covariance(patch.numpy())
     np.testing.assert_allclose(entree.numpy().ravel(), covariance_entries(covariance / np.trace(covariance).real),
                                rtol=1e-5, atol=1e-7)
@@ -135,7 +134,7 @@ def test_inject_rend_le_patch_injecte_normalise_et_la_cible():
     distordu = apply_distortion(patch.numpy().astype(np.complex128), theta)
     np.testing.assert_allclose(injecte, distordu / np.sqrt(np.trace(polarimetric_covariance(distordu)).real), rtol=1e-12)
     assert np.trace(polarimetric_covariance(injecte)).real == pytest.approx(1.0, rel=1e-12)
-    np.testing.assert_allclose(cible, np.r_[theta.to_vector()[:4], np.log(theta.to_vector()[4])], rtol=1e-12)
+    np.testing.assert_allclose(cible, theta.to_vector(), rtol=1e-12)
 
 
 @pytest.mark.parametrize("valeur", [0.0, np.nan, np.inf])

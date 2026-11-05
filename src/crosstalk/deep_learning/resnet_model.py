@@ -4,7 +4,7 @@ class ResNet
 Le ResNet de cvnn (cvnn.models.models.ResNet), avec une tête de régression à la place de sa tête de classification.
 
 Il reçoit l'entrée produite par ResNetInjectionTransform : le patch injecté, normalisé pour que sa covariance soit de
-trace 1, soit (B, 4, H, W) en complex64. Il prédit (u, v, w, z, log alpha), soit (B, 5) en complex64, comme le MLP.
+trace 1, soit (B, 4, H, W) en complex64. Il prédit (u, v, w, z, alpha), soit (B, 5) en complex64, comme le MLP.
 À la différence du MLP, il voit les pixels du patch, et pas seulement leur covariance.
 
 
@@ -45,7 +45,7 @@ from .crosstalk_injection import CARD_THETA, ECHELLE_SORTIE
 @register_model("ResNet") #Ajouté au registre de cvnn, pour que create_model("ResNet", ...) le construise : cvnn ne construit son ResNet que dans sa tâche de classification (model_utils.build_resnet).
 class ResNet(CvnnResNet):
     """
-    Patch injecté (B, 4, H, W) -> (u, v, w, z, log alpha) (B, 5), en complex64.
+    Patch injecté (B, 4, H, W) -> (u, v, w, z, alpha) (B, 5), en complex64.
 
     Args:
         channels_width, num_layers, activation, normalization_layer: ceux de l'encodeur de cvnn, que la tête reprend.

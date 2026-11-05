@@ -57,6 +57,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, Subset, TensorDataset
 from tqdm import tqdm
+from ..parameters import PARAMETER_NAMES
 from .crosstalk_injection import injection_transform_yaml
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,9 @@ PARTITIONS: tuple[str, ...] = ("train", "valid", "test")
 def fingerprint(cfg: dict[str, Any]) -> str:
     """
     Empreinte de tout ce qui détermine le contenu du cache : la pile, la taille des patchs, le découpage (graine,
-    proportions, max_num_samples), le sous-ensemble d'entraînement (max_train_samples) et les transformations (dont la
-    loi d'injection et sa graine). Le modèle, l'optimiseur, nepochs et seed_train n'y entrent pas : les changer
+    proportions, max_num_samples), le sous-ensemble d'entraînement (max_train_samples), les transformations (dont la
+    loi d'injection et sa graine) et les composantes de la cible, pour que les caches de l'ancienne cible (log alpha)
+    restent sur le disque sans être relus. Le modèle, l'optimiseur, nepochs et seed_train n'y entrent pas : les changer
     réutilise le même cache.
     """
     donnees = cfg["data"]
@@ -85,6 +87,7 @@ def fingerprint(cfg: dict[str, Any]) -> str:
         "decoupage": {cle: donnees.get(cle) for cle in ("valid_ratio", "test_ratio", "max_num_samples",
                                                         "max_train_samples")},
         "transforms": donnees.get("transforms"),
+        "cible": PARAMETER_NAMES,
     }
     return hashlib.sha256(json.dumps(contenu, sort_keys=True).encode()).hexdigest()[:16]
 

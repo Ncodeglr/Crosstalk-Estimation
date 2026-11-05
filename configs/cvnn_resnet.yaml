@@ -6,7 +6,7 @@
 
 
 task: resnet_crosstalk_injection # Préfixe du dossier de sortie.
-seed: 14 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
+seed: 16 # Graine du découpage de cvnn (entraînement / validation / test), la même que cvnn_mlp.yaml. La changer change la partition de test et reconstruit le cache.
 seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre des lots. La faire varier à seed fixe mesure la dispersion d'un entraînement à l'autre, sur la même partition de test.
 nepochs: 50 # Comme dans la simulation du ResNet.
 
@@ -49,7 +49,7 @@ data:
       params:
         seed_injection: 13 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
         crosstalk_db: [-35.0, -10.0] # La loi d'injection : valeurs et sources dans src/crosstalk/crosstalk_sampler.py.
-        term_spread_db: 4.0         # La perte (src/crosstalk/deep_learning/loss.py) lit la même loi pour son moment d'ordre 2 m.
+        term_spread_db: 4.0
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]
         no_injection_rate: 0.0

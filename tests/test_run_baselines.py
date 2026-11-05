@@ -160,7 +160,7 @@ def test_synthese_signale_une_methode_entierement_en_echec():
     bilan = rb.aggregate(lignes)
     assert bilan == {"singulier": {"patchs": 1, "echecs": 1}}
     ligne_singulier = rb.summarize(bilan).splitlines()[2]
-    assert ligne_singulier.split() == ["singulier", "1", "1"] + ["-"] * 6
+    assert ligne_singulier.split() == ["singulier", "1", "1"] + ["-"] * 10
 
 
 # ------------------------------------------------------------- configuration

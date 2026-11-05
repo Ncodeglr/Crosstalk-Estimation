@@ -105,10 +105,10 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
     donnees = yaml.safe_load((sortie / "config.yml").read_text())["data"]
     assert (donnees["inferred_input_channels"], donnees["inferred_input_size"]) == (4, 64)   # le patch (4, 64, 64)
     historique = yaml.safe_load((sortie / "historique.yaml").read_text())
-    assert {"train_loss", "valid_loss", "train_u", "valid_log_alpha"} <= set(historique)
+    assert {"train_loss", "valid_loss", "train_u", "valid_alpha"} <= set(historique)
     assert all(len(valeurs) == 2 for valeurs in historique.values())
     assert yaml.safe_load((sortie / "evaluation.yaml").read_text()) == pytest.approx(resultats, nan_ok=True)
-    assert resultats["patchs"] > 0 and np.isfinite(resultats["log_alpha"])
+    assert resultats["patchs"] > 0 and np.isfinite(resultats["alpha"])
 
 
 @sur_la_pile

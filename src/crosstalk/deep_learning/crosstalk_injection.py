@@ -18,9 +18,9 @@ Chaque transformation en tire l'entrée de son réseau, en complex64 :
       (covariance.covariance_entries), rangées comme les 10 canaux d'une image 1 x 1, soit (10, 1, 1) ;
     - « crosstalk_injection_resnet » (ResNetInjectionTransform) : le patch injecté lui-même, (4, H, W).
 
-La cible est la même pour les deux : (u, v, w, z, log alpha) de theta_k, (5,) en complex64. Le réseau prédit
-log alpha : alpha = exp(sortie) ne peut pas s'annuler. Pour un même patch, le MLP et le ResNet voient donc le même
-theta_k, et la covariance de l'entrée du ResNet est l'entrée du MLP : leurs erreurs se comparent patch par patch.
+La cible est la même pour les deux : (u, v, w, z, alpha) de theta_k, (5,) en complex64. Pour un même patch, le MLP et le
+ResNet voient donc le même theta_k, et la covariance de l'entrée du ResNet est l'entrée du MLP : leurs erreurs se
+comparent patch par patch.
 Injecter dans les pixels puis calculer la covariance revient exactement à injecter dans la covariance,
 C_inj = D C D^H, D agissant linéairement sur chaque pixel.
 Le DataLoader de cvnn regroupe ces couples en lots ((B, 10, 1, 1) ou (B, 4, H, W), et (B, 5)), que sa boucle
@@ -57,7 +57,7 @@ from ..crosstalk_sampler import CrosstalkSampler
 from ..patch_rng import patch_rng
 from ..matrix import apply_distortion
 
-#: Nombre de valeurs complexes de l'entrée (les entrées distinctes de la covariance) et de la cible (u, v, w, z, log alpha).
+#: Nombre de valeurs complexes de l'entrée (les entrées distinctes de la covariance) et de la cible (u, v, w, z, alpha).
 N_ENTREES: int = len(HERMITIAN_ENTRIES)
 CARD_THETA: int = 5
 
@@ -65,8 +65,9 @@ CARD_THETA: int = 5
 #: init_weights_mode_aware : la couche de sortie rend des valeurs dont l'écart quadratique va de 0,2 à 1,8 (médiane 0,7)
 #: pour le MLP (64, 128, 256 comme 128, 128, 128), et de 0,06 à 0,88 (médiane 0,28) pour le ResNet (largeur 16,
 #: 4 blocs, CReLU), selon la composante et la graine. Sous la loi par défaut, les cibles valent 0,11 (u, v, w, z) et
-#: 0,36 (log alpha). Avec ce facteur, les premières prédictions sont proches de zéro, c'est-à-dire de la prédiction
-#: « sans crosstalk », plutôt qu'un décalage aléatoire plus grand que les cibles.
+#: 1,04 (alpha). Avec ce facteur, les premières prédictions sont proches de zéro : « sans crosstalk » pour u, v, w, z,
+#: plutôt qu'un décalage aléatoire plus grand que les cibles. Pour alpha, elles partent donc de 0 et non de 1 : le réseau
+#: doit apprendre ce décalage, ce que le MLP fait (mesure du 2026-11-05) ; cela n'a pas été mesuré sur le ResNet.
 ECHELLE_SORTIE: float = 0.1
 
 
@@ -102,7 +103,7 @@ class CrosstalkInjector:
 
         Args: patch: le patch (4, H, W) complexe, en POL_ORDER, soit un tenseur PyTorch, soit un tableau NumPy.
         Returns:
-            (patch injecté (4, H, W), cible (u, v, w, z, log alpha) (5,)), en complex128 ; la covariance du patch
+            (patch injecté (4, H, W), cible (u, v, w, z, alpha) (5,)), en complex128 ; la covariance du patch
             injecté est de trace 1. None si le patch contient un zéro ou une valeur non finie (bord de fauchée).
         Raises: TypeError, ValueError : patch mal formé (covariance.check_patch).
         """
@@ -117,8 +118,7 @@ class CrosstalkInjector:
         theta = self.sampler.generate(patch_rng(patch, self.seed_injection)) #Détermine les paramètres d'injection selon la loi et la graine.
         injecte = apply_distortion(patch.astype(np.complex128), theta)   # complex128 : apply_distortion garde le type
         injecte /= np.sqrt(np.trace(polarimetric_covariance(injecte)).real)
-        u, v, w, z, alpha = theta.to_vector()
-        return injecte, np.array([u, v, w, z, np.log(alpha)]) #injecte est le patch avec le crosstalk injecté, normalisé pour que sa covariance soit de trace 1.
+        return injecte, theta.to_vector() #injecte est le patch avec le crosstalk injecté, normalisé pour que sa covariance soit de trace 1.
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(seed_injection={self.seed_injection}, {self.sampler})"
@@ -197,7 +197,7 @@ def injection_transform_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
     """
     La transformation d'injection du YAML, quel que soit le modèle : l'entrée de data.transforms dont le nom commence
     par « crosstalk_injection » (« crosstalk_injection_mlp » ou « crosstalk_injection_resnet »), avec son nom et ses
-    paramètres. Le cache (cache_name) et la perte (sampler_params_yaml) la trouvent ainsi par la même règle.
+    paramètres. Le cache (cache_name) la trouve ainsi par cette seule règle.
 
     Raises: ValueError: si data.transforms ne contient pas exactement une transformation d'injection.
     """

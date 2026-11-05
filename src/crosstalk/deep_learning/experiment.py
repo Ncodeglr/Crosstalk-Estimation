@@ -1,7 +1,6 @@
 """
 Ce que partagent les scripts d'entraînement du MLP (src/train_mlp.py) et du ResNet (src/train_resnet.py) : les chemins
-du YAML lus depuis la racine du dépôt, la loi d'injection lue dans le YAML, l'initialisation du réseau, et l'évaluation
-sur la partition de test.
+du YAML lus depuis la racine du dépôt, l'initialisation du réseau, et l'évaluation sur la partition de test.
 
 Les deux réseaux sont ainsi évalués de la même façon. Quand leurs YAML ont le même découpage et la même loi
 d'injection, ils le sont aussi sur les mêmes patchs de test, avec les mêmes theta_k : leurs evaluation.yaml se
@@ -16,7 +15,6 @@ import torch
 import torchcvnn.nn.modules as c_nn
 from cvnn.models.utils import init_weights_mode_aware
 from tqdm import tqdm
-from .crosstalk_injection import injection_transform_yaml
 
 #: Racine du dépôt, d'où se lisent les chemins relatifs du YAML.
 RACINE: Path = Path(__file__).resolve().parents[3]
@@ -34,18 +32,6 @@ INITIALISATIONS: dict[str, Any] = {
     "xavier_normal": c_nn.init.complex_xavier_normal_,
     "xavier_uniform": c_nn.init.complex_xavier_uniform_,
 }
-
-
-def sampler_params_yaml(cfg: dict[str, Any]) -> dict[str, Any]:
-    """
-    Les paramètres de CrosstalkSampler (la loi d'injection), lus dans la transformation d'injection du YAML
-    (« crosstalk_injection_mlp » ou « crosstalk_injection_resnet »), sans sa graine.
-
-    Raises: ValueError: si data.transforms ne contient pas exactement une transformation d'injection
-        (injection_transform_yaml).
-    """
-    params = injection_transform_yaml(cfg).get("params") or {}
-    return {cle: valeur for cle, valeur in params.items() if cle != "seed_injection"}
 
 
 def from_repo_root(chemin: str | Path) -> Path:
@@ -98,7 +84,10 @@ def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, d
         pour la tranche « aucune » et chaque tranche de TRANCHES_DB (clé « -35/-30 », etc.) : la médiane, en dB, de
         10 log10 de la moyenne de |ŷ - y|² sur u, v, w, z ; nan si la tranche est vide.
         « n_<tranche> » (« n_aucune », « n_-35/-30 », etc.) : le nombre de patchs de chaque tranche.
-        « log_alpha » : la médiane de |ŷ - y| sur log alpha, sur tous les patchs valides.
+        « alpha_<tranche> » (« alpha_aucune », « alpha_-35/-30 », etc.) : la médiane, en dB, de 10 log10 de
+        |alpha estimé - alpha|² ; nan si la tranche est vide. Alpha reste hors de la moyenne sur u, v, w, z : proche de 1,
+        il y masquerait l'erreur sur le crosstalk.
+        « alpha » : la médiane de |alpha estimé - alpha|, sur tous les patchs valides.
         « patchs » : le nombre de patchs valides.
     """
     #Étape 1 : prédictions et cibles de tout le chargeur, sur CPU.
@@ -124,6 +113,8 @@ def evaluate(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, d
     tranches.update({f"{a}/{b}": (niveau_db >= a) & (niveau_db < b) for a, b in TRANCHES_DB})
     resultats = {nom: float(np.median(erreur_db[dans])) if dans.any() else float("nan") for nom, dans in tranches.items()}
     resultats.update({f"n_{nom}": int(dans.sum()) for nom, dans in tranches.items()}) #Effectif de chaque tranche : le nombre de True de son masque. Une médiane sur 3 000 patchs pèse moins qu'une médiane sur 20 000.
-    resultats["log_alpha"] = float(np.median(np.abs(sorties[:, 4] - cibles[:, 4])))
+    erreur_alpha_db = 10 * np.log10(np.abs(sorties[:, 4] - cibles[:, 4]) ** 2) #Même calcul que erreur_db, pour alpha seul.
+    resultats.update({f"alpha_{nom}": float(np.median(erreur_alpha_db[dans])) if dans.any() else float("nan") for nom, dans in tranches.items()})
+    resultats["alpha"] = float(np.median(np.abs(sorties[:, 4] - cibles[:, 4]))) #Erreur de chaque patch, |alpha estimé - alpha|, puis médiane.
     resultats["patchs"] = int(valides.sum())
     return resultats

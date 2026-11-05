@@ -20,7 +20,7 @@ sys.path.insert(0, str(RACINE))
 # Importer ce paquet ajoute cvnn au chemin et enregistre la transformation et le réseau dans ses registres.
 from src.crosstalk.deep_learning import CrosstalkLoss, cached_loaders, check_pipeline  # noqa: E402
 from src.crosstalk.deep_learning.cache import DOSSIER_CACHE  # noqa: E402
-from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, init_weights, resolve_trainpath, sampler_params_yaml  # noqa: E402
+from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, init_weights, resolve_trainpath  # noqa: E402
 from cvnn.config import load_config  # noqa: E402
 from cvnn.config_utils import get_model_params  # noqa: E402
 from cvnn.data import get_dataloaders, validate_and_correct_config  # noqa: E402
@@ -88,7 +88,7 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
     # ==========================================
     # 5. PERTE ET OPTIMISEUR
     # ==========================================
-    loss_fn = CrosstalkLoss(**sampler_params_yaml(cfg)).to(device)
+    loss_fn = CrosstalkLoss()
     optimizer = getattr(torch.optim, cfg["optim"]["algo"])(model.parameters(), **cfg["optim"]["params"])
 
     # ==========================================
@@ -107,8 +107,8 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
     (logdir / "evaluation.yaml").write_text(yaml.safe_dump(resultats, sort_keys=False))
     log_metrics(wandb_log, resultats, prefix="test")
     tranches = [nom for nom in resultats if f"n_{nom}" in resultats]
-    logger.info("test (%d patchs valides) : %s | log_alpha %.4f", resultats["patchs"],
-                " | ".join(f"{nom} {resultats[nom]:.2f} dB ({resultats[f'n_{nom}']} patchs)" for nom in tranches), resultats["log_alpha"])
+    logger.info("test (%d patchs valides) : %s | alpha %.4f", resultats["patchs"],
+                " | ".join(f"{nom} {resultats[nom]:.2f} dB ({resultats[f'n_{nom}']} patchs)" for nom in tranches), resultats["alpha"])
 
     # ==========================================
     # 8. FIN DU RUN WANDB

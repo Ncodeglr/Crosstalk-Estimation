@@ -72,8 +72,8 @@ def test_rapport_de_residuel():
 
 def test_rapport_vue_plate():
     rapport = ResidualReport(
-        theta_initial=CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.2),
-        theta_residual=CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 1.0),
+        theta_initial=CrosstalkParameters(0.1, 0.1, 0.1, 0.1, 1.2 * np.exp(1j * np.deg2rad(30.0))),
+        theta_residual=CrosstalkParameters(0.01, 0.01, 0.01, 0.01, 0.9 * np.exp(1j * np.deg2rad(-5.0))),
     )
     ligne = rapport.to_metrics_row()
     assert set(ligne) == {
@@ -81,10 +81,18 @@ def test_rapport_vue_plate():
         "residual_db",
         "reduction_db",
         "alpha_abs",
+        "alpha_db_before",
+        "alpha_db_after",
+        "alpha_phase_deg_before",
+        "alpha_phase_deg_after",
         "reciprocity_before",
         "reciprocity_after",
     }
     assert ligne["alpha_abs"] == pytest.approx(1.2)
+    assert ligne["alpha_db_before"] == pytest.approx(20.0 * np.log10(1.2))
+    assert ligne["alpha_db_after"] == pytest.approx(20.0 * np.log10(0.9))
+    assert ligne["alpha_phase_deg_before"] == pytest.approx(30.0)
+    assert ligne["alpha_phase_deg_after"] == pytest.approx(-5.0)
 
 
 def test_residuel_sur_donnees_synthetiques():

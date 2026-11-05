@@ -2,7 +2,7 @@
 class MLP
 
 Il reçoit l'entrée produite par MLPInjectionTransform : les 10 entrées distinctes de la covariance normalisée par
-sa trace, rangées en (B, 10, 1, 1). Il prédit (u, v, w, z, log alpha), soit (B, 5) en complex64. C'est une estimation
+sa trace, rangées en (B, 10, 1, 1). Il prédit (u, v, w, z, alpha), soit (B, 5) en complex64. C'est une estimation
 par patch, à information égale avec Quegan, qui ne voit lui aussi que la covariance.
 
 
@@ -28,7 +28,7 @@ NORMALISATIONS: tuple[str | None, ...] = (None, "none", "layer", "batch")
 @register_model("MLP") #Ajouté au registre de cvnn, pour que create_model("MLP", ...) le construise.
 class MLP(nn.Module):
     """
-    Entrées de la covariance (B, 10, 1, 1) -> (u, v, w, z, log alpha) (B, 5), en complex64.
+    Entrées de la covariance (B, 10, 1, 1) -> (u, v, w, z, alpha) (B, 5), en complex64.
 
     Args: **kwargs: les autres champs de get_model_params, ignorés.
     """

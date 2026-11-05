@@ -1,10 +1,9 @@
 """
 Tests de la perte « CrosstalkLoss » :
 
-1. m = E|y|² : l'estimation par tirages contre la formule fermée de la loi, et le prédicteur nul qui coûte 1 par composante ;
-2. la formule sur un lot, et les métriques par composante ;
-3. les patchs écartés : retirés avant la soustraction, gradient sans nan, lot sans patch valide ;
-4. avec cvnn : les boucles d'entraînement et de validation de cvnn reçoivent la perte et les métriques ; les refus.
+1. la formule sur un lot : la MSE complexe seule, sans normalisation, et les métriques par composante ;
+2. les patchs écartés : retirés avant la soustraction, gradient sans nan, lot sans patch valide ;
+3. avec cvnn : les boucles d'entraînement et de validation de cvnn reçoivent la perte et les métriques ; les refus.
 """
 
 import numpy as np
@@ -12,45 +11,19 @@ import pytest
 import torch
 
 from src.crosstalk.deep_learning import MLPInjectionTransform, MLP
-from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss, mean_squared_parameters
+from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss
 from src.crosstalk.crosstalk_sampler import CrosstalkSampler
-
-LN10 = np.log(10.0)
 
 
 @pytest.fixture(scope="module")
 def perte() -> CrosstalkLoss:
-    """La perte telle que l'entraînement la construit : loi par défaut, N_TIRAGES tirages (1,4 s, construite une fois)."""
     return CrosstalkLoss()
 
 
-def mean_squared_exact(sampler: CrosstalkSampler) -> np.ndarray:
-    """
-    m_j = E|y_j|² par la formule fermée de CrosstalkSampler (docstring de crosstalk_sampler.CrosstalkSampler).
-
-    Crosstalk : |u|² = 10^((L + e) / 10), L et e indépendants et uniformes en dB, donc E|u|² = E[10^(L/10)] E[10^(e/10)],
-    avec E[10^(x/10)] = (10^(b/10) - 10^(a/10)) / ((b - a) ln(10) / 10) pour x uniforme sur [a, b].
-    log alpha : |log alpha|² = (ln|alpha|)² + arg(alpha)², avec ln|alpha| = m ln(10) / 20 et E[x²] = (a² + ab + b²) / 3.
-    Un patch neutre (probabilité no_injection_rate) a une cible nulle.
-    """
-    def moyenne_puissance(a, b):
-        return (10 ** (b / 10) - 10 ** (a / 10)) / ((b - a) * LN10 / 10)
-
-    def moment2(a, b):
-        return (a * a + a * b + b * b) / 3
-
-    s = sampler.term_spread_db
-    crosstalk = moyenne_puissance(sampler.crosstalk_db[0] + s, sampler.crosstalk_db[1] - s) * moyenne_puissance(-s, s)
-    log_alpha = (LN10 / 20) ** 2 * moment2(*sampler.alpha_module_db) + moment2(*np.deg2rad(sampler.alpha_phase_deg))
-    return (1 - sampler.no_injection_rate) * np.array([crosstalk] * 4 + [log_alpha])
-
-
 def cibles_de_la_loi(n: int, graine: int, sampler: CrosstalkSampler = CrosstalkSampler()) -> torch.Tensor:
-    """n cibles (u, v, w, z, log alpha) tirées de la loi, comme CrosstalkInjector.inject les construit."""
+    """n cibles (u, v, w, z, alpha) tirées de la loi, comme CrosstalkInjector.inject les construit."""
     rng = np.random.default_rng(graine)
-    cibles = np.array([sampler.generate(rng).to_vector() for _ in range(n)])
-    cibles[:, 4] = np.log(cibles[:, 4])
-    return torch.from_numpy(cibles.astype(np.complex64))
+    return torch.from_numpy(np.array([sampler.generate(rng).to_vector() for _ in range(n)]).astype(np.complex64))
 
 
 def lot_aleatoire(b: int = 6, graine: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
@@ -60,39 +33,31 @@ def lot_aleatoire(b: int = 6, graine: int = 0) -> tuple[torch.Tensor, torch.Tens
     return sorties, 0.1 * torch.randn(b, 5, dtype=torch.complex64, generator=g)
 
 
-# ----------------------------------------------------------------- m = E|y|²
-
-
-def test_m_par_tirages_suit_la_formule_fermee_de_la_loi_par_defaut(perte):
-    np.testing.assert_allclose(perte.mean_squared.numpy(), mean_squared_exact(CrosstalkSampler()), rtol=0.03)
-
-
-def test_m_par_tirages_suit_la_formule_fermee_d_une_autre_loi():
-    loi = dict(crosstalk_db=(-30.0, -10.0), term_spread_db=2.0, alpha_module_db=(-1.0, 2.0),
-               alpha_phase_deg=(-10.0, 40.0), no_injection_rate=0.0)
-    np.testing.assert_allclose(mean_squared_parameters(CrosstalkSampler(**loi), 50_000), mean_squared_exact(CrosstalkSampler(**loi)), rtol=0.03)
-
-
-def test_le_predicteur_nul_coute_un_par_composante(perte):
-    cibles = cibles_de_la_loi(20_000, graine=1)
-    valeur, termes = perte(torch.zeros_like(cibles), cibles)
-    np.testing.assert_allclose([float(termes[nom]) for nom in COMPOSANTES], 1.0, rtol=0.05)
-    assert valeur.item() == pytest.approx(5.0, rel=0.03)
-
-
-def test_m_est_un_buffer_et_non_un_parametre_appris(perte):
-    assert "mean_squared" in dict(perte.named_buffers())
-    assert list(perte.parameters()) == []
-
-
 # ----------------------------------------------------------------- la formule
 
 
 def test_la_perte_suit_la_formule(perte):
     sorties, cibles = lot_aleatoire()
     valeur, _ = perte(sorties, cibles)
-    attendu = (np.abs(sorties.detach().numpy() - cibles.numpy()) ** 2 / perte.mean_squared.numpy()).sum(axis=1).mean()
+    attendu = (np.abs(sorties.detach().numpy() - cibles.numpy()) ** 2).sum(axis=1).mean()
     assert valeur.item() == pytest.approx(attendu, rel=1e-5)
+
+
+def test_les_composantes_ne_sont_pas_normalisees(perte):
+    """Une erreur de 0,1 sur u coûte 0,01 et une erreur de 1 sur alpha coûte 1 : chacune garde son échelle."""
+    sorties = torch.zeros(1, 5, dtype=torch.complex64)
+    cibles = torch.tensor([[0.1, 0, 0, 0, 1]], dtype=torch.complex64)
+    _, termes = perte(sorties, cibles)
+    assert float(termes["u"]) == pytest.approx(0.01, rel=1e-5)
+    assert float(termes["alpha"]) == pytest.approx(1.0, rel=1e-5)
+
+
+def test_les_composantes_sont_celles_de_la_cible():
+    assert COMPOSANTES == ("u", "v", "w", "z", "alpha")
+
+
+def test_la_perte_n_a_ni_parametre_ni_buffer(perte):
+    assert list(perte.parameters()) == [] and list(perte.buffers()) == []
 
 
 def test_les_metriques_sont_les_termes_de_chaque_composante_et_somment_a_la_perte(perte):
@@ -177,8 +142,6 @@ def test_des_formes_incompatibles_sont_refusees(perte, sorties, cibles):
         perte(torch.zeros(sorties, dtype=torch.complex64), torch.zeros(cibles, dtype=torch.complex64))
 
 
-@pytest.mark.parametrize("reglages, erreur", [(dict(no_injection_rate=1.0), ValueError),
-                                              (dict(champ_inconnu=1), TypeError)])
-def test_une_configuration_invalide_est_refusee_a_la_construction(reglages, erreur):
-    with pytest.raises(erreur):
-        CrosstalkLoss(**reglages)
+def test_la_perte_ne_prend_aucun_reglage():
+    with pytest.raises(TypeError):
+        CrosstalkLoss(crosstalk_db=(-35.0, -10.0))

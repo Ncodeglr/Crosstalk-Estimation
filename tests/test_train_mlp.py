@@ -5,8 +5,8 @@ Tests du script src/train_mlp.py :
 2. sur la vraie pile, un entraînement complet de deux époques sur un petit échantillon, lancé depuis src/, sans wandb,
    avec un cache temporaire ; la graine d'entraînement change l'entraînement sans toucher au découpage. Sautés si la
    pile est absente.
-Les fonctions communes aux scripts du MLP et du ResNet (evaluate, sampler_params_yaml, from_repo_root,
-resolve_trainpath) sont testées dans tests/test_experiment.py.
+Les fonctions communes aux scripts du MLP et du ResNet (evaluate, from_repo_root, resolve_trainpath) sont testées dans
+tests/test_experiment.py.
 """
 
 import os
@@ -79,10 +79,10 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
                                                  "evaluation.yaml"}
     assert yaml.safe_load((sortie / "config.yml").read_text())["data"]["inferred_input_channels"] == 10
     historique = yaml.safe_load((sortie / "historique.yaml").read_text())
-    assert {"train_loss", "valid_loss", "train_u", "valid_log_alpha"} <= set(historique)
+    assert {"train_loss", "valid_loss", "train_u", "valid_alpha"} <= set(historique)
     assert all(len(valeurs) == 2 for valeurs in historique.values())
     assert yaml.safe_load((sortie / "evaluation.yaml").read_text()) == pytest.approx(resultats, nan_ok=True)
-    assert resultats["patchs"] > 0 and np.isfinite(resultats["log_alpha"])
+    assert resultats["patchs"] > 0 and np.isfinite(resultats["alpha"])
 
 
 @sur_la_pile
