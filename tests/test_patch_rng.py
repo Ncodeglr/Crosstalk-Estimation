@@ -6,8 +6,8 @@ refus des arguments qui rendraient l'empreinte non déterministe.
 import numpy as np
 import pytest
 
-from src.crosstalk.crosstalk_sampler import CrosstalkSampler
-from src.crosstalk.patch_rng import patch_rng
+from src.crosstalk.injection.crosstalk_sampler import CrosstalkSampler
+from src.crosstalk.injection.patch_rng import patch_rng
 
 
 def patch_de(graine: int = 0) -> np.ndarray:

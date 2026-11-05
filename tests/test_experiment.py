@@ -1,5 +1,5 @@
 """
-Tests de src/crosstalk/deep_learning/experiment.py, ce que partagent les scripts d'entraînement du MLP et du ResNet :
+Tests de src/crosstalk/deep_learning/training/experiment.py, ce que partagent les scripts d'entraînement du MLP et du ResNet :
 
 1. la transformation d'injection du YAML : la même loi et la même graine pour le MLP et le ResNet ;
 2. les chemins du YAML, lus depuis la racine du dépôt ;
@@ -15,7 +15,7 @@ import torch
 import yaml
 
 from src.crosstalk.deep_learning.crosstalk_injection import injection_transform_yaml
-from src.crosstalk.deep_learning.experiment import INITIALISATIONS, RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, init_weights, resolve_trainpath
+from src.crosstalk.deep_learning.training.experiment import INITIALISATIONS, RACINE as RACINE_DU_MODULE, evaluate, from_repo_root, init_weights, resolve_trainpath
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -56,7 +56,7 @@ def test_une_config_avec_deux_transformations_d_injection_est_refusee():
 
 @sur_la_pile
 def test_un_chemin_relatif_de_la_pile_se_lit_depuis_la_racine_du_depot(monkeypatch):
-    monkeypatch.chdir(RACINE / "src")
+    monkeypatch.chdir(RACINE / "src" / "scripts")
     assert resolve_trainpath(config_du_banc()) == PILE
 
 
@@ -68,7 +68,7 @@ def test_un_chemin_absolu_de_la_pile_est_garde_tel_quel():
 
 
 def test_un_chemin_relatif_du_yaml_se_lit_depuis_la_racine_et_un_absolu_reste_tel_quel(tmp_path, monkeypatch):
-    monkeypatch.chdir(RACINE / "src")
+    monkeypatch.chdir(RACINE / "src" / "scripts")
     assert RACINE_DU_MODULE == RACINE
     assert from_repo_root("./logs") == RACINE / "logs"
     assert from_repo_root(tmp_path) == tmp_path

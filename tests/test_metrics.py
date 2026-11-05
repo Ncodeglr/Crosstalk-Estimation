@@ -3,15 +3,15 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.estimators.quegan import QueganEstimator
-from src.crosstalk.metrics import (
+from src.crosstalk.baselines.quegan import QueganEstimator
+from src.crosstalk.baselines.metrics import (
     ResidualReport,
     parameter_errors,
     reciprocity,
     residual_crosstalk,
 )
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_correction, apply_distortion
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import apply_correction, apply_distortion
 from synthetic import ScatteringParameters, sample_scattering
 
 THETA = CrosstalkParameters(
@@ -106,8 +106,8 @@ def test_residuel_sur_donnees_synthetiques():
 
 def test_residuel_propage_l_echec():
     """Une correction impossible remonte telle quelle à l'appelant."""
-    from src.crosstalk.estimators.estimator import CrosstalkEstimator
-    from src.crosstalk.exceptions import SingularDmatrixError
+    from src.crosstalk.baselines.estimator import CrosstalkEstimator
+    from src.crosstalk.polarimetry.exceptions import SingularDmatrixError
 
     class Singulier(CrosstalkEstimator):
         name = "singulier"
@@ -143,7 +143,7 @@ def test_le_crosstalk_degrade_la_reciprocite():
 
 def test_la_correction_restaure_la_reciprocite():
     """Validation indépendante : corriger avec le `theta` vrai doit la rendre à 1."""
-    from src.crosstalk.matrix import apply_correction
+    from src.crosstalk.polarimetry.matrix import apply_correction
 
     signal = sample_scattering(ScatteringParameters(beta=0.05), (256, 256), rng=np.random.default_rng(0)
     )

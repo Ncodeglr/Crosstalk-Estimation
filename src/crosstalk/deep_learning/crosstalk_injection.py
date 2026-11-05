@@ -47,15 +47,15 @@ from __future__ import annotations
 from typing import Any
 import numpy as np
 import torch
-from ..covariance import (
+from ..polarimetry.covariance import (
     HERMITIAN_ENTRIES,
     check_patch,
     covariance_entries,
     polarimetric_covariance,
 )
-from ..crosstalk_sampler import CrosstalkSampler
-from ..patch_rng import patch_rng
-from ..matrix import apply_distortion
+from ..injection.crosstalk_sampler import CrosstalkSampler
+from ..injection.patch_rng import patch_rng
+from ..polarimetry.matrix import apply_distortion
 
 #: Nombre de valeurs complexes de l'entrée (les entrées distinctes de la covariance) et de la cible (u, v, w, z, alpha).
 N_ENTREES: int = len(HERMITIAN_ENTRIES)
@@ -85,7 +85,7 @@ class CrosstalkInjector:
     n'ajoute que la représentation du patch injecté qu'attend son réseau.
 
     Args:
-        seed_injection: graine des injections (src/crosstalk/patch_rng.py). La changer change toutes les injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
+        seed_injection: graine des injections (src/crosstalk/injection/patch_rng.py). La changer change toutes les injections : c'est une autre expérience. Ce n'est pas la graine globale de cvnn.
         **loi: les champs de crosstalk_sampler.CrosstalkSampler ; ceux qui manquent prennent leur valeur par défaut.
     """
 

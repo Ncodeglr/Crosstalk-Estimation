@@ -5,9 +5,9 @@ import logging
 import numpy as np
 import pytest
 
-from src.crosstalk.exceptions import SingularDmatrixError
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import (
+from src.crosstalk.polarimetry.exceptions import SingularDmatrixError
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import (
     CHANNEL_AXIS,
     POL_ORDER,
     apply_correction,
@@ -116,13 +116,13 @@ def test_le_seuil_de_singularite_est_reglable():
 
 def test_conditionnement_degrade_journalise_une_alerte(caplog):
     limite = CrosstalkParameters(u=0.8, v=0.1, w=0.8, z=0.1, alpha=1.0)
-    with caplog.at_level(logging.WARNING, logger="src.crosstalk.matrix"):
+    with caplog.at_level(logging.WARNING, logger="src.crosstalk.polarimetry.matrix"):
         sigma_calibration_matrix(limite)
     assert "conditionnement" in caplog.text
 
 
 def test_pas_d_alerte_pour_un_crosstalk_realiste(caplog):
-    with caplog.at_level(logging.WARNING, logger="src.crosstalk.matrix"):
+    with caplog.at_level(logging.WARNING, logger="src.crosstalk.polarimetry.matrix"):
         sigma_calibration_matrix(THETA)
     assert caplog.text == ""
 

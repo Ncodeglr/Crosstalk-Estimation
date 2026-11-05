@@ -41,8 +41,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 from torchcvnn.nn.modules import ComplexMSELoss
-from ..parameters import PARAMETER_NAMES
-from .crosstalk_injection import CARD_THETA
+from ...polarimetry.parameters import PARAMETER_NAMES
+from ..crosstalk_injection import CARD_THETA
 
 #: Noms des composantes de la cible, dans l'ordre de CrosstalkInjector.inject. Ce sont les clés des métriques.
 COMPOSANTES: tuple[str, ...] = PARAMETER_NAMES

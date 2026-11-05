@@ -5,13 +5,12 @@ Patchs de test servis par cvnn.
 
 from __future__ import annotations
 import sys
-from pathlib import Path
 from typing import Any, Iterator
 import numpy as np
+from ..paths import CVNN_SRC
 
 # cvnn n'est pas installé comme paquet, il est versionné dans le dépôt, sous cvnn/src.
-RACINE = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RACINE / "cvnn" / "src"))
+sys.path.insert(0, str(CVNN_SRC))
 
 
 #Données

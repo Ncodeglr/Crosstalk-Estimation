@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import ClassVar
-from ..covariance import check_patch
-from ..parameters import CrosstalkParameters
-from ..matrix import DEFAULT_TOL, apply_correction
+from ..polarimetry.covariance import check_patch
+from ..polarimetry.parameters import CrosstalkParameters
+from ..polarimetry.matrix import DEFAULT_TOL, apply_correction
 
 
 class CrosstalkEstimator(ABC):

@@ -1,4 +1,4 @@
-"""Méthodes d'estimation du crosstalk.
+"""Le côté statistique : les méthodes d'estimation du crosstalk, leurs métriques (`metrics`) et les patchs de test (`patchs`).
 
 Importer ce paquet peuple le registre : chaque module de méthode se déclare via
 `@register_estimator` et est importé ici.
@@ -8,8 +8,8 @@ modifier aucun fichier existant ::
 
     from typing import override
     import numpy as np
-    from src.crosstalk.estimators import CrosstalkEstimator, register_estimator
-    from src.crosstalk.parameters import CrosstalkParameters
+    from src.crosstalk.baselines import CrosstalkEstimator, register_estimator
+    from src.crosstalk.polarimetry.parameters import CrosstalkParameters
 
     @register_estimator
     class SansCrosstalkEstimator(CrosstalkEstimator):

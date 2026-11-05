@@ -1,5 +1,5 @@
 # Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04), pour le ResNet sur le patch brut.
-# Lancé par src/train_resnet.py, depuis la racine du dépôt ou depuis src/.
+# Lancé par src/scripts/train_resnet.py, depuis la racine du dépôt ou depuis src/scripts/.
 # Le découpage (seed, data.dataset, proportions, max_num_samples) et l'injection (transforms[0].params) doivent rester
 # ceux de cvnn_mlp.yaml : le ResNet est alors évalué sur les mêmes patchs de test que le MLP, avec les mêmes injections
 # (tests/test_train_resnet.py le vérifie).
@@ -11,19 +11,19 @@ seed_train: 1 # Graine de l'entraînement : initialisation des poids et ordre de
 nepochs: 50 # Comme dans la simulation du ResNet.
 
 model:
-  class: ResNet # src/crosstalk/deep_learning/resnet_model.py : le ResNet de cvnn avec une tête de régression, construit par create_model de cvnn.
+  class: ResNet # src/crosstalk/deep_learning/models/resnet_model.py : le ResNet de cvnn avec une tête de régression, construit par create_model de cvnn.
   layer_mode: complex # Seul mode accepté : l'entrée est complexe.
   num_layers: 5 # Blocs Down de cvnn : chacun double les canaux et divise la taille par deux (128 x 128 -> 4 x 4).
   channels_width: 32 # Canaux après la première convolution ; ils doublent à chaque bloc 
   num_blocks: 1 # Convolutions doubles (DoubleConv) par bloc Down.
   residual: true # Blocs résiduels.
-  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/experiment.py.
+  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/training/experiment.py.
   activation: CReLU # [modReLU, CReLU, zReLU, Cardioid] 
   normalization_layer: "batch"
   downsampling_layer: null # null : chaque bloc réduit la taille par sa première convolution, de pas 2.
   dropout: 0.1 # Exigé par cvnn 
 
-# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/cache.py) : la première
+# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/training/cache.py) : la première
 # exécution lit une fois dans la pile les patchs gardés, les suivantes relisent le cache (environ 32 Go) tant que cette
 # section data et la graine ne changent pas.
 data:
@@ -43,12 +43,12 @@ data:
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque patch est normalisé dans la transformation, pour que sa covariance soit de
-  # trace 1. Placé avant elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/patch_rng.py) de ses constantes.
+  # trace 1. Placé avant elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/injection/patch_rng.py) de ses constantes.
   transforms:
     - name: crosstalk_injection_resnet # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (patch injecté (4, H, W), theta_k)
       params:
         seed_injection: 13 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
-        crosstalk_db: [-35.0, -10.0] # La loi d'injection : src/crosstalk/crosstalk_sampler.py.
+        crosstalk_db: [-35.0, -10.0] # La loi d'injection : src/crosstalk/injection/crosstalk_sampler.py.
         term_spread_db: 4.0
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]

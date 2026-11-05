@@ -16,11 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 import numpy as np
-from .parameters import CROSSTALK_NAMES, CrosstalkParameters
-from .matrix import POL_ORDER
+from ..polarimetry.parameters import CROSSTALK_NAMES, CrosstalkParameters
+from ..polarimetry.matrix import POL_ORDER
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .estimators.estimator import CrosstalkEstimator
+    from .estimator import CrosstalkEstimator
 
 
 def parameter_errors(estimate: CrosstalkParameters, ground_truth: CrosstalkParameters) -> dict[str, float]:

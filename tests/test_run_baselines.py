@@ -13,16 +13,16 @@ import numpy as np
 import pytest
 import yaml
 
-from src.crosstalk.estimators.estimator import CrosstalkEstimator
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_distortion
+from src.crosstalk.baselines.estimator import CrosstalkEstimator
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import apply_distortion
 from synthetic import ScatteringParameters, sample_scattering
 
 RACINE = Path(__file__).resolve().parent.parent
 
 
 def charge_script():
-    chemin = RACINE / "src" / "run_baselines.py"
+    chemin = RACINE / "src" / "scripts" / "run_baselines.py"
     spec = importlib.util.spec_from_file_location("run_baselines", chemin)
     module = importlib.util.module_from_spec(spec)
     # Inscrit avant exécution, comme le prévoit la recette d'importlib :

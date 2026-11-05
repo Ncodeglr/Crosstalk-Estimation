@@ -57,13 +57,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, Subset, TensorDataset
 from tqdm import tqdm
-from ..parameters import PARAMETER_NAMES
-from .crosstalk_injection import injection_transform_yaml
+from ...paths import DOSSIER_CACHE
+from ...polarimetry.parameters import PARAMETER_NAMES
+from ..crosstalk_injection import injection_transform_yaml
 
 logger = logging.getLogger(__name__)
-
-#: Dossier des caches, à la racine du dépôt (ignoré par git).
-DOSSIER_CACHE: Path = Path(__file__).resolve().parents[3] / "cache"
 
 #: Nombre de patchs de chaque partition recalculés à chaque chargement pour contrôler le cache.
 N_CONTROLE: int = 8

@@ -13,14 +13,14 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 import yaml
 
-RACINE = Path(__file__).resolve().parent.parent
+RACINE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RACINE))
 
-from src.crosstalk.estimators import create_from_config  # noqa: E402
-from src.crosstalk.estimators.estimator import CrosstalkEstimator  # noqa: E402
-from src.crosstalk.exceptions import CrosstalkError  # noqa: E402
-from src.crosstalk.metrics import residual_crosstalk  # noqa: E402
-from src.patchs import build_dataloader, iter_patches  # noqa: E402
+from src.crosstalk.baselines import create_from_config  # noqa: E402
+from src.crosstalk.baselines.estimator import CrosstalkEstimator  # noqa: E402
+from src.crosstalk.polarimetry.exceptions import CrosstalkError  # noqa: E402
+from src.crosstalk.baselines.metrics import residual_crosstalk  # noqa: E402
+from src.crosstalk.baselines.patchs import build_dataloader, iter_patches  # noqa: E402
 
 logger = logging.getLogger("run_baselines")
 

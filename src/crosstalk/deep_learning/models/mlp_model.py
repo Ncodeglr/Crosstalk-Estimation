@@ -9,7 +9,7 @@ par patch, à information égale avec Quegan, qui ne voit lui aussi que la covar
 Choix par nom
 -------------
 
-L'initialisation n'est pas faite ici : src/train_mlp.py applique init_weights (experiment.py) après la construction,
+L'initialisation n'est pas faite ici : src/scripts/train_mlp.py applique init_weights (experiment.py) après la construction,
 selon model.init_weights du YAML.
 
 """
@@ -19,7 +19,7 @@ import torch
 from torch import nn
 from cvnn.models import register_model
 from cvnn.models.linear import SingleLinear
-from .crosstalk_injection import CARD_THETA, ECHELLE_SORTIE  # ECHELLE_SORTIE : commune au MLP et au ResNet
+from ..crosstalk_injection import CARD_THETA, ECHELLE_SORTIE  # ECHELLE_SORTIE : commune au MLP et au ResNet
 
 #: Les valeurs acceptées pour normalization_layer
 NORMALISATIONS: tuple[str | None, ...] = (None, "none", "layer", "batch")

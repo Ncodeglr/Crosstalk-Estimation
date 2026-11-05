@@ -1,8 +1,8 @@
 """
-Tests du script src/train_mlp.py :
+Tests du script src/scripts/train_mlp.py :
 
 1. le YAML du banc d'essai : le MLP de référence, échéance cohérente avec nepochs ;
-2. sur la vraie pile, un entraînement complet de deux époques sur un petit échantillon, lancé depuis src/, sans wandb,
+2. sur la vraie pile, un entraînement complet de deux époques sur un petit échantillon, lancé depuis src/scripts/, sans wandb,
    avec un cache temporaire ; la graine d'entraînement change l'entraînement sans toucher au découpage. Sautés si la
    pile est absente.
 Les fonctions communes aux scripts du MLP et du ResNet (evaluate, from_repo_root, resolve_trainpath) sont testées dans
@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from src.crosstalk.deep_learning import MLP
-from src.train_mlp import CONFIG, main
+from src.scripts.train_mlp import CONFIG, main
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -66,13 +66,13 @@ def petite_config(dossier: Path, seed_train: int = 1, **reglages_data) -> Path:
 
 @sur_la_pile
 def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, monkeypatch):
-    monkeypatch.chdir(RACINE / "src")   # comme « cd src ; python3 train_mlp.py » : le chemin relatif de la pile doit tenir
+    monkeypatch.chdir(RACINE / "src" / "scripts")   # comme « cd src/scripts ; python3 train_mlp.py » : le chemin relatif de la pile doit tenir
     monkeypatch.setenv("WANDB_DIR", "provisoire")
     monkeypatch.delenv("WANDB_DIR")      # absent pendant le test, rétabli ensuite par monkeypatch
     resultats = main(petite_config(tmp_path), dossier_cache=tmp_path / "cache")
 
     assert len(list((tmp_path / "cache").glob("crosstalk_injection_mlp_*"))) == 1
-    assert os.environ["WANDB_DIR"] == str(RACINE)   # wandb écrit à la racine, et non dans src/
+    assert os.environ["WANDB_DIR"] == str(RACINE)   # wandb écrit à la racine, et non dans src/scripts/
 
     (sortie,) = (tmp_path / "logs").iterdir()
     assert {p.name for p in sortie.iterdir()} == {"config.yml", "best_model.pt", "last_model.pt", "historique.yaml",

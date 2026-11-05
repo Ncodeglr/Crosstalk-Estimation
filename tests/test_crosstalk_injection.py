@@ -19,11 +19,11 @@ import pytest
 import torch
 import yaml
 
-from src.crosstalk.covariance import HERMITIAN_ENTRIES, covariance_entries, polarimetric_covariance
+from src.crosstalk.polarimetry.covariance import HERMITIAN_ENTRIES, covariance_entries, polarimetric_covariance
 from src.crosstalk.deep_learning import CrosstalkInjector, MLPInjectionTransform, ResNetInjectionTransform, check_pipeline
-from src.crosstalk.crosstalk_sampler import NEUTRE, CrosstalkSampler
-from src.crosstalk.patch_rng import patch_rng
-from src.crosstalk.matrix import apply_distortion, distortion_matrix
+from src.crosstalk.injection.crosstalk_sampler import NEUTRE, CrosstalkSampler
+from src.crosstalk.injection.patch_rng import patch_rng
+from src.crosstalk.polarimetry.matrix import apply_distortion, distortion_matrix
 
 RACINE = Path(__file__).resolve().parent.parent
 PUISSANCES = [k for k, (i, j) in enumerate(HERMITIAN_ENTRIES) if i == j]

@@ -1,9 +1,9 @@
-"""Tests de `src/patchs.py` qui ne demandent pas la vraie pile (92 Go)."""
+"""Tests de `src/crosstalk/baselines/patchs.py` qui ne demandent pas la vraie pile (92 Go)."""
 
 import numpy as np
 import torch
 
-from src.patchs import iter_patches
+from src.crosstalk.baselines.patchs import iter_patches
 
 
 def test_les_lots_sont_deplies_en_patchs_dans_l_ordre():
@@ -19,7 +19,7 @@ def test_le_decoupage_est_rendu_reproductible():
     """`cvnn.data` découpe avec les générateurs globaux, jamais graines.
 
     Le script appelle `cvnn.utils.set_seed`, la même fonction que
-    `src/train_mlp.py` utilise pour le réseau : les deux voient donc la même
+    `src/scripts/train_mlp.py` utilise pour le réseau : les deux voient donc la même
     partition. Sans ce réamorçage, deux exécutions évaluent deux partitions de
     test différentes.
     """

@@ -1,5 +1,5 @@
 """
-Ce que partagent les scripts d'entraînement du MLP (src/train_mlp.py) et du ResNet (src/train_resnet.py) : les chemins
+Ce que partagent les scripts d'entraînement du MLP (src/scripts/train_mlp.py) et du ResNet (src/scripts/train_resnet.py) : les chemins
 du YAML lus depuis la racine du dépôt, l'initialisation du réseau, et l'évaluation sur la partition de test.
 
 Les deux réseaux sont ainsi évalués de la même façon. Quand leurs YAML ont le même découpage et la même loi
@@ -15,9 +15,7 @@ import torch
 import torchcvnn.nn.modules as c_nn
 from cvnn.models.utils import init_weights_mode_aware
 from tqdm import tqdm
-
-#: Racine du dépôt, d'où se lisent les chemins relatifs du YAML.
-RACINE: Path = Path(__file__).resolve().parents[3]
+from ...paths import RACINE
 
 #: Tranches de crosstalk injecté, en dB : elles découpent par pas de 5 dB l'enveloppe crosstalk_db = [-35, -10] des YAML.
 #: Le niveau d'un patch est 20 log10 de la moyenne quadratique de |u|, |v|, |w|, |z| de sa cible ; un patch laissé sans
@@ -37,7 +35,7 @@ INITIALISATIONS: dict[str, Any] = {
 def from_repo_root(chemin: str | Path) -> Path:
     """
     Un chemin du YAML : relatif, il se lit depuis la racine du dépôt, et non depuis le dossier de lancement, pour que
-    les scripts marchent aussi bien lancés depuis la racine que depuis src/ ; absolu, il est gardé tel quel.
+    les scripts marchent aussi bien lancés depuis la racine que depuis src/scripts/ ; absolu, il est gardé tel quel.
     """
     chemin = Path(chemin)
     return chemin if chemin.is_absolute() else RACINE / chemin

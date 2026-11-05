@@ -11,8 +11,8 @@ import pytest
 import torch
 
 from src.crosstalk.deep_learning import MLPInjectionTransform, MLP
-from src.crosstalk.deep_learning.loss import COMPOSANTES, CrosstalkLoss
-from src.crosstalk.crosstalk_sampler import CrosstalkSampler
+from src.crosstalk.deep_learning.training.loss import COMPOSANTES, CrosstalkLoss
+from src.crosstalk.injection.crosstalk_sampler import CrosstalkSampler
 
 
 @pytest.fixture(scope="module")

@@ -5,8 +5,8 @@ Méthode de Quegan : estimation du crosstalk en forme fermée.
 from __future__ import annotations
 from typing import override
 import numpy as np
-from ..covariance import polarimetric_covariance
-from ..parameters import CrosstalkParameters
+from ..polarimetry.covariance import polarimetric_covariance
+from ..polarimetry.parameters import CrosstalkParameters
 from .estimator import CrosstalkEstimator
 from .registry import register_estimator
 

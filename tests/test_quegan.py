@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.estimators import create_from_config
-from src.crosstalk.estimators.quegan import QueganEstimator
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_distortion
+from src.crosstalk.baselines import create_from_config
+from src.crosstalk.baselines.quegan import QueganEstimator
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import apply_distortion
 from synthetic import ScatteringParameters, sample_scattering
 
 #: Direction de crosstalk de référence, mise à l'échelle par `epsilon`.
@@ -136,7 +136,7 @@ def test_les_formes_fermees_sont_exactes_sur_la_covariance_theorique():
     cross-pol négligeable (`beta` très petit) et crosstalk très faible, les
     formes fermées doivent redonner `theta` à la précision machine près.
     """
-    from src.crosstalk.matrix import distortion_matrix
+    from src.crosstalk.polarimetry.matrix import distortion_matrix
 
     vrai = theta(1e-3)
     matrice = distortion_matrix(vrai)
@@ -164,7 +164,7 @@ def test_le_biais_est_le_terme_croise_neglige_par_les_formes_fermees(beta):
     `alpha` loin de 1 en module comme en phase, pour que chaque facteur compte.
     `beta = 0.134` est de l'ordre de la médiane mesurée sur la pile (0,119).
     """
-    from src.crosstalk.matrix import distortion_matrix
+    from src.crosstalk.polarimetry.matrix import distortion_matrix
 
     vrai = CrosstalkParameters.from_vector(
         [*(1e-2 * DIRECTION), 1.25 * np.exp(-1j * np.deg2rad(23.0))]

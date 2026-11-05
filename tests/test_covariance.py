@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.covariance import (
+from src.crosstalk.polarimetry.covariance import (
     HERMITIAN_ENTRIES,
     check_covariance,
     check_patch,
@@ -11,8 +11,8 @@ from src.crosstalk.covariance import (
     normalize_by_trace,
     polarimetric_covariance,
 )
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_distortion, distortion_matrix
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import apply_distortion, distortion_matrix
 
 def is_hermitian(cov: np.ndarray, tol: float = 1e-10) -> bool:
     """`C = C^H` sur les deux derniers axes."""

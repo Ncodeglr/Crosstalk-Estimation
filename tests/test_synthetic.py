@@ -15,9 +15,9 @@ import dataclasses
 import numpy as np
 import pytest
 
-from src.crosstalk.covariance import polarimetric_covariance
-from src.crosstalk.matrix import POL_ORDER, distortion_matrix
-from src.crosstalk.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.covariance import polarimetric_covariance
+from src.crosstalk.polarimetry.matrix import POL_ORDER, distortion_matrix
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
 from synthetic import (
     IDX_HH,
     IDX_HV,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Entraîne le MLP sur le patch brut, puis l'évalue sur la partition de test, comme src/train_resnet.py le fait pour le ResNet.
-Le MLP (src/crosstalk/deep_learning/mlp_model.py) reçoit la covariance du patch injecté (10, 1, 1). Le script enchaîne les mêmes briques de cvnn, sans BaseExperiment.
+Entraîne le ResNet sur le patch brut, puis l'évalue sur la partition de test, comme src/scripts/train_mlp.py le fait pour le MLP.
+Le ResNet (src/crosstalk/deep_learning/models/resnet_model.py) reçoit le patch injecté (4, H, W). Le script enchaîne les mêmes briques de cvnn, sans BaseExperiment :
 """
 
 from __future__ import annotations
@@ -14,13 +14,14 @@ from pathlib import Path
 import torch
 import yaml
 
-RACINE = Path(__file__).resolve().parent.parent
+RACINE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RACINE))
 
 # Importer ce paquet ajoute cvnn au chemin et enregistre la transformation et le réseau dans ses registres.
 from src.crosstalk.deep_learning import CrosstalkLoss, cached_loaders, check_pipeline  # noqa: E402
-from src.crosstalk.deep_learning.cache import DOSSIER_CACHE  # noqa: E402
-from src.crosstalk.deep_learning.experiment import evaluate, from_repo_root, init_weights, resolve_trainpath  # noqa: E402
+from src.crosstalk.deep_learning.training.cache import DOSSIER_CACHE  # noqa: E402
+from src.crosstalk.deep_learning.training.experiment import evaluate, from_repo_root, init_weights, resolve_trainpath  # noqa: E402
+from src.crosstalk.polarimetry.matrix import POL_ORDER  # noqa: E402
 from cvnn.config import load_config  # noqa: E402
 from cvnn.config_utils import get_model_params  # noqa: E402
 from cvnn.data import get_dataloaders, validate_and_correct_config  # noqa: E402
@@ -29,10 +30,10 @@ from cvnn.train import train_model  # noqa: E402
 from cvnn.utils import set_seed  # noqa: E402
 from cvnn.wandb_utils import finish_wandb_run, log_metrics, setup_wandb  # noqa: E402
 
-logger = logging.getLogger("train_mlp")
+logger = logging.getLogger("train_resnet")
 
-#: Configuration par défaut : celle du banc d'essai par réinjection.
-CONFIG: Path = RACINE / "configs" / "cvnn_mlp.yaml"
+#: Configuration par défaut : celle du banc d'essai par réinjection, pour le ResNet.
+CONFIG: Path = RACINE / "configs" / "cvnn_resnet.yaml"
 
 
 def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> dict[str, float]:
@@ -50,16 +51,18 @@ def main(chemin_config: Path = CONFIG, dossier_cache: Path = DOSSIER_CACHE) -> d
     # ==========================================
     # 2. DONNÉES (train_loader, valid_loader, test_loader)
     # ==========================================
-    # La graine seed fixe le découpage : posée juste avant get_dataloaders, comme dans src/patchs.py, elle donne le même
-    # découpage que la chaîne A.
+    # La graine seed fixe le découpage : posée juste avant get_dataloaders, comme dans src/crosstalk/baselines/patchs.py, elle donne le même découpage que la chaîne A.
     set_seed(int(cfg["seed"]))
     cfg = validate_and_correct_config(cfg)
     chargeurs = get_dataloaders(cfg, use_cuda)
     if len(chargeurs) != 3:
         raise ValueError("data.test_ratio doit être > 0 : l'évaluation se fait sur la partition de test")
+    
+    # L'entrée du ResNet est le patch injecté : ses 4 canaux de polarisation, à la taille des patchs du YAML.
+    taille = cfg["data"]["dataset"]["patch_size"]
     for chargeur in chargeurs:
-        check_pipeline(chargeur)
-    # Les mêmes couples (entrées (B, 10, 1, 1), cibles (B, 5)), servis depuis le cache plutôt que relus dans la pile à chaque époque.
+        check_pipeline(chargeur, forme_entree=(len(POL_ORDER), taille, taille))
+    # Les mêmes couples (entrée, cible), servis depuis le cache plutôt que relus dans la pile à chaque époque.
     train_loader, valid_loader, test_loader = cached_loaders(chargeurs, cfg, dossier_cache)
 
     # ==========================================

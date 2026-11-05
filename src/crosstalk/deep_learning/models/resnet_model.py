@@ -39,7 +39,7 @@ import torchcvnn.nn.modules as c_nn
 from cvnn.models import register_model
 from cvnn.models.linear import SingleLinear
 from cvnn.models.models import ResNet as CvnnResNet
-from .crosstalk_injection import CARD_THETA, ECHELLE_SORTIE
+from ..crosstalk_injection import CARD_THETA, ECHELLE_SORTIE
 
 
 @register_model("ResNet") #Ajouté au registre de cvnn, pour que create_model("ResNet", ...) le construise : cvnn ne construit son ResNet que dans sa tâche de classification (model_utils.build_resnet).

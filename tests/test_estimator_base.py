@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.estimators.estimator import CrosstalkEstimator
-from src.crosstalk.exceptions import SingularDmatrixError
-from src.crosstalk.parameters import CrosstalkParameters
-from src.crosstalk.matrix import apply_distortion
+from src.crosstalk.baselines.estimator import CrosstalkEstimator
+from src.crosstalk.polarimetry.exceptions import SingularDmatrixError
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.matrix import apply_distortion
 
 THETA = CrosstalkParameters(
     u=0.08 + 0.05j,

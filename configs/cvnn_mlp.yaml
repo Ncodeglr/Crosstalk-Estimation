@@ -1,5 +1,5 @@
 # Banc d'essai par réinjection sur la pile UAVSAR quad-pol (Rosamd_35012_04).
-# Lancé par src/train_mlp.py, depuis la racine du dépôt ou depuis src/.
+# Lancé par src/scripts/train_mlp.py, depuis la racine du dépôt ou depuis src/scripts/.
 
 
 task: mlp_crosstalk_injection # Préfixe du dossier de sortie.
@@ -8,15 +8,15 @@ seed_train: 3 # Graine de l'entraînement : initialisation des poids et ordre de
 nepochs: 50
 
 model:
-  class: MLP # src/crosstalk/deep_learning/mlp_model.py, construit par create_model de cvnn.
+  class: MLP # src/crosstalk/deep_learning/models/mlp_model.py, construit par create_model de cvnn.
   layer_mode: complex
   num_layers: 3
   channels_width: 128 # Taille des canaux du premier bloc ; elle double à chaque bloc suivant
-  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/experiment.py.
+  init_weights: kaiming_normal # [kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform] : voir init_weights dans src/crosstalk/deep_learning/training/experiment.py.
   activation: CReLU # [modReLU, CReLU, zReLU, Cardioid]
   normalization_layer: batch # [none, batch, layer] : à l'évaluation, batch utilise les statistiques mémorisées, chaque patch est traité seul. Ne pas utiliser layer : celle de torchcvnn calcule ses statistiques sur les autres patchs du lot, même à l'évaluation.
 
-# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/cache.py).
+# Les couples (entrée, cible) sont mis en cache dans cache/ (src/crosstalk/deep_learning/training/cache.py).
 # La première exécution parcourt la pile une fois (environ 1 h), les suivantes relisent le cache tant que cette section data et la graine ne changent pas.
 data:
   dataset:
@@ -35,12 +35,12 @@ data:
   recompute_statistics: False
 
   # Pas de global_scalar_normalize : chaque covariance est normalisée par sa trace dans la transformation. Placé avant
-  # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/patch_rng.py) de ses constantes.
+  # elle, il ferait dépendre l'injection de chaque patch (src/crosstalk/injection/patch_rng.py) de ses constantes.
   transforms:
     - name: crosstalk_injection_mlp # src/crosstalk/deep_learning/crosstalk_injection.py : patch -> (10 entrées de C, theta_k)
       params:
         seed_injection: 13 # Graine des injections, distincte de la graine globale : la changer, c'est une autre expérience.
-        crosstalk_db: [-35.0, -10.0] # La loi d'injection : src/crosstalk/crosstalk_sampler.py.
+        crosstalk_db: [-35.0, -10.0] # La loi d'injection : src/crosstalk/injection/crosstalk_sampler.py.
         term_spread_db: 4.0
         alpha_module_db: [-3.0, 3.0]
         alpha_phase_deg: [-30.0, 30.0]

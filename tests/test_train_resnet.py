@@ -1,9 +1,9 @@
 """
-Tests du script src/train_resnet.py :
+Tests du script src/scripts/train_resnet.py :
 
 1. le YAML du banc d'essai : le ResNet de référence, échéance cohérente avec nepochs, et le même découpage et la même
    injection que le YAML du MLP, condition pour comparer les deux réseaux sur les mêmes patchs de test ;
-2. sur la vraie pile, un entraînement complet de deux époques sur un petit échantillon, lancé depuis src/, sans wandb,
+2. sur la vraie pile, un entraînement complet de deux époques sur un petit échantillon, lancé depuis src/scripts/, sans wandb,
    avec un cache temporaire ; deux entraînements de même graine sont identiques, convolutions sur GPU comprises.
    Sautés si la pile est absente.
 """
@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from src.crosstalk.deep_learning import ResNet
-from src.train_resnet import CONFIG, main
+from src.scripts.train_resnet import CONFIG, main
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"
@@ -89,7 +89,7 @@ def petite_config(dossier: Path, seed_train: int = 1) -> Path:
 
 @sur_la_pile
 def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, monkeypatch):
-    monkeypatch.chdir(RACINE / "src")   # comme « cd src ; python3 train_resnet.py » : le chemin relatif de la pile doit tenir
+    monkeypatch.chdir(RACINE / "src" / "scripts")   # comme « cd src/scripts ; python3 train_resnet.py » : le chemin relatif de la pile doit tenir
     monkeypatch.setenv("WANDB_DIR", "provisoire")
     monkeypatch.delenv("WANDB_DIR")      # absent pendant le test, rétabli ensuite par monkeypatch
     resultats = main(petite_config(tmp_path), dossier_cache=tmp_path / "cache")
@@ -97,7 +97,7 @@ def test_un_entrainement_complet_ecrit_ses_sorties_et_evalue_le_test(tmp_path, m
     (cache,) = (tmp_path / "cache").iterdir()
     assert cache.name.startswith("crosstalk_injection_resnet_")
     assert len(np.load(cache / "train_indices.npy")) == 200   # max_train_samples
-    assert os.environ["WANDB_DIR"] == str(RACINE)   # wandb écrit à la racine, et non dans src/
+    assert os.environ["WANDB_DIR"] == str(RACINE)   # wandb écrit à la racine, et non dans src/scripts/
 
     (sortie,) = (tmp_path / "logs").iterdir()
     assert {p.name for p in sortie.iterdir()} == {"config.yml", "best_model.pt", "last_model.pt", "historique.yaml",

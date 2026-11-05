@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.crosstalk.parameters import PARAMETER_NAMES, CrosstalkParameters
+from src.crosstalk.polarimetry.parameters import PARAMETER_NAMES, CrosstalkParameters
 
 THETA = CrosstalkParameters(
     u=0.08 + 0.05j,

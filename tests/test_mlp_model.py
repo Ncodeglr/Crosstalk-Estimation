@@ -13,7 +13,7 @@ import torchcvnn.nn.modules as c_nn
 from torchcvnn.nn.modules import modReLU
 
 from src.crosstalk.deep_learning import MLPInjectionTransform, MLP
-from src.crosstalk.deep_learning.mlp_model import ECHELLE_SORTIE
+from src.crosstalk.deep_learning.models.mlp_model import ECHELLE_SORTIE
 
 #: Les réglages de la section model du YAML, tels que get_model_params les transmet, avec ce que cvnn déduit du
 #: premier lot de la transformation (10 canaux, image 1 x 1).
@@ -30,7 +30,7 @@ def lot_de_la_transformation(taille: int = 8) -> torch.Tensor:
 
 
 def reseau_initialise() -> MLP:
-    """Le réseau tel que src/train_mlp.py le prépare : construit, puis initialisé par init_weights_mode_aware."""
+    """Le réseau tel que src/scripts/train_mlp.py le prépare : construit, puis initialisé par init_weights_mode_aware."""
     from cvnn.models.utils import init_weights_mode_aware
 
     torch.manual_seed(0)

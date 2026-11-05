@@ -19,8 +19,8 @@ import yaml
 from torch.utils.data import RandomSampler
 
 from src.crosstalk.deep_learning import cached_loaders, check_pipeline
-from src.crosstalk.deep_learning import cache as module_cache
-from src.crosstalk.deep_learning.cache import PARTITIONS, fingerprint
+from src.crosstalk.deep_learning.training import cache as module_cache
+from src.crosstalk.deep_learning.training.cache import PARTITIONS, fingerprint
 
 RACINE = Path(__file__).resolve().parent.parent
 PILE = RACINE / "data" / "Rosamd_35012_04"

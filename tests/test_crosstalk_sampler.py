@@ -14,9 +14,9 @@ import dataclasses
 import numpy as np
 import pytest
 
-from src.crosstalk.crosstalk_sampler import NEUTRE, CrosstalkSampler
-from src.crosstalk.matrix import DEFAULT_TOL, apply_distortion, distortion_matrix
-from src.crosstalk.parameters import CROSSTALK_NAMES
+from src.crosstalk.injection.crosstalk_sampler import NEUTRE, CrosstalkSampler
+from src.crosstalk.polarimetry.matrix import DEFAULT_TOL, apply_distortion, distortion_matrix
+from src.crosstalk.polarimetry.parameters import CROSSTALK_NAMES
 
 
 def tirages(sampler: CrosstalkSampler, n: int = 4000, graine: int = 0):

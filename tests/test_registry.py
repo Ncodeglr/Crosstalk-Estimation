@@ -7,14 +7,14 @@ nouvelle ne demande de toucher à aucun module existant.
 import numpy as np
 import pytest
 
-from src.crosstalk.estimators import registry
-from src.crosstalk.estimators.estimator import CrosstalkEstimator
-from src.crosstalk.estimators.registry import (
+from src.crosstalk.baselines import registry
+from src.crosstalk.baselines.estimator import CrosstalkEstimator
+from src.crosstalk.baselines.registry import (
     available_estimators,
     create_from_config,
     register_estimator,
 )
-from src.crosstalk.parameters import CrosstalkParameters
+from src.crosstalk.polarimetry.parameters import CrosstalkParameters
 
 
 @pytest.fixture(autouse=True)

@@ -7,25 +7,25 @@ doit donc être importé avant que cvnn ne construise les chargeurs et le modèl
 """
 
 import sys
-from pathlib import Path
 
-# cvnn n'est pas installé comme paquet : il est versionné dans le dépôt, sous cvnn/src (même convention que src/patchs.py).
-_CVNN = str(Path(__file__).resolve().parents[3] / "cvnn" / "src")
-if _CVNN not in sys.path:
-    sys.path.insert(0, _CVNN)
+from ..paths import CVNN_SRC
+
+# cvnn n'est pas installé comme paquet : il est versionné dans le dépôt, sous cvnn/src. Son chemin doit être ajouté avant les imports ci-dessous.
+if str(CVNN_SRC) not in sys.path:
+    sys.path.insert(0, str(CVNN_SRC))
 
 from cvnn.transform_registry import register_transform  # noqa: E402
 
-from .cache import cached_loaders  # noqa: E402
+from .training.cache import cached_loaders  # noqa: E402
 from .crosstalk_injection import (  # noqa: E402
     CrosstalkInjector,
     MLPInjectionTransform,
     ResNetInjectionTransform,
     check_pipeline,
 )
-from .loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/train_mlp.py et src/train_resnet.py la construisent eux-mêmes)
-from .mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
-from .resnet_model import ResNet  # noqa: E402  (idem)
+from .training.loss import CrosstalkLoss  # noqa: E402  (cvnn n'a pas de registre de pertes : src/scripts/train_mlp.py et src/scripts/train_resnet.py la construisent eux-mêmes)
+from .models.mlp_model import MLP  # noqa: E402  (l'import l'enregistre dans le registre de modèles de cvnn)
+from .models.resnet_model import ResNet  # noqa: E402  (idem)
 
 # Sous « complex » : cvnn y cherche les transformations de toute donnée polarimétrique, quel que soit le mode du réseau.
 register_transform("complex", "crosstalk_injection_mlp", MLPInjectionTransform)
