@@ -20,15 +20,6 @@ source .venv/bin/activate   # Windows : .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-- **PyTorch** : `requirements.txt` installe les versions compilées pour CUDA 13.0.
-- **cvnn** : versionné dans `cvnn/` et non installé comme paquet ; la bibliothèque
-  ajoute `cvnn/src` au chemin d'import.
-- **Données** : la pile n'est pas versionnée et se place dans
-  `data/Rosamd_35012_04/` (environ 92 Go).
-- **wandb** : les entraînements y envoient leurs courbes. Il faut au choix lancer
-  `wandb login`, passer `logging.wandb.mode` à `offline`, ou supprimer la section
-  `logging.wandb` du YAML.
-
 ## Lancer
 
 ```bash
