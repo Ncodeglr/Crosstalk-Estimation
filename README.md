@@ -250,35 +250,6 @@ Avant de comparer deux runs :
   une perte normalisée : cette clé et leurs valeurs de perte ne se comparent pas à
   celles d'aujourd'hui.
 
-### Ordre de lecture recommandé
-
-Des fondations vers les points d'entrée : chaque fichier ne dépend que de ceux qui
-le précèdent, et de `paths.py`, qui ne contient que les chemins du dépôt.
-
-| # | fichier | à vérifier en le lisant |
-|---|---|---|
-| 1 | [configs/data_uavsar.yaml](configs/data_uavsar.yaml) | `seed`, `patch_size`, ratios, bloc `baselines:` |
-| 2 | [cvnn/src/cvnn/data.py](cvnn/src/cvnn/data.py) — `_create_dataset`, `_groupes_par_emplacement`, `get_dataloaders` | le découpage groupé par emplacement ; le test chargé sans mélange |
-| 3 | [cvnn/src/cvnn/transform_registry.py](cvnn/src/cvnn/transform_registry.py) — `GlobalScalarNormalize` | la normalisation est **un seul scalaire réel**, donc `theta` invariant |
-| 4 | [src/crosstalk/polarimetry/exceptions.py](src/crosstalk/polarimetry/exceptions.py) | le seul cas d'échec : D singulière |
-| 5 | [src/crosstalk/polarimetry/parameters.py](src/crosstalk/polarimetry/parameters.py) | ordre `(u, v, w, z, alpha)`, conversions en dB |
-| 6 | [src/crosstalk/polarimetry/matrix.py](src/crosstalk/polarimetry/matrix.py) | `POL_ORDER`, D réindexée de Fore, `Sigma · D = I`, `apply_matrix` |
-| 7 | [src/crosstalk/polarimetry/covariance.py](src/crosstalk/polarimetry/covariance.py) | une seule `C` par patch, forme `(4, 4)` ; convention `C_ij = <S'_i S'_j*>` |
-| 8 | [src/crosstalk/baselines/estimator.py](src/crosstalk/baselines/estimator.py), puis [registry.py](src/crosstalk/baselines/registry.py) | interface abstraite, enregistrement par décorateur |
-| 9 | [src/crosstalk/baselines/quegan.py](src/crosstalk/baselines/quegan.py) | formes fermées, sans validation de la covariance |
-| 10 | [src/crosstalk/baselines/metrics.py](src/crosstalk/baselines/metrics.py) | le résiduel est **circulaire**, la réciprocité ne l'est pas |
-| 11 | [src/crosstalk/baselines/patchs.py](src/crosstalk/baselines/patchs.py) | patchs de test servis par `cvnn`, lots dépliés en patchs |
-| 12 | [src/scripts/run_baselines.py](src/scripts/run_baselines.py) | assemblage de la chaîne A |
-| 13 | [src/crosstalk/injection/crosstalk_sampler.py](src/crosstalk/injection/crosstalk_sampler.py) | la loi de `theta_k` ; `theta_k` n'est pas le crosstalk total |
-| 14 | [src/crosstalk/injection/patch_rng.py](src/crosstalk/injection/patch_rng.py) | même patch, même `theta_k`, quel que soit le processus ou l'époque |
-| 15 | [src/crosstalk/deep_learning/crosstalk_injection.py](src/crosstalk/deep_learning/crosstalk_injection.py) | l'injection commune, les deux entrées, `check_pipeline` |
-| 16 | [src/crosstalk/deep_learning/training/loss.py](src/crosstalk/deep_learning/training/loss.py) | patchs écartés retirés avant la soustraction, aucune normalisation |
-| 17 | [src/crosstalk/deep_learning/training/cache.py](src/crosstalk/deep_learning/training/cache.py) | ce qui entre dans l'empreinte, le contrôle à chaque chargement |
-| 18 | [src/crosstalk/deep_learning/models/mlp_model.py](src/crosstalk/deep_learning/models/mlp_model.py), puis [resnet_model.py](src/crosstalk/deep_learning/models/resnet_model.py) | sortie sans activation, multipliée par `ECHELLE_SORTIE` |
-| 19 | [src/crosstalk/deep_learning/training/experiment.py](src/crosstalk/deep_learning/training/experiment.py) | `init_weights`, `TRANCHES_DB`, `evaluate` |
-| 20 | [configs/cvnn_mlp.yaml](configs/cvnn_mlp.yaml), [configs/cvnn_resnet.yaml](configs/cvnn_resnet.yaml) | même découpage et même loi dans les deux |
-| 21 | [src/scripts/train_mlp.py](src/scripts/train_mlp.py), [src/scripts/train_resnet.py](src/scripts/train_resnet.py) | assemblage du banc d'essai ; moment où chaque graine est posée |
-| 22 | [tests/](tests/), dont l'outil [tests/synthetic.py](tests/synthetic.py) | hors chaîne : ne servent qu'aux tests, à `theta` connu |
 
 ### Points à garder en tête
 
